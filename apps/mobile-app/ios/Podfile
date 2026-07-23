@@ -1,0 +1,10 @@
+source 'https://cdn.cocoapods.org/'
+
+platform :ios, '16.0'
+
+target 'RMEGlassProbe' do
+  use_frameworks!
+
+  pod 'RGCxrClient', '1.0.4'
+  pod 'RGCoreKit', '0.0.2'
+end

@@ -1,0 +1,11 @@
+.gradle/
+.idea/
+local.properties
+build/
+app/build/
+captures/
+*.iml
+ios/Pods/
+ios/DerivedData/
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/

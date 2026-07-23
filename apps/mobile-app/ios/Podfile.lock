@@ -1,0 +1,27 @@
+PODS:
+  - CocoaLumberjack/Core (3.9.1)
+  - CocoaLumberjack/Swift (3.9.1):
+    - CocoaLumberjack/Core
+  - RGCoreKit (0.0.2):
+    - CocoaLumberjack/Swift
+  - RGCxrClient (1.0.4):
+    - RGCoreKit (= 0.0.2)
+
+DEPENDENCIES:
+  - RGCoreKit (= 0.0.2)
+  - RGCxrClient (= 1.0.4)
+
+SPEC REPOS:
+  trunk:
+    - CocoaLumberjack
+    - RGCoreKit
+    - RGCxrClient
+
+SPEC CHECKSUMS:
+  CocoaLumberjack: e4ba3b414dfca8c1916c6303d37f63b3a95134c6
+  RGCoreKit: 28a9f67424abfefedf55578a3473d84b48119ab2
+  RGCxrClient: e5f2c372ded9fb6f2e305ba4ad60e356ee1177fa
+
+PODFILE CHECKSUM: a7b517320947c14c3217359c565a2ce63422e444
+
+COCOAPODS: 1.15.2

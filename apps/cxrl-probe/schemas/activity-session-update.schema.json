@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/schemas/activity-session-update.schema.json",
+  "title": "ActivitySessionUpdate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "session_decision",
+    "proposed_goal",
+    "segment_decision",
+    "proposed_segment",
+    "boundary_scores",
+    "evidence",
+    "summary_patch",
+    "next_capture",
+    "confidence",
+    "needs_more_evidence",
+    "privacy_risk"
+  ],
+  "properties": {
+    "session_decision": {
+      "type": "string",
+      "enum": ["start", "continue", "suspend", "resume", "split", "close"]
+    },
+    "proposed_goal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "description", "confidence"],
+      "properties": {
+        "label": { "type": "string", "maxLength": 80 },
+        "description": { "type": "string", "maxLength": 240 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "segment_decision": {
+      "type": "string",
+      "enum": ["none", "start", "continue", "complete", "switch"]
+    },
+    "proposed_segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verb", "objects", "description", "goal_relation", "confidence"],
+      "properties": {
+        "verb": { "type": "string", "maxLength": 50 },
+        "objects": {
+          "type": "array",
+          "maxItems": 12,
+          "items": { "type": "string", "maxLength": 80 }
+        },
+        "description": { "type": "string", "maxLength": 240 },
+        "goal_relation": {
+          "type": "string",
+          "enum": ["contributes", "waits", "interrupts", "unrelated", "unknown"]
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "boundary_scores": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "goal_shift",
+        "space_shift",
+        "object_set_shift",
+        "social_context_shift",
+        "temporal_gap",
+        "prediction_error",
+        "total"
+      ],
+      "properties": {
+        "goal_shift": { "type": "number", "minimum": 0, "maximum": 1 },
+        "space_shift": { "type": "number", "minimum": 0, "maximum": 1 },
+        "object_set_shift": { "type": "number", "minimum": 0, "maximum": 1 },
+        "social_context_shift": { "type": "number", "minimum": 0, "maximum": 1 },
+        "temporal_gap": { "type": "number", "minimum": 0, "maximum": 1 },
+        "prediction_error": { "type": "number", "minimum": 0, "maximum": 1 },
+        "total": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["observation_id", "signal", "supports", "weight"],
+        "properties": {
+          "observation_id": { "type": "string", "maxLength": 100 },
+          "signal": { "type": "string", "maxLength": 200 },
+          "supports": {
+            "type": "string",
+            "enum": ["continue", "boundary", "suspend", "resume", "uncertain"]
+          },
+          "weight": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "summary_patch": { "type": "string", "maxLength": 600 },
+    "next_capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["after_seconds", "reason"],
+      "properties": {
+        "after_seconds": { "type": "integer", "minimum": 5, "maximum": 120 },
+        "reason": { "type": "string", "maxLength": 160 }
+      }
+    },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "needs_more_evidence": { "type": "boolean" },
+    "privacy_risk": {
+      "type": "string",
+      "enum": [
+        "none",
+        "sensitive_scene",
+        "third_party",
+        "minor",
+        "credential",
+        "screen",
+        "medical"
+      ]
+    }
+  }
+}

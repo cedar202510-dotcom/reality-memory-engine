@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reality Memory Engine 工程链路可视化 v1.3</title>
+  <style>
+    :root {
+      --bg: #f7f8f3;
+      --ink: #20231f;
+      --muted: #667064;
+      --line: #d8ddd2;
+      --panel: #ffffff;
+      --soft: #eef3ea;
+      --blue: #2f6f9f;
+      --blue-soft: #e3f0f7;
+      --green: #527a38;
+      --green-soft: #e8f1df;
+      --amber: #9a6a22;
+      --amber-soft: #f5ead5;
+      --rose: #9a4651;
+      --rose-soft: #f4e1e4;
+      --violet: #6657a6;
+      --violet-soft: #e9e5f5;
+      --shadow: 0 10px 30px rgba(26, 32, 24, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.55;
+    }
+
+    header {
+      padding: 28px clamp(18px, 4vw, 56px) 18px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff 0%, var(--bg) 100%);
+    }
+
+    main {
+      padding: 22px clamp(18px, 4vw, 56px) 56px;
+      max-width: 1380px;
+      margin: 0 auto;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.25;
+      font-weight: 650;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 30px;
+      margin-bottom: 8px;
+    }
+
+    h2 {
+      font-size: 22px;
+      margin: 34px 0 14px;
+    }
+
+    h3 {
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      max-width: 980px;
+      font-size: 15px;
+    }
+
+    .top-grid,
+    .rule-grid,
+    .api-grid,
+    .object-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .top-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-top: 20px;
+    }
+
+    .metric,
+    .card,
+    .lane,
+    .api-card,
+    .object-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .metric {
+      padding: 14px 16px;
+    }
+
+    .metric b {
+      display: block;
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .section-note {
+      color: var(--muted);
+      margin-bottom: 14px;
+      max-width: 1040px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(150px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .stage {
+      position: relative;
+      min-height: 136px;
+      padding: 14px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .stage::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -10px;
+      width: 10px;
+      height: 2px;
+      background: var(--line);
+    }
+
+    .stage:last-child::after {
+      display: none;
+    }
+
+    .stage .tag,
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      line-height: 1.5;
+      margin-bottom: 8px;
+      border: 1px solid transparent;
+      white-space: nowrap;
+    }
+
+    .tag-blue {
+      color: var(--blue);
+      background: var(--blue-soft);
+      border-color: rgba(47, 111, 159, 0.18);
+    }
+
+    .tag-green {
+      color: var(--green);
+      background: var(--green-soft);
+      border-color: rgba(82, 122, 56, 0.18);
+    }
+
+    .tag-amber {
+      color: var(--amber);
+      background: var(--amber-soft);
+      border-color: rgba(154, 106, 34, 0.18);
+    }
+
+    .tag-rose {
+      color: var(--rose);
+      background: var(--rose-soft);
+      border-color: rgba(154, 70, 81, 0.18);
+    }
+
+    .tag-violet {
+      color: var(--violet);
+      background: var(--violet-soft);
+      border-color: rgba(102, 87, 166, 0.18);
+    }
+
+    .stage ul,
+    .card ul,
+    .lane ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .stage li,
+    .card li,
+    .lane li {
+      margin: 4px 0;
+    }
+
+    .swimlanes {
+      display: grid;
+      grid-template-columns: 1.1fr 1.2fr 1.4fr 1fr;
+      gap: 12px;
+    }
+
+    .lane {
+      padding: 14px;
+      min-height: 220px;
+    }
+
+    .lane-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+
+    .lane-title span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .node {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 9px 10px;
+      margin: 8px 0;
+      background: var(--soft);
+      font-size: 13px;
+    }
+
+    .node strong {
+      display: block;
+      font-size: 14px;
+      color: var(--ink);
+      margin-bottom: 2px;
+    }
+
+    .modality-table,
+    .api-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+    }
+
+    th {
+      background: var(--soft);
+      font-weight: 650;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+      background: #eef0ea;
+      border: 1px solid #d9ded3;
+      border-radius: 5px;
+      padding: 1px 5px;
+    }
+
+    .object-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .object-card {
+      padding: 12px;
+      min-height: 134px;
+    }
+
+    .object-card .cn {
+      color: var(--muted);
+      font-size: 13px;
+      margin: 2px 0 8px;
+    }
+
+    .object-card .truth {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .rule-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .card {
+      padding: 14px;
+    }
+
+    .timeline {
+      position: relative;
+      display: grid;
+      gap: 10px;
+      padding-left: 20px;
+    }
+
+    .timeline::before {
+      content: "";
+      position: absolute;
+      left: 7px;
+      top: 7px;
+      bottom: 7px;
+      width: 2px;
+      background: var(--line);
+    }
+
+    .time-item {
+      position: relative;
+      padding: 10px 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .time-item::before {
+      content: "";
+      position: absolute;
+      left: -18px;
+      top: 15px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    .api-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .api-card {
+      padding: 14px;
+    }
+
+    .api-card .method {
+      color: var(--blue);
+      font-weight: 650;
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0 14px;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--ink);
+      padding: 8px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button[aria-pressed="true"] {
+      background: var(--ink);
+      color: #fff;
+      border-color: var(--ink);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .callout {
+      border-left: 4px solid var(--amber);
+      background: var(--amber-soft);
+      padding: 12px 14px;
+      border-radius: 6px;
+      color: #4a3514;
+      margin-top: 14px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 12px 0 0;
+    }
+
+    @media (max-width: 980px) {
+      .top-grid,
+      .flow,
+      .swimlanes,
+      .object-grid,
+      .rule-grid,
+      .api-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .stage::after {
+        display: none;
+      }
+    }
+
+    @media (max-width: 640px) {
+      header {
+        padding-top: 22px;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+
+      .top-grid,
+      .flow,
+      .swimlanes,
+      .object-grid,
+      .rule-grid,
+      .api-grid {
+        grid-template-columns: 1fr;
+      }
+
+      th,
+      td {
+        font-size: 13px;
+        padding: 9px 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Reality Memory Engine 工程链路可视化 v1.3</h1>
+    <p class="subtitle">这页把完整 PRD 拆成可读的工程地图：谁采集、谁解析、谁决定事实、什么会被长期保存、什么只是短暂证据，以及每种模态进入同一套记忆结构的方式。</p>
+    <div class="top-grid" aria-label="核心结论">
+      <div class="metric"><b>一个手机 App</b><span>账号、配对、策略、加密队列、上传、管理和提醒的默认网关。</span></div>
+      <div class="metric"><b>两个 Rokid 路径</b><span>CXR-L 是过渡 Adapter；RV101 原生 Runtime 是最终眼镜采集端。</span></div>
+      <div class="metric"><b>一套观察契约</b><span>图片、短视频、音频、传感器和结构化事件都输出 AtomicObservation。</span></div>
+      <div class="metric"><b>一个事实源</b><span>只有 MemoryEvent 是事实；Projection、索引和 Signal 都可重算。</span></div>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>1. 总链路</h2>
+      <p class="section-note">这条链路从设备事件开始，到结构化记忆和提醒结束。模型只负责解析和候选，不能直接写事实。</p>
+      <div class="flow" aria-label="从采集到记忆的主链路">
+        <div class="stage">
+          <span class="tag tag-blue">采集入口</span>
+          <h3>Device Adapter</h3>
+          <ul>
+            <li>Rokid CXR-L Adapter</li>
+            <li>RV101 Native Runtime</li>
+            <li>Ring BLE Adapter</li>
+            <li>Future Hardware Adapter</li>
+          </ul>
+        </div>
+        <div class="stage">
+          <span class="tag tag-green">统一网关</span>
+          <h3>Reality Mobile Gateway</h3>
+          <ul>
+            <li>账号与家庭域归属</li>
+            <li>Session / Policy</li>
+            <li>加密队列与上传</li>
+            <li>设备审计与删除回执</li>
+          </ul>
+        </div>
+        <div class="stage">
+          <span class="tag tag-amber">短暂证据</span>
+          <h3>Source + Evidence</h3>
+          <ul>
+            <li><code>SourceEnvelope</code> 统一来源</li>
+            <li><code>EvidenceItem</code> 媒体证据</li>
+            <li>结构化设备事件可无媒体</li>
+            <li>TTL 与敏感标签</li>
+          </ul>
+        </div>
+        <div class="stage">
+          <span class="tag tag-violet">理解与聚合</span>
+          <h3>Perception + Fusion</h3>
+          <ul>
+            <li>按模态选择解析器</li>
+            <li>输出 <code>AtomicObservation</code></li>
+            <li>聚合为 Bundle / Segment / Episode</li>
+            <li>形成 <code>MemoryCandidate</code></li>
+          </ul>
+        </div>
+        <div class="stage">
+          <span class="tag tag-rose">事实与使用</span>
+          <h3>Memory Core</h3>
+          <ul>
+            <li>实体归并与冲突处理</li>
+            <li>追加 <code>MemoryEvent</code></li>
+            <li>重算 <code>StateProjection</code></li>
+            <li>Query / Signal / Reminder</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout">最重要的边界：原始图片、短视频、音频不是长期记忆；长期事实只来自经过门控后追加的 MemoryEvent。</div>
+    </section>
+
+    <section>
+      <h2>2. 四层责任</h2>
+      <div class="swimlanes">
+        <div class="lane">
+          <div class="lane-title"><h3>设备侧 Runtime</h3><span>眼镜本机</span></div>
+          <div class="node"><strong>RV101 Native Runtime</strong>CameraX、AudioRecord、SensorManager、佩戴广播、按键和无业务预览采集。</div>
+          <div class="node"><strong>本地安全</strong>暂停、摘下、策略阻断、低电量、过热时立即停止采集。</div>
+          <div class="node"><strong>本地传输</strong>把 Evidence 与设备事件交给统一手机网关。</div>
+        </div>
+        <div class="lane">
+          <div class="lane-title"><h3>统一手机网关</h3><span>唯一用户 App</span></div>
+          <div class="node"><strong>Account / Pairing</strong>用户账号、家庭域、设备绑定、授权和本地信任状态。</div>
+          <div class="node"><strong>CXR-L Adapter</strong>开发线到位前，通过 Rokid AI App 获取受控图片和短音频。</div>
+          <div class="node"><strong>Encrypted Queue</strong>加密暂存、TTL、重试、上传、删除回执和审计。</div>
+        </div>
+        <div class="lane">
+          <div class="lane-title"><h3>记忆中台</h3><span>云端/后端</span></div>
+          <div class="node"><strong>Perception Orchestrator</strong>选择图片、短视频、音频、传感器或结构化事件解析器。</div>
+          <div class="node"><strong>Temporal Fusion</strong>将原子观察聚合成 Bundle、ActionSegment 和 ActivityEpisode。</div>
+          <div class="node"><strong>Memory Core</strong>候选入主线、事件追加、投影重算、冲突和纠正。</div>
+        </div>
+        <div class="lane">
+          <div class="lane-title"><h3>消费层</h3><span>Agent / UI</span></div>
+          <div class="node"><strong>Query</strong>找物、时间线、耗材、偏好、任务。</div>
+          <div class="node"><strong>Signal</strong>低库存、物品移动、任务到期、置信冲突。</div>
+          <div class="node"><strong>Reminder</strong>当前只允许生成提醒，不允许自动购物或代发消息。</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>3. 模态如何进入同一套结构</h2>
+      <table class="modality-table">
+        <thead>
+          <tr>
+            <th>模态</th>
+            <th>触发原则</th>
+            <th>解析器输出</th>
+            <th>关键限制</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>单图</td>
+            <td>显式触发、固定间隔、场景变化、对象拿放、阅读低频记录。</td>
+            <td>对象、位置、容器关系、余量、页码、场景摘要、敏感标签。</td>
+            <td>策略通过前不得启动相机；完成结构化后删除 Evidence。</td>
+          </tr>
+          <tr>
+            <td>前后帧</td>
+            <td>运动峰值、对象被拿起或放下、容器开合。</td>
+            <td>状态变化、对象从 A 到 B 的低成本动作证据。</td>
+            <td>只表达短窗变化，不把每帧都沉淀成实体。</td>
+          </tr>
+          <tr>
+            <td>2-3 秒短视频</td>
+            <td>静态图歧义、动作过快、倒出或快速移动。</td>
+            <td>连续动作、短时轨迹、关键帧和运动关系。</td>
+            <td>不录长视频，不接连续视频流，受单会话预算约束。</td>
+          </tr>
+          <tr>
+            <td>短音频</td>
+            <td>戒指/眼镜显式触发，或会话内本地 VAD 命中连续人声。</td>
+            <td>ASR、偏好、任务、纠正、命名、少量环境声音事件。</td>
+            <td>静音不落盘、不上传、不进 ASR；自动 VAD 单段最长 15 秒。</td>
+          </tr>
+          <tr>
+            <td>传感器</td>
+            <td>IMU 峰值、佩戴/摘下、折叠、按键、低电量、过热。</td>
+            <td>运动强度、姿态、手势、设备状态和安全边界。</td>
+            <td>主要用于调度和门控，通常不单独形成长期事实。</td>
+          </tr>
+          <tr>
+            <td>结构化事件</td>
+            <td>手机确认、智能家居、日历、门锁、用户手动输入。</td>
+            <td>确认、纠正、外部状态、设备事件或用户意图。</td>
+            <td>仍必须有 SourceEnvelope、策略快照、幂等键和审计。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>4. 数据对象中英对照</h2>
+      <p class="section-note">这些英文对象可以作为代码对象名；中文解释帮助理解它在链路里的层级。</p>
+      <div class="object-grid">
+        <div class="object-card"><h3><code>SourceEnvelope</code></h3><p class="cn">来源信封</p><p>一次设备或用户入口事件的统一包装，记录来源、时间、策略、触发方式和 Evidence 引用。</p><p class="truth">不是事实。</p></div>
+        <div class="object-card"><h3><code>EvidenceItem</code></h3><p class="cn">短暂证据</p><p>图片、短视频、短音频或传感器窗口。只为结构化服务，完成后删除。</p><p class="truth">不是事实。</p></div>
+        <div class="object-card"><h3><code>AtomicObservation</code></h3><p class="cn">原子观察</p><p>单个解析器输出的最小结构化观察，带模型版本、置信度和证据引用。</p><p class="truth">不是事实。</p></div>
+        <div class="object-card"><h3><code>ObservationBundle</code></h3><p class="cn">观察包</p><p>把同一时间窗或同一现实变化下的多个原子观察关联起来。</p><p class="truth">不是事实。</p></div>
+        <div class="object-card"><h3><code>ActionSegment</code></h3><p class="cn">动作片段</p><p>几秒到几分钟的局部动作，例如拿起、切菜、放下、等待。</p><p class="truth">不是事实。</p></div>
+        <div class="object-card"><h3><code>ActivityEpisode</code></h3><p class="cn">活动段</p><p>目标相对稳定的一段活动，例如做饭、收拾厨房、准备出门。</p><p class="truth">不是事实。</p></div>
+        <div class="object-card"><h3><code>MemoryCandidate</code></h3><p class="cn">记忆候选</p><p>可能成为记忆事实的现实断言，例如“钥匙可能在茶几右侧”。</p><p class="truth">待决候选。</p></div>
+        <div class="object-card"><h3><code>MemoryEvent</code></h3><p class="cn">记忆事件</p><p>追加式事实变化。纠正通过新事件表达，不直接改旧事件正文。</p><p class="truth">唯一事实源。</p></div>
+        <div class="object-card"><h3><code>StateProjection</code></h3><p class="cn">状态投影</p><p>从有效事件流计算出的当前最佳状态，例如当前位置、余量、任务状态。</p><p class="truth">可重算派生数据。</p></div>
+        <div class="object-card"><h3><code>SignalCandidate</code></h3><p class="cn">信号候选</p><p>可能值得提醒的状态变化，例如低库存或置信冲突。</p><p class="truth">不是事实。</p></div>
+        <div class="object-card"><h3><code>ReminderDecision</code></h3><p class="cn">提醒决策</p><p>判断是否提醒、何时提醒、在哪个终端提醒、措辞如何。</p><p class="truth">受控行动。</p></div>
+        <div class="object-card"><h3><code>PolicySnapshot</code></h3><p class="cn">策略快照</p><p>当前采集、处理、留存和调用权限的版本化快照。</p><p class="truth">审计依据。</p></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>5. Session 与 Episode 的区别</h2>
+      <div class="rule-grid">
+        <div class="card">
+          <h3>Source Session</h3>
+          <p>设备或连接层会话，例如一次佩戴、一次 CXR-L 连接、一次手机采集 Session。</p>
+          <ul>
+            <li>由设备生命周期决定</li>
+            <li>用于采集、审计、策略和幂等</li>
+            <li>摘下、断连、关闭会结束或暂停</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Activity Episode</h3>
+          <p>现实活动层会话，例如做晚饭、收拾厨房、准备出门。</p>
+          <ul>
+            <li>由目标、物体、空间、动作变化决定</li>
+            <li>可以跨多个采集 tick</li>
+            <li>位置变化不一定结束 Episode</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Action Segment</h3>
+          <p>Episode 内部的局部动作，例如切菜、拿钥匙、打开抽屉。</p>
+          <ul>
+            <li>比 Episode 更细</li>
+            <li>可用于判断动作连续性</li>
+            <li>帮助形成 MemoryCandidate</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout">例子：用户在厨房台面、冰箱和灶台之间移动，通常仍是“做晚饭”Episode；如果放下锅开始擦地，才可能切到“清洁厨房”。</div>
+    </section>
+
+    <section>
+      <h2>6. 关键规则</h2>
+      <div class="tabs" role="group" aria-label="规则切换">
+        <button type="button" data-tab="capture" aria-pressed="true">采集</button>
+        <button type="button" data-tab="audio" aria-pressed="false">音频</button>
+        <button type="button" data-tab="episode" aria-pressed="false">活动边界</button>
+        <button type="button" data-tab="privacy" aria-pressed="false">隐私删除</button>
+      </div>
+      <div id="capture" class="tab-panel active">
+        <div class="rule-grid">
+          <div class="card"><h3>PolicyCheck 在前</h3><p>每次调用 CameraX、VideoCapture 或 AudioRecord 前，必须检查用户、设备、Session、模态、触发来源、位置、电量、温度、网络和预算。</p></div>
+          <div class="card"><h3>动态优先级</h3><p>显式意图、运动变化、场景新颖性、记忆价值和不确定性降低会提高优先级；隐私风险、电量、温升和日预算压力会降低优先级。</p></div>
+          <div class="card"><h3>频率不是固定真理</h3><p>PoC 测 5、15、30、60 秒。产品化后应按场景变化调整：高运动 2-5 秒，普通走动 15-30 秒，阅读 3-5 分钟，休息降频或暂停。</p></div>
+        </div>
+      </div>
+      <div id="audio" class="tab-panel">
+        <div class="rule-grid">
+          <div class="card"><h3>两种触发</h3><p>显式语音由戒指、眼镜按键或明确指令触发；会话内 VAD 只在授权现实记录且音频策略允许时运行。</p></div>
+          <div class="card"><h3>短片段</h3><p>推荐预滚不超过 500 ms，连续静音 800-1200 ms 后结束，自动 VAD 单段最长 15 秒。</p></div>
+          <div class="card"><h3>静音不沉淀</h3><p>静音缓冲不落盘、不上传、不进入 ASR。CXR-L 阶段在手机本地 VAD；最终在眼镜端 AudioRecord + VAD。</p></div>
+        </div>
+      </div>
+      <div id="episode" class="tab-panel">
+        <div class="rule-grid">
+          <div class="card"><h3>边界信号</h3><p>目标变化、空间变化、物体集合变化、社会情境变化、时间空档和预测误差共同决定是否切换 Episode。</p></div>
+          <div class="card"><h3>迟滞</h3><p>一次模糊图片不应立刻结束 Episode。中间状态先标记为 tentative，连续证据支持后再提交。</p></div>
+          <div class="card"><h3>中断不是结束</h3><p>接电话、等水烧开、短暂离开都可能只是 suspended。后续上下文匹配时恢复原 Episode。</p></div>
+        </div>
+      </div>
+      <div id="privacy" class="tab-panel">
+        <div class="rule-grid">
+          <div class="card"><h3>Evidence TTL</h3><p>正式图片本地最长 10 分钟、云端最长 15 分钟；短音频和短视频同样是短暂证据，结构化完成即删。</p></div>
+          <div class="card"><h3>删除覆盖全链路</h3><p>删除必须覆盖本地证据、对象存储、观察、候选、事件有效性、投影、索引、缓存、信号和异步任务。</p></div>
+          <div class="card"><h3>Tombstone 最小化</h3><p>删除墓碑不保存被删内容，只保存删除范围、完成状态和不可逆审计哈希。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>7. API 作用地图</h2>
+      <div class="api-grid">
+        <div class="api-card"><h3><span class="method">POST</span> /internal/v1/sessions</h3><p>创建佩戴或采集会话，绑定设备、用户、家庭域、策略快照和设备状态。</p></div>
+        <div class="api-card"><h3><span class="method">PATCH</span> /internal/v1/sessions/{session_id}</h3><p>激活、暂停、恢复、阻断或结束会话。所有状态变化进入审计。</p></div>
+        <div class="api-card"><h3><span class="method">GET</span> /internal/v1/capture-policy</h3><p>下发允许模态、触发来源、禁采上下文、预算、TTL、调试证据权限和策略签名。</p></div>
+        <div class="api-card"><h3><span class="method">POST</span> /internal/v1/capture-attempts</h3><p>记录一次采集尝试。即使没有媒体上传，也能知道设备为何尝试或为何跳过。</p></div>
+        <div class="api-card"><h3><span class="method">POST</span> /internal/v1/evidence/init</h3><p>创建临时上传授权和 Evidence 元数据，限制大小、模态、TTL 和策略版本。</p></div>
+        <div class="api-card"><h3><span class="method">POST</span> /internal/v1/evidence/{id}/complete</h3><p>标记 Evidence 上传完成，进入安全扫描、敏感检测和模态解析。</p></div>
+        <div class="api-card"><h3><span class="method">POST</span> /internal/v1/observation-candidates</h3><p>Perception 服务写入结构化观察和候选。设备端不能直接写事实主线。</p></div>
+        <div class="api-card"><h3><span class="method">POST</span> /internal/v1/memory-events</h3><p>Memory Core 在通过策略、置信度和冲突门后追加 MemoryEvent。</p></div>
+        <div class="api-card"><h3><span class="method">GET</span> /v1/memory/objects/{id}/where-is</h3><p>返回对象当前最佳位置、时间、新鲜度、置信度、备选和来源事件。</p></div>
+        <div class="api-card"><h3><span class="method">POST</span> /v1/memory/forget-recent</h3><p>执行近窗遗忘，清理证据、候选、事件有效性、投影、索引、缓存和信号。</p></div>
+        <div class="api-card"><h3><span class="method">GET</span> /v1/memory/audit</h3><p>给用户或测试者查看设备何时记录、因何触发、策略如何判断、证据是否删除。</p></div>
+        <div class="api-card"><h3><span class="method">GET / WS</span> /v1/memory/signals</h3><p>拉取或订阅可能值得提醒的状态变化。当前阶段只允许提醒，不执行外部动作。</p></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>8. 从“钥匙在哪里”看一次完整闭环</h2>
+      <div class="timeline">
+        <div class="time-item"><h3>1. 采集</h3><p>RV101 Runtime 或 CXR-L Adapter 获得一张受控图片，统一手机网关封装 <code>SourceEnvelope</code> 和 <code>EvidenceItem</code>。</p></div>
+        <div class="time-item"><h3>2. 解析</h3><p>Image Extractor 输出 <code>AtomicObservation</code>：疑似钥匙位于客厅茶几右侧，带证据引用和置信度。</p></div>
+        <div class="time-item"><h3>3. 聚合</h3><p>Temporal Fusion 将图片、上一帧、IMU 或显式触发合成 <code>ObservationBundle</code>，并归入一个动作片段。</p></div>
+        <div class="time-item"><h3>4. 候选</h3><p>Memory Core 形成 <code>MemoryCandidate</code>：实体 obj_keys_01 的 location 可能是 coffee_table/right_side。</p></div>
+        <div class="time-item"><h3>5. 事实</h3><p>候选通过身份归因、置信度和冲突检查后，追加 <code>MemoryEvent</code>：MOVED 或 OBSERVED_AT。</p></div>
+        <div class="time-item"><h3>6. 查询</h3><p><code>StateProjection</code> 重算当前位置。用户问“钥匙在哪里”时，Query 返回位置、时间、置信度和来源事件。</p></div>
+        <div class="time-item"><h3>7. 删除</h3><p>原始图片完成结构化后删除。后续如用户近窗遗忘，候选、事件有效性、投影、索引和信号一并清理。</p></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const buttons = Array.from(document.querySelectorAll("[data-tab]"));
+    const panels = Array.from(document.querySelectorAll(".tab-panel"));
+
+    buttons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const tab = button.getAttribute("data-tab");
+        buttons.forEach((item) => {
+          item.setAttribute("aria-pressed", String(item === button));
+        });
+        panels.forEach((panel) => {
+          panel.classList.toggle("active", panel.id === tab);
+        });
+      });
+    });
+  </script>
+</body>
+</html>

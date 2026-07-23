@@ -1,0 +1,11 @@
+platform :ios, '16.0'
+source 'https://cdn.cocoapods.org/'
+
+target 'CXRClientDemo' do
+  use_frameworks!
+
+  # The official 1.0.4 sample already ships these SDK sources. Using local pods
+  # avoids the private Rokid GitLab spec repository referenced by the sample.
+  pod 'RGCoreKit', :path => 'modules/RGCoreKit'
+  pod 'RGCxrClient', :path => 'modules/RGCxr'
+end

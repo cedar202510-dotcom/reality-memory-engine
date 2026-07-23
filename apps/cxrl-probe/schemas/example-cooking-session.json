@@ -1,0 +1,41 @@
+{
+  "session_decision": "continue",
+  "proposed_goal": {
+    "label": "prepare_dinner",
+    "description": "Preparing dinner in the kitchen",
+    "confidence": 0.94
+  },
+  "segment_decision": "switch",
+  "proposed_segment": {
+    "verb": "chop",
+    "objects": ["tomato", "cutting_board", "knife"],
+    "description": "Chopping tomatoes on the kitchen counter",
+    "goal_relation": "contributes",
+    "confidence": 0.92
+  },
+  "boundary_scores": {
+    "goal_shift": 0.04,
+    "space_shift": 0.08,
+    "object_set_shift": 0.31,
+    "social_context_shift": 0.0,
+    "temporal_gap": 0.0,
+    "prediction_error": 0.12,
+    "total": 0.0865
+  },
+  "evidence": [
+    {
+      "observation_id": "obs_demo_002",
+      "signal": "Kitchen context and meal ingredients remain visible",
+      "supports": "continue",
+      "weight": 0.91
+    }
+  ],
+  "summary_patch": "Moved from washing vegetables to chopping tomatoes; dinner preparation continues.",
+  "next_capture": {
+    "after_seconds": 30,
+    "reason": "Stable fine-grained action with no boundary evidence"
+  },
+  "confidence": 0.92,
+  "needs_more_evidence": false,
+  "privacy_risk": "none"
+}

@@ -1,0 +1,76 @@
+# RME Glass Probe
+
+用于验证 Rokid Glasses、Rokid AI App 与 CXR-L iOS SDK 1.0.4 的真机采集链路。
+
+验证顺序：
+
+1. 检测手机上的 Rokid AI App。
+2. 请求相机和麦克风授权。
+3. 等待眼镜 BLE 链路连接。
+4. 在眼镜上打开 Custom View。
+5. 请求一张 1024 x 768 JPEG 并在手机内存中预览。
+6. 以 5、15、30 或 60 秒间隔运行受控采集 Session。
+7. 将 Session、采集结果和审计事件写入结构化 JSON。
+
+## 采集 Session
+
+- Session 必须在 BLE 已连接、Custom View 已打开时由用户明确开始。
+- Custom View 默认使用纯黑空内容树，保持会话已构建但不在眼镜上显示调试文字。
+- “眼镜调试文字”只用于联调，且只能在打开 Custom View 前切换。
+- 支持开始、暂停、恢复和结束；BLE 断开或 Custom View 关闭会自动暂停，摘下眼镜会结束。
+- “保留本地样本”默认关闭。关闭时只记录采集元数据，JPEG 不落盘。
+- 开启本地样本后，图片只写入 App 沙盒，标记为 `PENDING_LOCAL`，不允许上传。
+- 每次状态变化和采集结果同时写入 Xcode unified logging 与 `debug-events.ndjson`。
+
+本地结构：
+
+```text
+Application Support/RealityMemoryProbe/
+  debug-events.ndjson
+  sessions/<session-id>/
+    session.json
+    evidence/<observation-id>.jpg
+```
+
+`session.json` 使用 `rme.capture-session.v1`，可作为后续分析 Agent 的输入清单。
+
+## 打开工程
+
+依赖安装完成后，只打开：
+
+```text
+RMEGlassProbe.xcworkspace
+```
+
+不要使用 `RMEGlassProbe.xcodeproj`，否则 CocoaPods Framework 不会被链接。
+
+## 真机要求
+
+- iPhone 运行 iOS 16 或更高版本。
+- iPhone 已安装 Rokid AI App，并已绑定 Rokid Glasses。
+- Xcode 已登录 Apple 账号，并使用 `Automatically manage signing`。
+- CXR-L 的 `cxrl://auth/callback` 回调由 App 的 `onOpenURL` 转交给 SDK。
+
+本 App 不上传照片，也不自行保存授权 token。只有用户打开“保留本地样本”后，Session 照片才会临时写入 App 沙盒。
+
+## 当前运行边界
+
+CXR-L 采集由 iPhone App、Rokid AI App 和眼镜链路共同完成。当前定时 Session 只承诺 App 前台运行；锁屏、后台、App 被系统终止后的采集行为需要分别做真机实验，不能视为已支持。
+
+## 静默与后台测试
+
+眼镜端“静默”与 iPhone 端“后台运行”是两件事：
+
+- 静默模式仍会打开 CXR-L Custom View，但发送纯黑背景和空 `children`，从而保持拍照所需的眼镜会话。
+- 静默 Custom View 只能隐藏应用自己的文字和图片，不能关闭 `takePhotoWithData` 触发的眼镜系统拍照回显。CXR-L 1.0.4 公开接口及官方 Sample 只提供 `width`、`height`、`quality`，没有 `silent` 或 `preview` 开关。
+- iPhone 切到后台后，iOS 可能暂停普通定时任务。`bluetooth-central` 只用于处理相关蓝牙事件，不代表 App 可以无限期定时拍照。
+- Observation 会保存 `scheduledAt`、`completedAt` 和 `applicationState`。定时器因挂起而明显晚醒时，会记录 `SCHEDULER_DELAYED_*MS`，不会回到前台后补拍并算作正常后台采集。
+
+建议每轮使用 15 秒间隔并分别运行至少 2 分钟：
+
+1. App 保持前台。
+2. 切换到其他 App，但不锁屏。
+3. 锁屏。
+4. 从 App 切换器中强制结束进程。
+
+每轮单独结束并分享 `session.json`。只有照片成功时间持续覆盖对应测试窗口，才能认定该状态支持周期采集。
