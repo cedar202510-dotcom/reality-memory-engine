@@ -274,6 +274,6 @@ Agent 只在歧义判断、查询回答和个性化措辞确有收益时参与�
 
 - `docs/engineering/Reality-Memory-Engine-Engineering-Architecture-v1.3.md`
 - `docs/visuals/reality-memory-engine-flow-v1.3.html`
-- `apps/cxrl-probe/README.md`
-- `apps/cxrl-probe/docs/ACTIVITY-SESSION-AGENT-DESIGN.md`
-- `apps/cxrl-probe/docs/CXRL-TOKEN-AND-STATE-FLOW.md`
+- `archive/cxrl-probe/README.md`：历史 CXR-L SDK 探针，仅作参考，不是第二个正式手机 App。
+- `archive/cxrl-probe/docs/ACTIVITY-SESSION-AGENT-DESIGN.md`
+- `archive/cxrl-probe/docs/CXRL-TOKEN-AND-STATE-FLOW.md`

@@ -13,6 +13,20 @@ final class GlassProbeModel: ObservableObject {
         let trigger: ProbeCaptureTrigger
     }
 
+    private enum AudioCaptureMode: Equatable {
+        case manualTest
+        case sessionVAD
+
+        var displayName: String {
+            switch self {
+            case .manualTest:
+                "测试采集中"
+            case .sessionVAD:
+                "Session 采集中"
+            }
+        }
+    }
+
     private static let logger = Logger(
         subsystem: "com.realitymemoryengine.RMEGlassProbe",
         category: "Capture"
@@ -42,6 +56,8 @@ final class GlassProbeModel: ObservableObject {
     @Published private(set) var showsGlassDebugOverlay = false
     @Published private(set) var applicationState = "前台"
     @Published private(set) var isAudioTestRunning = false
+    @Published private(set) var isSessionAudioEnabled = false
+    @Published private(set) var isSessionAudioRunning = false
     @Published private(set) var isAudioStreamStarted = false
     @Published private(set) var audioPacketCount = 0
     @Published private(set) var audioByteCount = 0
@@ -57,6 +73,7 @@ final class GlassProbeModel: ObservableObject {
     private var photoTimeoutTask: Task<Void, Never>?
     private var pendingPhotoRequest: PendingPhotoRequest?
     private var audioTestTask: Task<Void, Never>?
+    private var audioCaptureMode: AudioCaptureMode?
     private let audioSegmenter = ProbeAudioSpeechSegmenter()
     private var audioChannels: UInt32 = 1
 
@@ -73,11 +90,18 @@ final class GlassProbeModel: ObservableObject {
     }
 
     var canStartSession: Bool {
-        isConnected && isCustomViewRunning && !isPhotoPending && sessionState != .active
+        isConnected && isCustomViewRunning && !isPhotoPending && sessionState != .active && !isAudioTestRunning
     }
 
     var canToggleAudioTest: Bool {
-        isAudioTestRunning || (isConnected && isCustomViewRunning)
+        isAudioTestRunning || (audioCaptureMode == nil && isConnected && isCustomViewRunning)
+    }
+
+    var audioStreamStatus: String {
+        guard let audioCaptureMode else {
+            return "未启动"
+        }
+        return audioCaptureMode.displayName
     }
 
     var photoReadinessStatus: String {
@@ -105,7 +129,7 @@ final class GlassProbeModel: ObservableObject {
     init() {
         _ = CxrClient.initialize(
             mode: .customView,
-            options: .init(appDisplayName: "Reality Memory Probe", pageName: nil)
+            options: .init(appDisplayName: "Reality Memory", pageName: nil)
         )
         client = CxrClient.shared
 
@@ -129,7 +153,7 @@ final class GlassProbeModel: ObservableObject {
         appendLog("正在请求相机与麦克风授权")
         client.auth.authenticate(
             scopes: [.microphone, .camera],
-            appName: "Reality Memory Probe"
+            appName: "Reality Memory"
         ) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
@@ -144,7 +168,7 @@ final class GlassProbeModel: ObservableObject {
 
     func clearAuthentication() {
         cancelPendingPhoto(reason: "AUTHENTICATION_CLEARED")
-        stopAudioTest(reason: "AUTHENTICATION_CLEARED")
+        stopAudioCapture(reason: "AUTHENTICATION_CLEARED")
         client.auth.clearAuthentication()
         capturedImage = nil
         appendLog("已清除本机 Rokid 授权")
@@ -195,27 +219,12 @@ final class GlassProbeModel: ObservableObject {
     }
 
     func startAudioTest() {
-        guard isConnected, isCustomViewRunning, !isAudioTestRunning else {
+        guard isConnected, isCustomViewRunning, audioCaptureMode == nil else {
             appendLog("无法开始音频测试：眼镜链路或 Custom View 未就绪")
             return
         }
 
-        audioTestTask?.cancel()
-        audioSegmenter.reset()
-        isAudioTestRunning = true
-        isAudioStreamStarted = false
-        audioPacketCount = 0
-        audioByteCount = 0
-        audioLevelDBFS = nil
-        isSpeechActive = false
-        audioSegmentCount = 0
-        lastAudioSummary = "等待眼镜 PCM 音频流"
-        appendLog("开始 30 秒音频/VAD 测试")
-
-        if let error = client.startRecord("stream", codec: .pcm, mode: .antClose) {
-            isAudioTestRunning = false
-            lastAudioSummary = "音频流启动失败：\(String(describing: error))"
-            appendLog(lastAudioSummary)
+        guard startAudioCapture(mode: .manualTest) else {
             return
         }
 
@@ -231,7 +240,68 @@ final class GlassProbeModel: ObservableObject {
     }
 
     func stopAudioTest(reason: String = "USER_STOPPED") {
-        guard isAudioTestRunning else {
+        guard audioCaptureMode == .manualTest else {
+            return
+        }
+        stopAudioCapture(reason: reason)
+    }
+
+    func setSessionAudioEnabled(_ enabled: Bool) {
+        guard sessionState != .active else {
+            return
+        }
+        isSessionAudioEnabled = enabled
+        appendLog(enabled ? "会话内短音频/VAD 已开启" : "会话内短音频/VAD 已关闭")
+    }
+
+    private func startSessionAudioIfNeeded() {
+        guard isSessionAudioEnabled else {
+            return
+        }
+        guard currentSession != nil else {
+            appendLog("无法开始会话音频：当前没有采集 Session")
+            return
+        }
+        _ = startAudioCapture(mode: .sessionVAD)
+    }
+
+    @discardableResult
+    private func startAudioCapture(mode: AudioCaptureMode) -> Bool {
+        guard isConnected, isCustomViewRunning, audioCaptureMode == nil else {
+            appendLog("无法开始音频/VAD：眼镜链路、界面或现有音频流状态不满足")
+            return false
+        }
+
+        audioTestTask?.cancel()
+        audioSegmenter.reset()
+        audioCaptureMode = mode
+        isAudioTestRunning = mode == .manualTest
+        isSessionAudioRunning = mode == .sessionVAD
+        isAudioStreamStarted = false
+        audioPacketCount = 0
+        audioByteCount = 0
+        audioLevelDBFS = nil
+        isSpeechActive = false
+        audioSegmentCount = 0
+        lastAudioSummary = mode == .manualTest
+            ? "等待眼镜 PCM 音频流"
+            : "等待眼镜 PCM 音频流（会话内 VAD）"
+        appendLog(mode == .manualTest ? "开始 30 秒音频/VAD 测试" : "开始会话内短音频/VAD")
+
+        if let error = client.startRecord("stream", codec: .pcm, mode: .antClose) {
+            audioCaptureMode = nil
+            isAudioTestRunning = false
+            isSessionAudioRunning = false
+            lastAudioSummary = "音频流启动失败：\(String(describing: error))"
+            appendLog(lastAudioSummary)
+            return false
+        }
+
+        return true
+    }
+
+    private func stopAudioCapture(reason: String) {
+        guard let mode = audioCaptureMode else {
             return
         }
 
@@ -242,15 +312,18 @@ final class GlassProbeModel: ObservableObject {
         }
         let error = client.stopRecord("stream")
         isAudioTestRunning = false
+        isSessionAudioRunning = false
         isAudioStreamStarted = false
         isSpeechActive = false
+        audioCaptureMode = nil
 
         if let error {
             lastAudioSummary = "停止请求失败：\(String(describing: error))"
             appendLog(lastAudioSummary)
         } else {
-            lastAudioSummary = "测试结束：\(audioPacketCount) 包，\(audioByteCount) 字节，\(audioSegmentCount) 段"
-            appendLog("音频/VAD 测试结束：\(reason)")
+            let label = mode == .manualTest ? "音频/VAD 测试" : "会话内短音频/VAD"
+            lastAudioSummary = "\(label)结束：\(audioPacketCount) 包，\(audioByteCount) 字节，\(audioSegmentCount) 段"
+            appendLog("\(label)结束：\(reason)")
         }
     }
 
@@ -314,6 +387,17 @@ final class GlassProbeModel: ObservableObject {
             retainLocalSamples: retainLocalSamples,
             localMediaTTLSeconds: retainLocalSamples ? 86_400 : 0,
             uploadAllowed: false,
+            audioPolicy: ProbeAudioPolicySnapshot(
+                sessionVADEnabled: isSessionAudioEnabled,
+                streamCodec: "PCM_S16LE_16KHZ",
+                vadThresholdDBFS: ProbeAudioSpeechSegmenter.thresholdDBFS,
+                speechStartFrames: ProbeAudioSpeechSegmenter.speechStartFrames,
+                silenceEndMilliseconds: Int(ProbeAudioSpeechSegmenter.silenceEndSeconds * 1_000),
+                maxSegmentMilliseconds: Int(ProbeAudioSpeechSegmenter.maxSegmentSeconds * 1_000),
+                minSegmentMilliseconds: Int(ProbeAudioSpeechSegmenter.minSegmentSeconds * 1_000),
+                maxPreRollBytes: ProbeAudioSpeechSegmenter.maxPreRollBytes,
+                rawAudioPersistedOnlyWhenRetainLocalSamples: true
+            ),
             deviceSummaryAtStart: deviceSummary,
             observations: [],
             audioObservations: [],
@@ -330,6 +414,7 @@ final class GlassProbeModel: ObservableObject {
         capturedImage = nil
         persistCurrentSession()
         appendLog("采集 Session 已开始：每 \(captureIntervalSeconds) 秒")
+        startSessionAudioIfNeeded()
         startCaptureLoop()
     }
 
@@ -356,6 +441,7 @@ final class GlassProbeModel: ObservableObject {
             )
         }
         appendLog("采集 Session 已恢复")
+        startSessionAudioIfNeeded()
         startCaptureLoop()
     }
 
@@ -400,7 +486,7 @@ final class GlassProbeModel: ObservableObject {
                 self.appendLog(connected ? "眼镜 BLE 链路已连接" : "眼镜 BLE 链路已断开")
                 if !connected {
                     self.cancelPendingPhoto(reason: "BLE_DISCONNECTED")
-                    self.stopAudioTest(reason: "BLE_DISCONNECTED")
+                    self.stopAudioCapture(reason: "BLE_DISCONNECTED")
                     if self.sessionState == .active {
                         self.pauseCaptureSession(reason: "BLE_DISCONNECTED")
                     }
@@ -419,7 +505,7 @@ final class GlassProbeModel: ObservableObject {
                 self.appendLog(event.isRunning ? "眼镜 Custom View 已打开" : "眼镜 Custom View 已关闭")
                 if !event.isRunning {
                     self.cancelPendingPhoto(reason: "CUSTOM_VIEW_CLOSED")
-                    self.stopAudioTest(reason: "CUSTOM_VIEW_CLOSED")
+                    self.stopAudioCapture(reason: "CUSTOM_VIEW_CLOSED")
                     if self.sessionState == .active {
                         self.pauseCaptureSession(reason: "CUSTOM_VIEW_CLOSED")
                     }
@@ -436,7 +522,7 @@ final class GlassProbeModel: ObservableObject {
                 self.wearingStatus = isWearing ? "已佩戴" : "未佩戴"
                 self.appendLog(isWearing ? "收到佩戴事件" : "收到摘下事件")
                 if !isWearing {
-                    self.stopAudioTest(reason: "NOT_WEARING")
+                    self.stopAudioCapture(reason: "NOT_WEARING")
                 }
                 if !isWearing, self.sessionState == .active || self.sessionState == .paused {
                     self.endCaptureSession(reason: "NOT_WEARING")
@@ -487,7 +573,7 @@ final class GlassProbeModel: ObservableObject {
     }
 
     private func handleAudioEvent(_ event: RGCxrClientAudioEvent) {
-        guard isAudioTestRunning else {
+        guard audioCaptureMode != nil else {
             return
         }
 
@@ -549,6 +635,7 @@ final class GlassProbeModel: ObservableObject {
         let observation = ProbeAudioObservation(
             id: observationID,
             sessionID: sessionID,
+            trigger: "SESSION_VAD",
             startedAt: segment.startedAt,
             endedAt: segment.endedAt,
             durationMilliseconds: segment.durationMilliseconds,
@@ -750,7 +837,9 @@ final class GlassProbeModel: ObservableObject {
         captureLoopTask?.cancel()
         captureLoopTask = nil
         nextCaptureAt = nil
-        stopAudioTest(reason: reason)
+        if audioCaptureMode == .sessionVAD {
+            stopAudioCapture(reason: reason)
+        }
         sessionState = .paused
         mutateCurrentSession { session in
             session.state = .paused
@@ -775,7 +864,9 @@ final class GlassProbeModel: ObservableObject {
         captureLoopTask = nil
         nextCaptureAt = nil
         cancelPendingPhoto(reason: "SESSION_ENDED")
-        stopAudioTest(reason: reason)
+        if audioCaptureMode == .sessionVAD {
+            stopAudioCapture(reason: reason)
+        }
         sessionState = .ended
         mutateCurrentSession { session in
             session.state = .ended
@@ -1018,7 +1109,7 @@ final class GlassProbeModel: ObservableObject {
                         "id": "statusText",
                         "layout_width": "wrap_content",
                         "layout_height": "wrap_content",
-                        "text": "Reality Memory Probe",
+                        "text": "Reality Memory",
                         "textColor": "#00FF00",
                         "textSize": "18sp",
                         "textStyle": "bold",

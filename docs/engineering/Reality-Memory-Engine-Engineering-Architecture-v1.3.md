@@ -769,8 +769,10 @@ outbox_events
 
 ## 16. 与当前代码和文档的关系
 
-- CXR-L 过渡探针：`apps/cxrl-probe/README.md`
-- CXR-L Token 与状态：`apps/cxrl-probe/docs/CXRL-TOKEN-AND-STATE-FLOW.md`
-- 活动边界与 Session 设计：`apps/cxrl-probe/docs/ACTIVITY-SESSION-AGENT-DESIGN.md`
-- 当前结构化输出 Schema：`apps/cxrl-probe/schemas/activity-session-update.schema.json`
+- 统一手机 App：`apps/mobile-app/`
+- RV101 眼镜端原生 Runtime：`apps/rokid-glass-probe/`
+- 已归档 CXR-L 过渡探针：`archive/cxrl-probe/README.md`，仅作 SDK 参考和历史实验，不是第二个正式手机 App。
+- CXR-L Token 与状态历史记录：`archive/cxrl-probe/docs/CXRL-TOKEN-AND-STATE-FLOW.md`
+- 活动边界与 Session 设计历史记录：`archive/cxrl-probe/docs/ACTIVITY-SESSION-AGENT-DESIGN.md`
+- 当前结构化输出 Schema 参考：`archive/cxrl-probe/schemas/activity-session-update.schema.json`
 - 工程链路可视化：`docs/visuals/reality-memory-engine-flow-v1.3.html`

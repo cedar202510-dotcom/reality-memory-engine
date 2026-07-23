@@ -51,6 +51,7 @@ struct ProbeCaptureObservation: Identifiable, Codable {
 struct ProbeAudioObservation: Identifiable, Codable {
     let id: UUID
     let sessionID: UUID
+    let trigger: String
     let startedAt: Date
     let endedAt: Date
     let durationMilliseconds: Int
@@ -61,6 +62,18 @@ struct ProbeAudioObservation: Identifiable, Codable {
     let localMediaReference: String?
     let analysisState: String
     let applicationState: String
+}
+
+struct ProbeAudioPolicySnapshot: Codable {
+    let sessionVADEnabled: Bool
+    let streamCodec: String
+    let vadThresholdDBFS: Double
+    let speechStartFrames: Int
+    let silenceEndMilliseconds: Int
+    let maxSegmentMilliseconds: Int
+    let minSegmentMilliseconds: Int
+    let maxPreRollBytes: Int
+    let rawAudioPersistedOnlyWhenRetainLocalSamples: Bool
 }
 
 struct ProbeAuditEvent: Identifiable, Codable {
@@ -80,6 +93,7 @@ struct ProbeCaptureSession: Identifiable, Codable {
     let retainLocalSamples: Bool
     let localMediaTTLSeconds: Int
     let uploadAllowed: Bool
+    let audioPolicy: ProbeAudioPolicySnapshot
     let deviceSummaryAtStart: String
     var observations: [ProbeCaptureObservation]
     var audioObservations: [ProbeAudioObservation]

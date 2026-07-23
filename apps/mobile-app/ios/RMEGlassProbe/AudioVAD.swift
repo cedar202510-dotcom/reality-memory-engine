@@ -18,12 +18,12 @@ struct ProbeAudioVADResult {
 }
 
 final class ProbeAudioSpeechSegmenter {
-    private let thresholdDBFS = -38.0
-    private let speechStartFrames = 3
-    private let silenceEndSeconds = 1.0
-    private let maxSegmentSeconds = 15.0
-    private let minSegmentSeconds = 0.4
-    private let maxPreRollBytes = 32_000
+    static let thresholdDBFS = -38.0
+    static let speechStartFrames = 3
+    static let silenceEndSeconds = 1.0
+    static let maxSegmentSeconds = 15.0
+    static let minSegmentSeconds = 0.4
+    static let maxPreRollBytes = 32_000
 
     private var preRoll = Data()
     private var segmentData = Data()
@@ -42,15 +42,15 @@ final class ProbeAudioSpeechSegmenter {
 
         if segmentStartedAt == nil {
             preRoll.append(data)
-            if preRoll.count > maxPreRollBytes {
-                preRoll.removeFirst(preRoll.count - maxPreRollBytes)
+            if preRoll.count > Self.maxPreRollBytes {
+                preRoll.removeFirst(preRoll.count - Self.maxPreRollBytes)
             }
 
-            consecutiveSpeechFrames = level >= thresholdDBFS
+            consecutiveSpeechFrames = level >= Self.thresholdDBFS
                 ? consecutiveSpeechFrames + 1
                 : 0
 
-            if consecutiveSpeechFrames >= speechStartFrames {
+            if consecutiveSpeechFrames >= Self.speechStartFrames {
                 segmentStartedAt = now
                 lastSpeechAt = now
                 peakDBFS = level
@@ -69,13 +69,13 @@ final class ProbeAudioSpeechSegmenter {
 
         segmentData.append(data)
         peakDBFS = max(peakDBFS, level)
-        if level >= thresholdDBFS {
+        if level >= Self.thresholdDBFS {
             lastSpeechAt = now
         }
 
         let duration = now.timeIntervalSince(segmentStartedAt ?? now)
         let silence = now.timeIntervalSince(lastSpeechAt ?? now)
-        let completed = duration >= maxSegmentSeconds || silence >= silenceEndSeconds
+        let completed = duration >= Self.maxSegmentSeconds || silence >= Self.silenceEndSeconds
             ? finish(at: now)
             : nil
 
@@ -95,7 +95,7 @@ final class ProbeAudioSpeechSegmenter {
         let data = segmentData
         let peak = peakDBFS
         reset()
-        guard now.timeIntervalSince(startedAt) >= minSegmentSeconds else {
+        guard now.timeIntervalSince(startedAt) >= Self.minSegmentSeconds else {
             return nil
         }
         return ProbeAudioSegment(

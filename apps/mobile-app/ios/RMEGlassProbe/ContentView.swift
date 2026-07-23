@@ -19,7 +19,7 @@ struct ContentView: View {
                 }
             }
             .background(Color(uiColor: .systemBackground))
-            .navigationTitle("Glass Probe")
+            .navigationTitle("Reality Memory")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -65,7 +65,7 @@ struct ContentView: View {
             )
             StatusRow(
                 title: "音频流",
-                value: model.isAudioStreamStarted ? "采集中" : "未启动",
+                value: model.audioStreamStatus,
                 symbol: "waveform",
                 isReady: model.isAudioStreamStarted
             )
@@ -194,6 +194,15 @@ struct ContentView: View {
                 isOn: Binding(
                     get: { model.retainLocalSamples },
                     set: { model.setRetainLocalSamples($0) }
+                )
+            )
+            .disabled(model.sessionState == .active)
+
+            Toggle(
+                "会话内短音频/VAD",
+                isOn: Binding(
+                    get: { model.isSessionAudioEnabled },
+                    set: { model.setSessionAudioEnabled($0) }
                 )
             )
             .disabled(model.sessionState == .active)

@@ -1,5 +1,7 @@
 # Reality CXR-L Probe
 
+> Archived reference only. Reality Memory Engine 只有一个正式用户侧手机 App：`apps/mobile-app/`。本目录保留 CXR-L SDK 兼容性实验、官方 Sample 对照和历史真机记录，不再作为产品入口继续演进。
+
 Reality Memory Engine 的过渡链路探针。当前以 **iOS 为主方案**，Android 工程保留为备用。
 
 两端都属于 CXR-L 手机 App：
@@ -52,7 +54,7 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 如果 Pods 需要重新生成：
 
 ```bash
-cd "/Users/bytedance/Desktop/real git/apps/cxrl-probe/ios"
+cd "/Users/bytedance/Desktop/RealGit/archive/cxrl-probe/ios"
 ./scripts/bootstrap.sh
 ```
 

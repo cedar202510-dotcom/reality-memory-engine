@@ -1,0 +1,1229 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reality Memory Engine 前端概念 v0.1</title>
+  <style>
+    :root {
+      --page: #f4f1e9;
+      --surface: #fffdf7;
+      --surface-2: #ebe5d8;
+      --ink: #20231f;
+      --muted: #6a6f66;
+      --faint: #9da294;
+      --line: #d9d1bf;
+      --strong: #2d4739;
+      --accent: #b26b31;
+      --accent-2: #517f85;
+      --danger: #9d4d57;
+      --ok: #4e7a48;
+      --shadow: 0 22px 60px rgba(51, 45, 34, 0.14);
+      --phone-shadow: 0 28px 80px rgba(28, 26, 21, 0.28);
+      --radius: 8px;
+      --phone-radius: 30px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+
+    [data-theme="engine"] {
+      --page: #111716;
+      --surface: #18201e;
+      --surface-2: #222d2a;
+      --ink: #e8f2e8;
+      --muted: #9aaba1;
+      --faint: #65766e;
+      --line: #33423d;
+      --strong: #93e0a6;
+      --accent: #45c5a0;
+      --accent-2: #9ca7ff;
+      --danger: #ff8d9a;
+      --ok: #93e0a6;
+      --shadow: 0 22px 60px rgba(0, 0, 0, 0.34);
+      --phone-shadow: 0 28px 90px rgba(0, 0, 0, 0.62);
+    }
+
+    [data-theme="editorial"] {
+      --page: #f7f4ef;
+      --surface: #ffffff;
+      --surface-2: #ece9e2;
+      --ink: #191817;
+      --muted: #69645e;
+      --faint: #a29c93;
+      --line: #ddd6cb;
+      --strong: #20231f;
+      --accent: #b85042;
+      --accent-2: #3d6f8f;
+      --danger: #9d4d57;
+      --ok: #517a50;
+      --shadow: 0 18px 54px rgba(50, 41, 31, 0.12);
+      --phone-shadow: 0 28px 80px rgba(35, 30, 24, 0.25);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-height: 100%;
+      background: var(--page);
+    }
+
+    body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.32), transparent 320px),
+        var(--page);
+      color: var(--ink);
+      font-family: var(--font);
+      letter-spacing: 0;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    button:focus-visible,
+    input:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 3px;
+    }
+
+    .page-shell {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 24px clamp(16px, 3vw, 40px) 46px;
+    }
+
+    .board-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: end;
+      padding: 4px 0 24px;
+    }
+
+    .eyebrow {
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0;
+      margin-bottom: 8px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: clamp(28px, 4vw, 52px);
+      line-height: 1.02;
+      max-width: 820px;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.65;
+      max-width: 760px;
+      margin-top: 14px;
+    }
+
+    .toolbar {
+      display: grid;
+      gap: 10px;
+      justify-items: end;
+    }
+
+    .segmented,
+    .screen-tabs {
+      display: flex;
+      gap: 6px;
+      padding: 5px;
+      background: color-mix(in srgb, var(--surface-2) 78%, transparent);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    .segmented button,
+    .screen-tabs button {
+      min-height: 36px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 6px;
+      color: var(--muted);
+      background: transparent;
+      white-space: nowrap;
+    }
+
+    .segmented button[aria-pressed="true"],
+    .screen-tabs button[aria-selected="true"] {
+      color: var(--ink);
+      background: var(--surface);
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
+    }
+
+    .stage {
+      display: grid;
+      grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
+      gap: clamp(22px, 4vw, 56px);
+      align-items: start;
+    }
+
+    .phone-wrap {
+      display: grid;
+      justify-items: center;
+      position: sticky;
+      top: 22px;
+    }
+
+    .phone {
+      width: min(390px, calc(100vw - 32px));
+      aspect-ratio: 390 / 824;
+      background: #0d0f0e;
+      border-radius: var(--phone-radius);
+      padding: 12px;
+      box-shadow: var(--phone-shadow);
+    }
+
+    .phone-screen {
+      position: relative;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 23px;
+      background: var(--surface);
+      color: var(--ink);
+      border: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+    }
+
+    .app-screen {
+      display: none;
+      min-height: 100%;
+      padding: 18px 18px 84px;
+    }
+
+    .app-screen.active {
+      display: block;
+    }
+
+    .phone-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-height: 34px;
+      margin-bottom: 14px;
+    }
+
+    .brand-small {
+      font-weight: 760;
+      font-size: 16px;
+    }
+
+    .recording {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .recording::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 18%, transparent);
+    }
+
+    .hero-line {
+      font-size: 25px;
+      line-height: 1.16;
+      font-weight: 760;
+      letter-spacing: 0;
+      margin-bottom: 6px;
+    }
+
+    .subline {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .map-canvas {
+      position: relative;
+      height: 294px;
+      margin: 20px 0 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        radial-gradient(circle at 22% 22%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 28%),
+        linear-gradient(135deg, color-mix(in srgb, var(--surface-2) 54%, transparent), transparent 60%),
+        var(--surface);
+      overflow: hidden;
+    }
+
+    [data-theme="engine"] .map-canvas {
+      background:
+        linear-gradient(90deg, rgba(147, 224, 166, 0.05) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(147, 224, 166, 0.05) 1px, transparent 1px),
+        var(--surface);
+      background-size: 22px 22px;
+    }
+
+    .room {
+      position: absolute;
+      border: 1.5px solid var(--line);
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 13px;
+      background: color-mix(in srgb, var(--surface) 82%, transparent);
+    }
+
+    .room-living {
+      left: 82px;
+      top: 58px;
+      width: 190px;
+      height: 126px;
+      border-color: color-mix(in srgb, var(--accent-2) 42%, var(--line));
+    }
+
+    .room-entry {
+      left: 16px;
+      top: 108px;
+      width: 70px;
+      height: 112px;
+    }
+
+    .room-laundry {
+      right: 16px;
+      top: 116px;
+      width: 82px;
+      height: 104px;
+      border-style: dashed;
+    }
+
+    .room-study {
+      left: 112px;
+      bottom: 16px;
+      width: 130px;
+      height: 62px;
+      opacity: 0.68;
+    }
+
+    .object-dot {
+      position: absolute;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: center;
+      gap: 6px;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 680;
+      white-space: nowrap;
+    }
+
+    .object-dot::before {
+      content: "";
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--surface);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent);
+    }
+
+    .key-dot {
+      left: 162px;
+      top: 104px;
+    }
+
+    .remote-dot {
+      left: 160px;
+      top: 144px;
+    }
+
+    .remote-dot::before {
+      background: var(--accent-2);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-2) 18%, transparent);
+    }
+
+    .low-dot {
+      right: 32px;
+      top: 172px;
+    }
+
+    .low-dot::before {
+      background: var(--danger);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 16%, transparent);
+    }
+
+    .path-line {
+      position: absolute;
+      left: 58px;
+      top: 92px;
+      width: 126px;
+      height: 52px;
+      border-top: 2px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+      border-right: 2px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+      border-radius: 0 18px 0 0;
+    }
+
+    .pulse {
+      position: absolute;
+      right: 18px;
+      top: 18px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1.8s ease-out infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 34%, transparent); }
+      80% { box-shadow: 0 0 0 18px transparent; }
+      100% { box-shadow: 0 0 0 0 transparent; }
+    }
+
+    .timeline {
+      display: grid;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .event-row {
+      display: grid;
+      grid-template-columns: 46px 1fr auto;
+      gap: 10px;
+      align-items: start;
+      padding: 11px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .event-row time {
+      color: var(--faint);
+      font-size: 12px;
+      padding-top: 2px;
+    }
+
+    .event-row b {
+      display: block;
+      font-size: 14px;
+      line-height: 1.3;
+      margin-bottom: 3px;
+    }
+
+    .event-row span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .signal {
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .bottom-nav {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      padding: 10px 14px 14px;
+      background: color-mix(in srgb, var(--surface) 92%, transparent);
+      border-top: 1px solid var(--line);
+      backdrop-filter: blur(16px);
+    }
+
+    .bottom-nav button {
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      min-height: 42px;
+      border-radius: 8px;
+      font-weight: 650;
+    }
+
+    .bottom-nav button[aria-current="page"] {
+      color: var(--ink);
+      background: var(--surface-2);
+    }
+
+    .rewind-rail {
+      margin: 28px 2px 20px;
+      position: relative;
+      height: 84px;
+    }
+
+    .rail-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 38px;
+      height: 2px;
+      background: var(--line);
+    }
+
+    .rail-dot {
+      position: absolute;
+      top: 30px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 2px solid var(--line);
+    }
+
+    .rail-dot.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent);
+    }
+
+    .rail-label {
+      position: absolute;
+      top: 58px;
+      transform: translateX(-35%);
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .snapshot {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: color-mix(in srgb, var(--surface-2) 44%, transparent);
+    }
+
+    .snapshot h3,
+    .answer-panel h3,
+    .object-state h3 {
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    .fact-list {
+      display: grid;
+      gap: 9px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .fact-list b {
+      color: var(--ink);
+      font-weight: 720;
+    }
+
+    .intent-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin: 22px 0 16px;
+    }
+
+    .intent {
+      min-height: 82px;
+      text-align: left;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      padding: 12px;
+      box-shadow: none;
+    }
+
+    .intent b {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    .intent span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .answer-panel,
+    .object-state {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--surface-2) 42%, transparent);
+      padding: 14px;
+      margin-top: 14px;
+    }
+
+    .query-box {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      margin-top: 18px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .query-box input {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: var(--ink);
+      outline: 0;
+      min-height: 34px;
+    }
+
+    .icon-button {
+      width: 38px;
+      height: 38px;
+      border: 0;
+      border-radius: 8px;
+      color: var(--surface);
+      background: var(--strong);
+      display: grid;
+      place-items: center;
+    }
+
+    .version-path {
+      position: relative;
+      height: 128px;
+      margin: 18px 0;
+    }
+
+    .version-line {
+      position: absolute;
+      height: 2px;
+      background: var(--line);
+      transform-origin: left center;
+    }
+
+    .v-main {
+      left: 25px;
+      top: 64px;
+      width: 248px;
+    }
+
+    .v-branch {
+      left: 126px;
+      top: 64px;
+      width: 116px;
+      border-top: 2px dashed var(--faint);
+      background: transparent;
+      transform: rotate(-22deg);
+    }
+
+    .v-node {
+      position: absolute;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 2px solid var(--line);
+    }
+
+    .v-node.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent);
+    }
+
+    .v-label {
+      position: absolute;
+      width: 104px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .action-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .action-row button {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--ink);
+      background: var(--surface);
+      font-weight: 650;
+    }
+
+    .action-row button.primary {
+      color: var(--surface);
+      background: var(--strong);
+      border-color: var(--strong);
+    }
+
+    .right-panel {
+      display: grid;
+      gap: 18px;
+    }
+
+    .screen-tabs {
+      width: fit-content;
+    }
+
+    .concept-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .concept {
+      min-height: 142px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .concept h3 {
+      font-size: 15px;
+      margin-bottom: 8px;
+    }
+
+    .concept p {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .flow-band {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--line);
+    }
+
+    .flow-cell {
+      padding: 16px;
+      min-height: 120px;
+      background: var(--surface);
+    }
+
+    .flow-cell b {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .flow-cell span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .glass-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .glass {
+      min-height: 160px;
+      border-radius: 8px;
+      background: #07110c;
+      color: #bff8bc;
+      border: 1px solid #23472e;
+      padding: 14px;
+      display: grid;
+      align-content: center;
+      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
+    }
+
+    .glass small {
+      color: #6f9e74;
+      margin-bottom: 14px;
+      font-size: 12px;
+    }
+
+    .glass b {
+      font-size: 18px;
+      line-height: 1.35;
+      font-weight: 560;
+    }
+
+    .glass span {
+      display: block;
+      margin-top: 8px;
+      color: #82bb84;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .sample-line {
+      width: 20px;
+      height: 0;
+      border-top: 2px solid var(--accent);
+    }
+
+    .sample-line.dashed {
+      border-top-style: dashed;
+    }
+
+    .sample-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0.45;
+    }
+
+    .sample-branch {
+      width: 18px;
+      height: 12px;
+      border-top: 2px solid var(--accent);
+      border-right: 2px dashed var(--accent);
+      border-radius: 0 8px 0 0;
+    }
+
+    [data-theme="editorial"] .hero-line {
+      font-size: 32px;
+      line-height: 1.02;
+      font-weight: 820;
+    }
+
+    [data-theme="editorial"] .event-row {
+      grid-template-columns: 1fr;
+      gap: 4px;
+      padding: 14px 0;
+    }
+
+    [data-theme="editorial"] .event-row time {
+      color: var(--accent);
+      font-weight: 750;
+    }
+
+    [data-theme="engine"] .phone-screen,
+    [data-theme="engine"] .concept,
+    [data-theme="engine"] .flow-cell,
+    [data-theme="engine"] .intent,
+    [data-theme="engine"] .query-box,
+    [data-theme="engine"] .action-row button {
+      box-shadow: inset 0 0 0 1px rgba(147, 224, 166, 0.04);
+    }
+
+    [data-theme="engine"] .hero-line {
+      color: var(--strong);
+    }
+
+    @media (max-width: 1120px) {
+      .stage {
+        grid-template-columns: 1fr;
+      }
+
+      .phone-wrap {
+        position: static;
+      }
+
+      .concept-grid,
+      .glass-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      .page-shell {
+        padding: 18px 14px 32px;
+      }
+
+      .board-header {
+        grid-template-columns: 1fr;
+        align-items: start;
+      }
+
+      .toolbar {
+        justify-items: start;
+        width: 100%;
+      }
+
+      .segmented,
+      .screen-tabs {
+        width: 100%;
+        overflow-x: auto;
+      }
+
+      .screen-tabs {
+        flex-wrap: wrap;
+        overflow-x: visible;
+      }
+
+      .screen-tabs button {
+        flex: 1 1 calc(50% - 6px);
+      }
+
+      .stage {
+        gap: 22px;
+      }
+
+      .concept-grid,
+      .flow-band,
+      .glass-strip {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 31px;
+      }
+
+      .lead {
+        font-size: 15px;
+      }
+    }
+
+    @media (max-width: 420px) {
+      .phone {
+        width: calc(100vw - 24px);
+        padding: 9px;
+      }
+
+      .app-screen {
+        padding: 16px 14px 82px;
+      }
+
+      .hero-line {
+        font-size: 23px;
+      }
+
+      .map-canvas {
+        height: 278px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+<body data-theme="calm">
+  <div class="page-shell">
+    <header class="board-header">
+      <div>
+        <div class="eyebrow">Reality Memory Engine · Frontend Concept v0.1</div>
+        <h1>Reality Canvas：能被回拨、质疑和修正的现实模型</h1>
+        <p class="lead">这一版把手机端做成稳定的现实画布，同时保留回拨、对象版本、意图镜头和 Glass 最小提示。目标是先看产品气质和信息层级，再慢慢收敛视觉系统。</p>
+      </div>
+      <div class="toolbar" aria-label="设计切换">
+        <div class="segmented" role="group" aria-label="视觉方向">
+          <button type="button" data-theme-button="calm" aria-pressed="true">温和制图</button>
+          <button type="button" data-theme-button="engine" aria-pressed="false">暗色引擎</button>
+          <button type="button" data-theme-button="editorial" aria-pressed="false">生活编辑部</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="stage">
+      <section class="phone-wrap" aria-label="手机端原型">
+        <div class="phone">
+          <div class="phone-screen">
+            <section class="app-screen active" data-screen="now" aria-label="现在">
+              <div class="phone-top">
+                <div class="brand-small">家 · 周五晚间</div>
+                <div class="recording">现实记录中</div>
+              </div>
+              <h2 class="hero-line">钥匙在客厅茶几右侧</h2>
+              <p class="subline">现实模型更新于 2 分钟前。原始图像按策略删除，保留结构化事件。</p>
+
+              <div class="map-canvas" aria-label="语义地图">
+                <div class="pulse" aria-hidden="true"></div>
+                <div class="room room-entry">玄关</div>
+                <div class="room room-living">客厅<br>茶几 · 沙发 · 电视柜</div>
+                <div class="room room-laundry">洗衣区<br>余量低</div>
+                <div class="room room-study">书房<br>仍在学习</div>
+                <div class="path-line" aria-hidden="true"></div>
+                <div class="object-dot key-dot">钥匙</div>
+                <div class="object-dot remote-dot">遥控器</div>
+                <div class="object-dot low-dot">洗衣液</div>
+              </div>
+
+              <h3 class="brand-small">这段时间发生了什么</h3>
+              <div class="timeline">
+                <div class="event-row">
+                  <time>16:30</time>
+                  <div><b>钥匙移动到茶几右侧</b><span>眼镜两次观察一致，尚未由你确认</span></div>
+                  <div class="signal">较可信</div>
+                </div>
+                <div class="event-row">
+                  <time>20:40</time>
+                  <div><b>洗衣液进入低余量</b><span>只生成提醒建议，不自动购买</span></div>
+                  <div class="signal">提醒</div>
+                </div>
+              </div>
+            </section>
+
+            <section class="app-screen" data-screen="rewind" aria-label="回拨">
+              <div class="phone-top">
+                <div class="brand-small">回拨 · 客厅</div>
+                <div class="recording">范围已选</div>
+              </div>
+              <h2 class="hero-line">只重算客厅，不模拟完整世界</h2>
+              <p class="subline">选择对象、空间、人物或活动后，再沿事件流回到某个时刻。</p>
+
+              <div class="rewind-rail" aria-label="时间线">
+                <div class="rail-line"></div>
+                <div class="rail-dot" style="left: 4%;"></div>
+                <div class="rail-label" style="left: 4%;">周一</div>
+                <div class="rail-dot" style="left: 36%;"></div>
+                <div class="rail-label" style="left: 36%;">周三</div>
+                <div class="rail-dot active" style="left: 68%;"></div>
+                <div class="rail-label" style="left: 68%;">昨天</div>
+                <div class="rail-dot" style="right: 2%;"></div>
+                <div class="rail-label" style="right: -8px;">现在</div>
+              </div>
+
+              <div class="snapshot">
+                <h3>昨天 21:10 的客厅</h3>
+                <div class="fact-list">
+                  <div><b>钥匙</b> 仍在玄关柜，尚未移动到茶几</div>
+                  <div><b>遥控器</b> 在沙发右侧，状态较新</div>
+                  <div><b>花瓶</b> 从餐桌移动到电视柜</div>
+                  <div><b>未知</b> 充电器候选已过期，不显示为事实</div>
+                </div>
+              </div>
+
+              <div class="timeline">
+                <div class="event-row">
+                  <time>+3</time>
+                  <div><b>从该时刻到现在有 3 项变化</b><span>仅展示与客厅范围有关的变化</span></div>
+                  <div class="signal">diff</div>
+                </div>
+              </div>
+            </section>
+
+            <section class="app-screen" data-screen="ask" aria-label="问">
+              <div class="phone-top">
+                <div class="brand-small">问这个世界</div>
+                <div class="recording">低打扰</div>
+              </div>
+              <h2 class="hero-line">你现在想做什么？</h2>
+              <p class="subline">意图只生成临时现实镜头，结束后不占据首页。</p>
+
+              <div class="intent-grid">
+                <button class="intent" type="button"><b>准备出门</b><span>钥匙、手机、包、外套和未完成提醒</span></button>
+                <button class="intent" type="button"><b>找东西</b><span>对象位置、移动路径和备选位置</span></button>
+                <button class="intent" type="button"><b>洗衣服</b><span>洗衣机状态、耗材余量和相关任务</span></button>
+                <button class="intent" type="button"><b>回忆上周</b><span>按活动片段回看变化</span></button>
+              </div>
+
+              <div class="answer-panel">
+                <h3>准备出门镜头</h3>
+                <div class="fact-list">
+                  <div><b>钥匙</b> 还在客厅茶几右侧</div>
+                  <div><b>黑色外套</b> 今天 08:10 被穿着，可能在玄关</div>
+                  <div><b>提醒</b> 明天取快递，不在当下打扰</div>
+                </div>
+              </div>
+
+              <div class="query-box">
+                <input aria-label="自然语言问题" value="钥匙现在在哪？">
+                <button class="icon-button" type="button" aria-label="发送查询">↗</button>
+              </div>
+            </section>
+
+            <section class="app-screen" data-screen="object" aria-label="钥匙详情">
+              <div class="phone-top">
+                <div class="brand-small">← 钥匙</div>
+                <div class="recording">可纠正</div>
+              </div>
+              <h2 class="hero-line">当前版本：客厅 · 茶几右侧</h2>
+              <p class="subline">今天 16:30 · 较可信 · 眼镜观察。事实来自事件主线，投影可重算。</p>
+
+              <div class="version-path" aria-label="版本轨迹">
+                <div class="version-line v-main"></div>
+                <div class="version-line v-branch"></div>
+                <div class="v-node" style="left: 20px; top: 57px;"></div>
+                <div class="v-node" style="left: 121px; top: 57px;"></div>
+                <div class="v-node active" style="left: 270px; top: 57px;"></div>
+                <div class="v-node" style="left: 226px; top: 16px; opacity: .55;"></div>
+                <div class="v-label" style="left: 0; top: 82px;">玄关柜<br>08:10</div>
+                <div class="v-label" style="left: 104px; top: 82px;">被拿起<br>候选形成</div>
+                <div class="v-label" style="right: 0; top: 82px;">茶几右侧<br>16:30</div>
+                <div class="v-label" style="left: 198px; top: 0;">电视柜<br>候选过期</div>
+              </div>
+
+              <div class="object-state">
+                <h3>为什么这样判断</h3>
+                <div class="fact-list">
+                  <div><b>主线</b> 两次观察一致，和出门动作没有冲突</div>
+                  <div><b>不确定</b> 尚未由你确认，仍可纠正</div>
+                  <div><b>证据</b> 原始图像已删除，只保留删除回执</div>
+                </div>
+              </div>
+
+              <div class="action-row">
+                <button class="primary" type="button">确认</button>
+                <button type="button">纠正</button>
+                <button type="button">忘记</button>
+              </div>
+            </section>
+
+            <nav class="bottom-nav" aria-label="主导航">
+              <button type="button" data-screen-button="now" aria-current="page">现在</button>
+              <button type="button" data-screen-button="rewind">回拨</button>
+              <button type="button" data-screen-button="ask">问</button>
+            </nav>
+          </div>
+        </div>
+      </section>
+
+      <section class="right-panel" aria-label="设计说明与跨端样式">
+        <div class="screen-tabs" role="tablist" aria-label="手机画面">
+          <button type="button" role="tab" data-screen-tab="now" aria-selected="true">现在首页</button>
+          <button type="button" role="tab" data-screen-tab="rewind" aria-selected="false">回拨客厅</button>
+          <button type="button" role="tab" data-screen-tab="ask" aria-selected="false">意图镜头</button>
+          <button type="button" role="tab" data-screen-tab="object" aria-selected="false">钥匙详情</button>
+        </div>
+
+        <div class="legend" aria-label="不确定性视觉语法">
+          <span><i class="sample-line"></i> 已确认或主线</span>
+          <span><i class="sample-line dashed"></i> 系统推断</span>
+          <span><i class="sample-dot"></i> 候选期</span>
+          <span><i class="sample-branch"></i> 冲突或过期分支</span>
+        </div>
+
+        <div class="concept-grid">
+          <article class="concept">
+            <h3>Reality Atlas</h3>
+            <p>空间是骨架。首页先回答“现在在哪里”，适合找物和家庭语义地图。</p>
+          </article>
+          <article class="concept">
+            <h3>Memory River</h3>
+            <p>变化是主角。把移动、开封、偏好和任务聚成生活片段。</p>
+          </article>
+          <article class="concept">
+            <h3>World Versions</h3>
+            <p>信任来自轨迹。候选、冲突、纠错和删除回执进入对象详情。</p>
+          </article>
+          <article class="concept">
+            <h3>Intent Stage</h3>
+            <p>记忆服务当下。意图生成临时镜头，不把聊天框做成唯一首页。</p>
+          </article>
+        </div>
+
+        <section>
+          <h2>同一条 Signal 的展开层级</h2>
+          <div class="flow-band">
+            <div class="flow-cell"><b>L0 · 不显示</b><span>低价值或时机不对，只留在系统和审计中。</span></div>
+            <div class="flow-cell"><b>L1 · Glass 一句话</b><span>钥匙还在客厅茶几右侧。只在意图强相关时出现。</span></div>
+            <div class="flow-cell"><b>L2 · 手机底部面板</b><span>展示当前结论、为什么现在相关、建议动作和有效期。</span></div>
+            <div class="flow-cell"><b>L3 · 完整解释</b><span>展开时间线、版本、依据、纠正、删除和审计。</span></div>
+          </div>
+        </section>
+
+        <section>
+          <h2>Glass AIUI 四种稳定表现</h2>
+          <div class="glass-strip">
+            <div class="glass"><small>Whisper Line</small><b>钥匙在客厅茶几右侧</b><span>今天 16:30 看到</span></div>
+            <div class="glass"><small>Locator</small><b>茶几右侧</b><span>穿过玄关后向左</span></div>
+            <div class="glass"><small>Action Ticket</small><b>洗衣液大约只够这次</b><span>加入采购清单？</span></div>
+            <div class="glass"><small>Safety Shield</small><b>当前空间已禁采</b><span>离开后自动恢复策略</span></div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const body = document.body;
+    const themeButtons = Array.from(document.querySelectorAll("[data-theme-button]"));
+    const screenButtons = Array.from(document.querySelectorAll("[data-screen-button]"));
+    const screenTabs = Array.from(document.querySelectorAll("[data-screen-tab]"));
+    const screens = Array.from(document.querySelectorAll("[data-screen]"));
+
+    function setTheme(theme) {
+      body.dataset.theme = theme;
+      themeButtons.forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.themeButton === theme));
+      });
+    }
+
+    function setScreen(screen) {
+      screens.forEach((panel) => panel.classList.toggle("active", panel.dataset.screen === screen));
+      screenButtons.forEach((button) => {
+        if (button.dataset.screenButton === screen) {
+          button.setAttribute("aria-current", "page");
+        } else {
+          button.removeAttribute("aria-current");
+        }
+      });
+      screenTabs.forEach((tab) => {
+        tab.setAttribute("aria-selected", String(tab.dataset.screenTab === screen));
+      });
+    }
+
+    themeButtons.forEach((button) => {
+      button.addEventListener("click", () => setTheme(button.dataset.themeButton));
+    });
+
+    screenButtons.forEach((button) => {
+      button.addEventListener("click", () => setScreen(button.dataset.screenButton));
+    });
+
+    screenTabs.forEach((tab) => {
+      tab.addEventListener("click", () => setScreen(tab.dataset.screenTab));
+    });
+
+    const relayout = () => {
+      document.querySelectorAll(".event-row b, .event-row span, .concept p, .flow-cell span").forEach((node) => {
+        node.style.minHeight = "auto";
+      });
+    };
+
+    if ("ResizeObserver" in window) {
+      new ResizeObserver(relayout).observe(document.body);
+    }
+  </script>
+</body>
+</html>

@@ -54,3 +54,4 @@ feishu-auth-qr*.png
 *.mobileprovision
 *.keystore
 *.jks
+.gstack/

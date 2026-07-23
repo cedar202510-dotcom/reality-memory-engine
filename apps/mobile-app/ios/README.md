@@ -1,6 +1,6 @@
-# RME Glass Probe
+# Reality Memory iOS App
 
-用于验证 Rokid Glasses、Rokid AI App 与 CXR-L iOS SDK 1.0.4 的真机采集链路。
+统一的 Reality Memory 手机 App。当前 iOS 版本先通过 CXR-L iOS SDK 1.0.4 接入 Rokid Glasses，用来验证图片、短音频/VAD、采集 Session 和本地证据清单；它不是眼镜专用 App，也不与音频、图片等模态拆成多个用户 App。
 
 验证顺序：
 
@@ -10,7 +10,8 @@
 4. 在眼镜上打开 Custom View。
 5. 请求一张 1024 x 768 JPEG 并在手机内存中预览。
 6. 以 5、15、30 或 60 秒间隔运行受控采集 Session。
-7. 将 Session、采集结果和审计事件写入结构化 JSON。
+7. 可选开启会话内短音频/VAD，将命中的语音片段元数据写入同一个 Session。
+8. 将 Session、采集结果、音频片段和审计事件写入结构化 JSON。
 
 ## 采集 Session
 
@@ -18,8 +19,8 @@
 - Custom View 默认使用纯黑空内容树，保持会话已构建但不在眼镜上显示调试文字。
 - “眼镜调试文字”只用于联调，且只能在打开 Custom View 前切换。
 - 支持开始、暂停、恢复和结束；BLE 断开或 Custom View 关闭会自动暂停，摘下眼镜会结束。
-- “保留本地样本”默认关闭。关闭时只记录采集元数据，JPEG 不落盘。
-- 开启本地样本后，图片只写入 App 沙盒，标记为 `PENDING_LOCAL`，不允许上传。
+- “保留本地样本”默认关闭。关闭时只记录采集元数据，JPEG 和 PCM 都不落盘。
+- 开启本地样本后，图片和 VAD 命中的短音频只写入 App 沙盒，标记为 `PENDING_LOCAL`，不允许上传。
 - 每次状态变化和采集结果同时写入 Xcode unified logging 与 `debug-events.ndjson`。
 
 本地结构：
@@ -30,9 +31,10 @@ Application Support/RealityMemoryProbe/
   sessions/<session-id>/
     session.json
     evidence/<observation-id>.jpg
+    evidence/<observation-id>.pcm
 ```
 
-`session.json` 使用 `rme.capture-session.v1`，可作为后续分析 Agent 的输入清单。
+`session.json` 使用 `rme.capture-session.v1`，可作为后续结构化解析和 ActivityEpisode/MemoryCandidate 闭环的输入清单。图片 Observation 和音频 Observation 都属于同一个采集 Session；其中 Session 是设备采集边界，ActivityEpisode 才是后续分析出的“做饭、找东西、阅读”等现实活动边界。
 
 ## 打开工程
 
@@ -51,7 +53,7 @@ RMEGlassProbe.xcworkspace
 - Xcode 已登录 Apple 账号，并使用 `Automatically manage signing`。
 - CXR-L 的 `cxrl://auth/callback` 回调由 App 的 `onOpenURL` 转交给 SDK。
 
-本 App 不上传照片，也不自行保存授权 token。只有用户打开“保留本地样本”后，Session 照片才会临时写入 App 沙盒。
+本 App 不上传照片或音频，也不自行保存授权 token。只有用户打开“保留本地样本”后，Session 图片和短音频才会临时写入 App 沙盒。
 
 ## 当前运行边界
 
