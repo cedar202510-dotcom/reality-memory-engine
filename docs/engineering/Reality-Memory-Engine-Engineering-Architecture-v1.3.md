@@ -771,6 +771,7 @@ outbox_events
 
 - 统一手机 App：`apps/mobile-app/`
 - RV101 眼镜端原生 Runtime：`apps/rokid-glass-probe/`
+- 数据契约 Review：`docs/engineering/Reality-Memory-Engine-Contract-Review-v0.1.md`
 - 已归档 CXR-L 过渡探针：`archive/cxrl-probe/README.md`，仅作 SDK 参考和历史实验，不是第二个正式手机 App。
 - CXR-L Token 与状态历史记录：`archive/cxrl-probe/docs/CXRL-TOKEN-AND-STATE-FLOW.md`
 - 活动边界与 Session 设计历史记录：`archive/cxrl-probe/docs/ACTIVITY-SESSION-AGENT-DESIGN.md`
