@@ -37,19 +37,21 @@ async def visual_search_frames(
     query_text: str | None = None,
     query_image: bytes | None = None,
     top_k: int,
+    extra_query_texts: list[str] | None = None,
 ) -> list[tuple[FrameAsset, float]]:
     """跨模态视觉检索：返回 (frame, 余弦相似度) 列表，按相似度降序。
 
-    无编码器、编码失败（None）或两种输入都缺省时返回空列表。
+    extra_query_texts：附加查询文本（如中文查询的英文翻译），与主查询向量取均值。
+    无编码器、编码失败（None）或所有输入都缺省时返回空列表。
     """
     if vision is None or (query_text is None and query_image is None) or top_k <= 0:
         return []
 
     query_vectors: list[list[float]] = []
-    if query_text:
-        text_vecs = await vision.embed_texts([query_text])
-        if text_vecs:
-            query_vectors.append(text_vecs[0])
+    texts = [t for t in [query_text, *(extra_query_texts or [])] if t]
+    if texts:
+        text_vecs = await vision.embed_texts(texts)
+        query_vectors.extend(text_vecs or [])
     if query_image is not None:
         image_vecs = await vision.embed_images([query_image])
         if image_vecs:

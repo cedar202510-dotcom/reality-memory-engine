@@ -77,10 +77,19 @@ class Settings(BaseSettings):
     retrieval_visual_top_k: int = 8         # 视觉路召回数量（融合前）
     retrieval_fusion_visual_weight: float = 0.6  # 多路融合中视觉路权重（视觉优先）
     retrieval_fusion_transcript_weight: float = 0.5  # 多路融合中语音转写路权重
+    # CLIP 文本塔为英文模型：含中文的查询先翻译成英文短语，再与原文向量取均值
+    clip_query_translate: bool = True
+    # 通道 2 倒序早停验证：召回后按时间从新到旧分批 VLM 验证，命中即停
+    retrieval_verify_batch_size: int = 2    # 每批验证帧数（也是每批附图上限）
+    retrieval_verify_max_batches: int = 3   # 最多验证批数（超过转为未找到）
+    retrieval_verify_min_confidence: float = 0.5  # 达到该置信度即早停采纳
 
     # --- Worker ---
     worker_poll_interval_seconds: float = 1.0
     worker_batch_size: int = 10
+    worker_concurrency: int = 4             # 帧/音频感知任务批内并发数（projection 仍串行）
+    outbox_max_attempts: int = 3            # 单条 outbox 失败重试上限，超限标记消费+审计
+    outbox_retry_backoff_seconds: float = 20.0  # 每次失败后的重试退避（× attempts）
     ttl_sweep_interval_seconds: float = 60.0
 
     # --- 演示/测试用 Fake 行为由调用方注入，不在配置里 ---

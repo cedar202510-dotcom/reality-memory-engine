@@ -30,7 +30,7 @@ from ..schemas import (
 )
 from ..vision.base import VisionEncoder
 from .visual import visual_search_frames
-from .where_is import _retrieve_transcripts, where_is
+from .where_is import _retrieve_transcripts, translate_query_for_clip, where_is
 
 router = APIRouter(prefix="/v1/memory", tags=["query"])
 
@@ -93,12 +93,14 @@ async def scene_search_endpoint(
         except (binascii.Error, ValueError):
             raise HTTPException(status_code=422, detail="query_image_base64 不是合法的 base64")
 
+    english = await translate_query_for_clip(llm, req.query_text) if req.query_text else None
     hits = await visual_search_frames(
         session,
         vision=vision,
         query_text=req.query_text,
         query_image=query_image,
         top_k=req.top_k,
+        extra_query_texts=[english] if english else None,
     )
 
     items: list[SceneSearchHit] = []

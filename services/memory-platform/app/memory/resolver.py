@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..models import Entity
+from .normalize import name_is_abbreviation_of
 
 EXACT_MATCH = 1.0
 TRGM_THRESHOLD = 0.9          # 很高才合并；否则新建
@@ -66,6 +67,20 @@ async def resolve_entity(
             ),
         )
     )
+
+    # 1.5) 中文后缀简称合并（新名「手机」是既有名「智能手机」的简称 → 同物）。
+    # 有向：新名更长（带属性修饰，如「黑色智能手机」）可能是另一实例，
+    # 纯名称不合并，留给步骤 4 的视觉辅助合并判定。household 内实体量小，全量扫描即可。
+    if matched is None:
+        candidates = (
+            await session.scalars(select(Entity).where(Entity.household_id == household_id))
+        ).all()
+        for entity in candidates:
+            all_names = [entity.canonical_name, *(entity.aliases or [])]
+            if any(name_is_abbreviation_of(name, n) for n in all_names):
+                matched = entity
+                _record_alias(matched, name)
+                break
 
     # 2) trgm 高相似（≥0.9 才合并，避免"手机壳"并入"手机"）
     if matched is None:

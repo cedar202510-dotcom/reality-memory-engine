@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import get_settings
 from ..models import MemoryCandidate, utcnow
 from .events import append_event, record_audit
+from .normalize import locations_compatible, names_alias_match
 from .resolver import resolve_entity
 
 PREDICATE_TO_EVENT_TYPE = {
@@ -37,7 +38,12 @@ PREDICATE_TO_EVENT_TYPE = {
 async def _find_conflict(
     session: AsyncSession, candidate: MemoryCandidate
 ) -> list[MemoryCandidate]:
-    """同一物体、不同 location 的未决候选视为互斥。"""
+    """同一物体、位置不兼容的未决候选视为互斥。
+
+    位置判定用 locations_compatible 而非字符串相等：VLM 对同一地点的叫法
+    帧间不稳定（「白桌」vs「白色办公桌」），裸字符串不等会把同一张桌子
+    误判为两个互斥位置，导致高置信候选被 CONFLICTED、物体永远沉淀不成实体。
+    """
     obj = candidate.payload.get("object_text")
     loc = candidate.payload.get("location")
     if not obj or not loc:
@@ -55,9 +61,9 @@ async def _find_conflict(
     return [
         c
         for c in pendings
-        if c.payload.get("object_text") == obj
+        if names_alias_match(c.payload.get("object_text") or "", obj)
         and c.payload.get("location")
-        and c.payload.get("location") != loc
+        and not locations_compatible(c.payload.get("location"), loc)
     ]
 
 

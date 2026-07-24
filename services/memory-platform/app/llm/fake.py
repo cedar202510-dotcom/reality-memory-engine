@@ -33,12 +33,14 @@ class FakeLLMClient:
         extract_rules: list[tuple[str, list[dict[str, Any]]]] | None = None,
         answer_rules: list[tuple[str, dict[str, Any]]] | None = None,
         audio_extract_rules: list[tuple[str, list[dict[str, Any]]]] | None = None,
+        translate_rules: list[tuple[str, str]] | None = None,
         embedding_enabled: bool = True,
     ) -> None:
         self.caption_rules = caption_rules or []
         self.extract_rules = extract_rules or []
         self.answer_rules = answer_rules or []
         self.audio_extract_rules = audio_extract_rules  # None 时回退 extract_rules
+        self.translate_rules = translate_rules or []
         self.embedding_enabled = embedding_enabled
         self.calls: list[dict[str, Any]] = []  # 便于测试断言
 
@@ -60,6 +62,9 @@ class FakeLLMClient:
         if task == "audio_extract":
             rules = self.audio_extract_rules if self.audio_extract_rules is not None else self.extract_rules
             return {"observations": self._match(rules, prompt) or []}
+        if task == "translate":
+            # 默认空串 → 调用方降级为仅原文向量（测试无需配置翻译规则）
+            return {"english": self._match(self.translate_rules, prompt) or ""}
         if task == "answer":
             return self._match(self.answer_rules, prompt) or {
                 "found": False,

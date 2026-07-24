@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import get_settings
 from ..llm.base import LLMClient
 from ..memory.gate import evaluate_candidate
+from ..memory.normalize import has_cjk, names_alias_match
 from ..memory.seed import get_default_household_id
 from ..models import (
     AudioAsset,
@@ -68,6 +69,14 @@ async def _match_entity(
     )
     if exact is not None:
         return exact
+    # 中文包含式别名（「手机」↔「智能手机」）：trgm 对中文短名几乎无效
+    candidates = (
+        await session.scalars(select(Entity).where(Entity.household_id == household_id))
+    ).all()
+    for entity in candidates:
+        all_names = [entity.canonical_name, *(entity.aliases or [])]
+        if any(names_alias_match(n, name) for n in all_names):
+            return entity
     # trgm 模糊兜底
     row = (
         await session.execute(
@@ -216,6 +225,32 @@ async def _retrieve_transcripts(
     return [(audio, float(sim)) for audio, sim in rows]
 
 
+# 中文查询 → 英文短语翻译缓存（CLIP 文本塔是英文模型，中文向量近似噪声）
+_clip_translate_cache: dict[str, str] = {}
+
+
+async def translate_query_for_clip(llm: LLMClient, name: str) -> str | None:
+    """含 CJK 的查询翻译成简短英文名词短语（进程内缓存）；失败/空返回 None 降级。"""
+    if not get_settings().clip_query_translate or not has_cjk(name):
+        return None
+    if name in _clip_translate_cache:
+        return _clip_translate_cache[name] or None
+    english = ""
+    try:
+        raw = await llm.complete_json(
+            task="translate",
+            prompt=(
+                f"把这个物品查询词翻译成简短的英文名词短语（用于图像检索）：「{name}」。"
+                '只输出一个 JSON 对象：{"english": "<英文短语>"}'
+            ),
+        )
+        english = str(raw.get("english") or "").strip()
+    except Exception:  # noqa: BLE001 - 翻译失败一律降级为仅中文向量
+        english = ""
+    _clip_translate_cache[name] = english
+    return english or None
+
+
 async def _recall_channel2(
     session: AsyncSession,
     *,
@@ -234,11 +269,13 @@ async def _recall_channel2(
 
     visual_hits: list[tuple[FrameAsset, float]] = []
     if vision is not None:
+        english = await translate_query_for_clip(llm, name)
         visual_hits = await visual_search_frames(
             session,
             vision=vision,
             query_text=name,
             top_k=settings.retrieval_visual_top_k,
+            extra_query_texts=[english] if english else None,
         )
     transcript_hits = await _retrieve_transcripts(session, llm=llm, name=name, top_k=top_k)
 
@@ -275,6 +312,19 @@ async def _retrieve_frames(
     return frames
 
 
+async def _frame_data_url(session: AsyncSession, frame: FrameAsset) -> str | None:
+    """帧证据媒体仍可读时返回 base64 data URL，否则 None（TTL 已删只剩 caption）。"""
+    item = await session.get(EvidenceItem, frame.evidence_item_id)
+    if not (
+        item
+        and item.retention_state == "ACTIVE"
+        and item.storage_ref
+        and Path(item.storage_ref).exists()
+    ):
+        return None
+    return "data:image/jpeg;base64," + base64.b64encode(Path(item.storage_ref).read_bytes()).decode()
+
+
 async def _channel_deep_retrieval(
     session: AsyncSession,
     *,
@@ -283,6 +333,12 @@ async def _channel_deep_retrieval(
     llm: LLMClient,
     vision: VisionEncoder | None = None,
 ) -> FindObjectResponse:
+    """通道 2：混合召回 → 按时间从新到旧分批 VLM 验证，命中即早停。
+
+    找物语义下最新一次目击就是答案，更早的目击只影响 alternatives/时间线，
+    因此无需一次性精判全部召回帧：每批验证 verify_batch_size 帧（附图），
+    置信度达标即停；期望情况 1 次小调用即出答案，比一次性 4 图精判更快。
+    """
     settings = get_settings()
     frames, audios = await _recall_channel2(
         session, llm=llm, name=name, top_k=settings.retrieval_top_k, vision=vision
@@ -295,34 +351,47 @@ async def _channel_deep_retrieval(
             answer_text=f"没有任何场景或语音记录，暂时无法回答「{name}」在哪里。",
         )
 
-    # 证据未删的帧带图精判（媒体短命：删了就只剩 caption/转写）
-    images: list[str] = []
-    lines: list[str] = []
-    for f in frames:
-        item = await session.get(EvidenceItem, f.evidence_item_id)
-        has_image = bool(
-            item
-            and item.retention_state == "ACTIVE"
-            and item.storage_ref
-            and Path(item.storage_ref).exists()
-        )
-        lines.append(
-            f"- [{f.captured_at.isoformat()}] {f.caption}（tags: {'、'.join(f.scene_tags or [])}）"
-            + ("【附图】" if has_image else "")
-        )
-        if has_image and len(images) < 4:
-            images.append(
-                "data:image/jpeg;base64,"
-                + base64.b64encode(Path(item.storage_ref).read_bytes()).decode()
-            )
-    for a in audios:
-        lines.append(f"- [{a.captured_at.isoformat()}] 语音转写：「{a.transcript}」")
+    # 语音转写少且廉价：作为上下文附在每一批验证里
+    audio_lines = [f"- [{a.captured_at.isoformat()}] 语音转写：「{a.transcript}」" for a in audios]
+
+    # 按目击时间从新到旧验证（召回顺序只决定谁有资格进验证，不决定验证顺序）
+    ordered = sorted(frames, key=lambda f: f.captured_at, reverse=True)
+    batch_size = max(settings.retrieval_verify_batch_size, 1)
+    batches = [ordered[i : i + batch_size] for i in range(0, len(ordered), batch_size)]
+    batches = batches[: settings.retrieval_verify_max_batches]
+    if not batches:
+        batches = [[]]  # 纯语音召回：单批、仅转写上下文
 
     answerer = build_answerer(llm)
-    ans = await answerer.run(
-        AnswerInput(query_name=name, candidates_text="\n".join(lines)),
-        images=images or None,
-    )
+    ans = None
+    chosen_frame: FrameAsset | None = None
+    found_ok = False
+    for batch in batches:
+        lines: list[str] = []
+        images: list[str] = []
+        for i, f in enumerate(batch):
+            data_url = await _frame_data_url(session, f)
+            lines.append(
+                f"{i}. [{f.captured_at.isoformat()}] {f.caption}"
+                f"（tags: {'、'.join(f.scene_tags or [])}）" + ("【附图】" if data_url else "")
+            )
+            if data_url:
+                images.append(data_url)
+        batch_ans = await answerer.run(
+            AnswerInput(query_name=name, candidates_text="\n".join(lines + audio_lines)),
+            images=images or None,
+        )
+        if batch_ans is None:
+            continue  # 本批输出不合契约 → 继续验证更早的批
+        ans = batch_ans
+        if ans.found and ans.confidence >= settings.retrieval_verify_min_confidence:
+            found_ok = True
+            if batch:
+                idx = ans.chosen_index if ans.chosen_index is not None else 0
+                chosen_frame = batch[idx] if 0 <= idx < len(batch) else batch[0]
+            break  # 早停：最新的确认目击就是答案
+        # found 但低置信 → 不采纳，继续往更早的批找
+
     if ans is None:
         return FindObjectResponse(
             query=name,
@@ -331,12 +400,19 @@ async def _channel_deep_retrieval(
             answer_text="精判阶段输出不合契约，本次无法给出答案。",
         )
 
+    # 目击时间取 Answerer 选中的那一帧（修复：不再用召回集合最大时间冒充目击时间）
+    if chosen_frame is not None:
+        seen_time = chosen_frame.captured_at
+    else:
+        seen_time = max(
+            [f.captured_at for f in frames] + [a.captured_at for a in audios]
+        )
+
     # 回写候选（被查询过的物体 → 候选；aggregate 足够则经候选门升级为实体）
-    latest_frame_time = max([f.captured_at for f in frames] + [a.captured_at for a in audios])
     confidence = {
         "model": ans.confidence,
         "identity": ans.confidence,
-        "spatial": ans.confidence if ans.found else 0.0,
+        "spatial": ans.confidence if found_ok else 0.0,
         "temporal": 0.8,
         "policy": 1.0,
         "aggregate": ans.confidence,
@@ -344,7 +420,7 @@ async def _channel_deep_retrieval(
     candidate = MemoryCandidate(
         observation_ids=[],
         event_type="OBJECT_OBSERVED_AT",
-        payload={"object_text": name, "location": ans.location} if ans.found else {"object_text": name},
+        payload={"object_text": name, "location": ans.location} if found_ok else {"object_text": name},
         confidence=confidence,
         status="PENDING",
         source="query",
@@ -352,20 +428,22 @@ async def _channel_deep_retrieval(
     session.add(candidate)
     await session.flush()
     obj_vec = await llm.embed([name])
-    # 取最相关且带视觉向量的帧，供实体解析做物体级合并
-    frame_vec = next((f.visual_embedding for f in frames if f.visual_embedding is not None), None)
+    # 供实体解析做物体级合并：优先选中帧的视觉向量，其次任一召回帧
+    frame_vec = chosen_frame.visual_embedding if chosen_frame is not None else None
+    if frame_vec is None:
+        frame_vec = next((f.visual_embedding for f in frames if f.visual_embedding is not None), None)
     await evaluate_candidate(
         session,
         candidate=candidate,
         household_id=household_id,
-        phenomenon_time=latest_frame_time,
-        observed_at=latest_frame_time,
+        phenomenon_time=seen_time,
+        observed_at=seen_time,
         object_embedding=obj_vec[0] if obj_vec else None,
         frame_visual_embedding=frame_vec,
     )
     await session.commit()
 
-    if not ans.found:
+    if not found_ok:
         return FindObjectResponse(
             query=name,
             channel="not_found",
@@ -378,13 +456,13 @@ async def _channel_deep_retrieval(
         ent = await session.get(Entity, candidate.entity_id)
         if ent:
             entity_ref = EntityRef(id=ent.id, canonical_name=ent.canonical_name, aliases=ent.aliases)
-    fresh = freshness_text(latest_frame_time)
+    fresh = freshness_text(seen_time)
     return FindObjectResponse(
         query=name,
         channel="deep_retrieval",
         entity=entity_ref,
         location=ans.location,
-        last_seen_time=latest_frame_time,
+        last_seen_time=seen_time,
         freshness=fresh,
         confidence=ans.confidence,
         answer_text=ans.answer_text or f"{name}{fresh or ''}，在{ans.location}。",
