@@ -65,6 +65,30 @@ public class MainActivity extends ComponentActivity {
                 sendServiceAction(CaptureForegroundService.ACTION_START_PREVIEW);
             }
         }, 1200);
+        handleDebugExtras(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleDebugExtras(intent);
+    }
+
+    /** adb 联调入口：am start -n .../.MainActivity --ez capture_once true 等价于点按钮
+     *  （眼镜输入通道会拦截 adb input tap，intent extra 是唯一可靠的脚本化触发方式）。 */
+    private void handleDebugExtras(Intent intent) {
+        if (intent == null) {
+            return;
+        }
+        if (intent.getBooleanExtra("capture_once", false)) {
+            sendServiceAction(CaptureForegroundService.ACTION_CAPTURE_ONCE);
+        }
+        if (intent.getBooleanExtra("start_periodic", false)) {
+            sendServiceAction(CaptureForegroundService.ACTION_START_PERIODIC);
+        }
+        if (intent.getBooleanExtra("stop_capture", false)) {
+            sendServiceAction(CaptureForegroundService.ACTION_STOP);
+        }
     }
 
     @Override

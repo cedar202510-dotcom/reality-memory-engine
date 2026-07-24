@@ -166,3 +166,13 @@ h2 { letter-spacing: 0; }
 .live-frame-list b { display: block; font-size: 13px; font-weight: 600; line-height: 1.45; }
 .live-frame-list small { color: var(--muted); font-size: 11px; }
 @media (max-width: 900px) { .live-grid { grid-template-columns: 1fr; } }
+
+/* ---- 采集事件动效（拍照快门 / 采集中） ---- */
+.live-head-tags { display: flex; align-items: center; gap: 14px; }
+.live-rec { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--red); font-weight: 600; }
+.live-rec i { width: 8px; height: 8px; border-radius: 50%; background: var(--red); animation: rec-pulse 1.1s ease-in-out infinite; }
+@keyframes rec-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.8); } }
+.live-shutter { position: absolute; inset: 0; background: #fff; pointer-events: none; animation: shutter-flash .45s ease-out forwards; }
+@keyframes shutter-flash { 0% { opacity: .9; } 100% { opacity: 0; } }
+.live-shot-badge { position: absolute; left: 10px; bottom: 10px; padding: 6px 12px; border-radius: 999px; background: rgba(0,0,0,.72); color: #fff; font-size: 12px; pointer-events: none; animation: shot-badge 3.2s ease forwards; }
+@keyframes shot-badge { 0% { opacity: 0; transform: translateY(8px); } 8%,80% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; } }

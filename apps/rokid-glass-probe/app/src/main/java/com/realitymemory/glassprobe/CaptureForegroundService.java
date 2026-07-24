@@ -117,6 +117,7 @@ public class CaptureForegroundService extends LifecycleService {
             paused = true;
             audioCapture.stop();
             imuSampler.stop();
+            PreviewStreamServer.recordEvent("recording_stopped", "paused");
             ProbeLog.append(this, "PAUSED", "capture paused");
         } else if (ACTION_RESUME.equals(action)) {
             paused = false;
@@ -164,6 +165,7 @@ public class CaptureForegroundService extends LifecycleService {
         handler.postDelayed(periodicTick, PERIODIC_INTERVAL_MS);
         audioCapture.start();
         imuSampler.start();
+        PreviewStreamServer.recordEvent("recording_started", "periodic 30s photo + audio + imu");
         ProbeLog.append(this, "ACTIVE", "periodic capture every 30s");
     }
 
@@ -174,6 +176,7 @@ public class CaptureForegroundService extends LifecycleService {
         audioCapture.stop();
         imuSampler.stop();
         imageCapture = null;
+        PreviewStreamServer.recordEvent("recording_stopped", "capture ended");
         ProbeLog.append(this, "ENDED", "capture stopped");
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
@@ -270,6 +273,8 @@ public class CaptureForegroundService extends LifecycleService {
                 public void onImageSaved(@NonNull ImageCapture.OutputFileResults outputFileResults) {
                     long latencyMs = System.currentTimeMillis() - startedAt;
                     long bytes = file.exists() ? file.length() : -1L;
+                    PreviewStreamServer.recordEvent(
+                            "photo_captured", "trigger=" + trigger + ", bytes=" + bytes);
                     if (collectorConfig.canUpload()) {
                         spoolFrame(file, trigger, startedAt);
                         ProbeLog.append(
@@ -289,6 +294,8 @@ public class CaptureForegroundService extends LifecycleService {
 
                 @Override
                 public void onError(@NonNull ImageCaptureException exception) {
+                    PreviewStreamServer.recordEvent(
+                            "photo_failed", "trigger=" + trigger + ", code=" + exception.getImageCaptureError());
                     ProbeLog.append(
                             CaptureForegroundService.this,
                             "CAPTURE_FAILED",
