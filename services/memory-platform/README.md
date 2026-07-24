@@ -67,7 +67,7 @@ EMBEDDING_MODEL=your-embedding-model             # 维度须为 1024（见 app/m
 4. **检索**：where-is 通道 2 新增语音转写路（`audio_assets.embedding` 余弦，无 embedding 时降级 pg_trgm），与文本路/视觉路按权重融合（`RETRIEVAL_FUSION_TRANSCRIPT_WEIGHT=0.5`），命中转写作为 Answerer 精判上下文；scene-search 响应新增 `audio_hits`。
 5. **遗忘**：forget-recent 新增 `audio` 子系统（默认 scope 已包含），删除窗口内 `audio_assets` 及其观察；TTL 清理对音频证据文件天然生效（媒体类型无关）。
 
-**ASR sidecar 契约**（`ASR_PROVIDER=http`，可用 faster-whisper 自建）：
+**ASR sidecar 契约**（`ASR_PROVIDER=http`；参考实现见 `services/asr-sidecar/`，基于 faster-whisper，含 Dockerfile 与 compose 编排）：
 
 ```
 POST {ASR_BASE_URL}/transcribe
@@ -78,6 +78,18 @@ Authorization: Bearer <ASR_API_KEY>        # 可选
 ```
 
 任何超时/网络错误/契约不符 → 平台侧降级为 None（跳过该条，记审计）。
+
+**从 fake 切换到真实 ASR**（faster-whisper sidecar）：
+
+```bash
+# 1. 起 sidecar（首次构建会预下载模型；或本地 venv 运行，见 services/asr-sidecar/README.md）
+docker compose -f infra/docker-compose.yml up -d asr-sidecar   # 端口 8100
+
+# 2. 平台侧 .env / 环境变量（平台本地运行，不在 compose 内）
+ASR_PROVIDER=http
+ASR_BASE_URL=http://localhost:8100
+ASR_API_KEY=...                # 与 sidecar 的 ASR_API_KEY 一致；两边都为空则可省略
+```
 
 **配置项**（默认值见 `app/config.py`）：`ASR_PROVIDER=none|fake|http`（默认 none，语音流水线关闭）、`ASR_BASE_URL`、`ASR_API_KEY`、`ASR_TIMEOUT_SECONDS=60`、`RETRIEVAL_FUSION_TRANSCRIPT_WEIGHT=0.5`。
 
@@ -99,10 +111,14 @@ iOS App 每次采集会话导出 `session.json`（采集清单）。上云时**�
 
 ## API 清单
 
+> 完整 API 参考（请求/响应字段、真实示例、错误码、幂等/去重/异步行为）：[docs/engineering/Reality-Memory-Platform-API-Reference-v0.1.md](../../docs/engineering/Reality-Memory-Platform-API-Reference-v0.1.md)
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | POST | `/internal/v1/envelopes` | 采集入口（multipart：envelope JSON + 图片），幂等 + phash 去重 |
 | GET | `/v1/memory/objects/where-is?name=手机[&deep=true]` | 找物双通道，返回 FindObjectResponse（位置/新鲜度/置信度/alternatives/timeline_url） |
+| POST | `/v1/memory/scene-search` | 场景检索（文本 query 或 base64 图片 query，CLIP 跨模态） |
+| GET | `/v1/memory/frames/{frame_asset_id}/evidence` | 取帧原始证据图（TTL 内有效，过期/不存在返回 404） |
 | GET | `/v1/memory/objects/{entity_id}/timeline` | 实体事件时间线（含 supersedes 链） |
 | POST | `/v1/memory/correct` | 用户纠正 `{entity_id, field, value, reason}` → USER_CORRECTION 事件 + 投影重算 |
 | POST | `/v1/memory/forget-recent` | 近窗遗忘 `{minutes, scope[]}` → deletion_request/jobs → tombstone + audit |
