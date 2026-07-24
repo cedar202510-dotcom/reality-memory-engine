@@ -280,13 +280,27 @@ class RealityRuntimeService : LifecycleService() {
         signalKind: String,
         modalities: Set<CaptureModality>,
         motion: MotionTrigger? = null,
+        cameraWaitAttempt: Int = 0,
     ) {
         if (state != SessionState.ACTIVE) return
-        if (
-            !cameraReady &&
+        val needsCamera =
             modalities.any { it == CaptureModality.IMAGE || it == CaptureModality.VIDEO }
-        ) {
+        if (!cameraReady && needsCamera) {
             ensureCameraPrepared()
+            if (cameraWaitAttempt < CAMERA_READY_MAX_ATTEMPTS) {
+                handler.postDelayed(
+                    {
+                        capture(
+                            signalKind = signalKind,
+                            modalities = modalities,
+                            motion = motion,
+                            cameraWaitAttempt = cameraWaitAttempt + 1,
+                        )
+                    },
+                    CAMERA_READY_RETRY_DELAY_MS,
+                )
+                return
+            }
         }
         val window = repository.beginWindow(signalKind, modalities, motion)
         val remaining = AtomicInteger(modalities.size)
@@ -438,5 +452,7 @@ class RealityRuntimeService : LifecycleService() {
         private const val CANCELLED_DISPLAY_MS = 3_000L
         private const val BASELINE_CAPTURE_INTERVAL_MS = 60_000L
         private const val REMINDER_DISPLAY_MS = 8_000L
+        private const val CAMERA_READY_RETRY_DELAY_MS = 150L
+        private const val CAMERA_READY_MAX_ATTEMPTS = 20
     }
 }

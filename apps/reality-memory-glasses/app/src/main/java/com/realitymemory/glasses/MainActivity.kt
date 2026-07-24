@@ -79,6 +79,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         maybeShowDebugReminder()
+        maybeHandleDebugCommand()
     }
 
     override fun onDestroy() {
@@ -160,6 +161,15 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun maybeHandleDebugCommand() {
+        if (!BuildConfig.DEBUG) return
+        when (intent?.getStringExtra(EXTRA_DEBUG_COMMAND)) {
+            DEBUG_COMMAND_REMEMBER_NOW -> rememberNow()
+            DEBUG_COMMAND_END_SESSION -> cancelCurrentSession()
+        }
+        intent?.removeExtra(EXTRA_DEBUG_COMMAND)
+    }
+
     private fun refresh() {
         currentStatus = RuntimeStatusStore.read(this)
         glassesUi.render(currentStatus)
@@ -209,10 +219,13 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPENED_FROM_WEAR = "opened_from_wear"
         const val EXTRA_DEBUG_REMINDER_TEXT = "debug_reminder_text"
+        const val EXTRA_DEBUG_COMMAND = "rme_debug_command"
 
         private const val ACTION_SPRITE_BUTTON_CLICK =
             "com.android.action.ACTION_SPRITE_BUTTON_CLICK"
         private const val ACTION_AI_START = "com.android.action.ACTION_AI_START"
+        private const val DEBUG_COMMAND_REMEMBER_NOW = "remember_now"
+        private const val DEBUG_COMMAND_END_SESSION = "end_session"
         private const val DEBUG_REMINDER_DELAY_MS = 400L
         private const val CANCELLED_DISPLAY_MS = 3_000L
     }
