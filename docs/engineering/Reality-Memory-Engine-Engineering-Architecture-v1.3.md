@@ -4,6 +4,7 @@
 > 文档日期：2026-07-24  
 > 母版来源：Reality-Memory-Engine-PRD-v1.3.md  
 > 文档用途：让研发、算法、数据、设备和测试团队理解从采集到沉淀的完整工程链路
+> 当前状态：完整工程解释；部署和通信细节以 `docs/architecture/` 为准
 
 > 架构拆分说明：本文保留完整流水线说明。当前关于眼镜直传、手机中继、戒指路径、
 > 云端沉淀和 Agent 调用的分层工程口径，见
@@ -13,9 +14,9 @@
 
 ## 1. 核心结论
 
-1. 用户侧只有一个 Reality 手机 App，它是首版账号、配对、策略、加密队列、上传、管理和提醒的默认网关。
-2. 最终眼镜采集路径是运行在 Rokid Glasses RV101 眼镜本机的原生 Android Runtime；它只负责设备侧低打扰采集，不承载用户账号或记忆本体。
-3. CXR-L iOS/Android 是统一手机 App 内的第一阶段过渡 Adapter，用来提前验证真实图片、短音频、授权和后端契约；它不能作为最终后台无感采集方案。
+1. 用户侧只有一个 Reality 手机 App，负责账号、配对、策略、管理、查询、提醒和必要时的数据中继。
+2. 正式眼镜采集路径是运行在 Rokid Glasses RV101 本机的原生 Android Runtime；它负责设备侧低打扰采集、本地加密队列、受限上行和提醒呈现，不承载长期记忆本体。
+3. CXR-L iOS/Android 是统一手机 App 内的历史兼容 Adapter，只用于参考和测试数据，不作为当前正式眼镜路径。
 4. 产品不录长视频，不接收连续视频流。只支持单图、前后帧、2-3 秒短视频、短音频、传感器窗口和结构化设备事件。
 5. 每种模态有自己的解析器，但所有解析器都输出同一套 `AtomicObservation` 观察契约。
 6. 模型只创建观察和候选，不能直接写入 `MemoryEvent`，也不能直接更新 `StateProjection`。
@@ -51,7 +52,8 @@
 
 这条链路里最重要的分工是：
 
-- 眼镜 Runtime 负责眼镜本机低打扰采集，统一手机网关负责账号归属、配对、策略、加密队列和上传。
+- 眼镜 Runtime 负责眼镜本机低打扰采集、本地加密队列和优先直传；统一手机 App
+  负责账号归属、配对、策略、查询和兼容中继。
 - 解析器负责把单个模态变成结构化观察。
 - Temporal Fusion 负责把多个观察组织成时间窗、动作片段和活动。
 - Memory Core 负责候选是否能成为事实。
@@ -91,19 +93,18 @@ Device Adapter 处理硬件和厂商 SDK 差异，包括：
 
 新增硬件只增加 Adapter、`DeviceCapabilityProfile` 和校准参数，不新增一套记忆本体。
 
-### 3.2 Reality Mobile Gateway / Edge Core
+### 3.2 Reality Mobile App / Edge Core
 
-Reality Mobile Gateway / Edge Core 是可复用的用户侧通用逻辑，包括：
+手机 App 与设备 Edge Core 共享账号、设备和策略契约，但运行位置不同：
 
-- 用户账号、家庭域归属、设备绑定和本地信任状态。
-- 来源会话和佩戴会话状态机。
-- 本地策略快照和调用媒体 API 前的 `PolicyCheck`。
-- CXR-L 阶段的图片、短视频、音频和传感器采集调度。
-- 原生眼镜 Runtime 阶段的本地传输接收、背压、重试和上传。
-- 本地 VAD、预算、节流和离线队列。
-- 证据加密、过期和安全删除。
-- 厂商事件到 `SourceEnvelope` 的映射。
-- 采集尝试、策略命中、删除回执和设备审计。
+- 手机 App 负责用户账号、家庭域、设备绑定、策略配置、查询、审计和兼容中继。
+- 眼镜 Edge Core 负责佩戴会话、调用媒体 API 前的 `PolicyCheck`、本地 VAD、
+  预算、节流、离线队列、证据加密、过期和安全删除。
+- 设备 Adapter 把厂商事件映射到 `SourceEnvelope`，记录采集尝试、策略命中、
+  上传和删除审计。
+
+眼镜可使用受限设备凭证直接上传，不需要持有完整用户 Token。手机中继时必须保留
+原始生产设备和时间，不得把手机接收时间伪装成采集时间。
 
 ### 3.3 Memory Platform
 
@@ -137,6 +138,10 @@ Memory Platform 是设备无关的中台能力，包括：
 | `ReminderDelivery` | 提醒投递 | 否 | 提醒发出、查看、忽略和追问结果 |
 | `PolicySnapshot` | 策略快照 | 否 | 当前采集、处理、留存和调用权限 |
 | `DeletionTombstone` | 删除墓碑 | 审计 | 不含被删内容，只证明删除范围和完成状态 |
+
+`SignalCandidate`、`ReminderDecision` 和 `ReminderDelivery` 目前只固定职责边界。
+它们的业务字段、决策策略和设备下行载荷尚未完成 review，不属于正式 v1 数据
+Schema。
 
 ---
 
@@ -664,7 +669,8 @@ TTL 是上限，删除事件优先于 TTL。媒体对象使用独立 DEK；删�
 | Event Store | 接受通过 Gate 的候选，追加 MemoryEvent，保证幂等 |
 | Projection Engine | 按实体和状态维度消费事件，生成当前状态、趋势和冲突 |
 | Query & Search | 支持找物、时间线、空间摘要、耗材、偏好和任务查询 |
-| Signal & Reminder Service | 从投影变化生成提醒候选并完成受控投递 |
+| Signal Service | 从投影变化生成提醒候选 |
+| Reminder Decision / Delivery | 经过授权、冷却和 Agent 判断后生成并投递设备消息；业务字段待 review |
 | Privacy & Audit | 删除、近窗遗忘、脱敏、tombstone 和用户可见审计 |
 
 ---
@@ -774,11 +780,13 @@ outbox_events
 ## 16. 与当前代码和文档的关系
 
 - 统一手机 App：`apps/mobile-app/`
-- RV101 眼镜端原生 Runtime：`apps/rokid-glass-probe/`
+- RV101 正式眼镜端 App：`apps/reality-memory-glasses/`
+- RV101 能力探针与排障基线：`apps/rokid-glass-probe/`
+- 设备、手机与云端通信：`docs/architecture/04-Device-Cloud-Communication.md`
 - 正式多模态数据契约：`docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md`
 - 历史数据契约 Review：`docs/engineering/archive/Reality-Memory-Engine-Contract-Review-v0.1.md`
 - 已归档 CXR-L 过渡探针：`archive/cxrl-probe/README.md`，仅作 SDK 参考和历史实验，不是第二个正式手机 App。
 - CXR-L Token 与状态历史记录：`archive/cxrl-probe/docs/CXRL-TOKEN-AND-STATE-FLOW.md`
 - 活动边界与 Session 设计历史记录：`archive/cxrl-probe/docs/ACTIVITY-SESSION-AGENT-DESIGN.md`
-- 当前结构化输出 Schema 参考：`archive/cxrl-probe/schemas/activity-session-update.schema.json`
-- 工程链路可视化：`docs/visuals/reality-memory-engine-flow-v1.3.html`
+- 历史 CXR-L 结构化输出参考：`archive/cxrl-probe/schemas/activity-session-update.schema.json`
+- 可视化入口：`docs/visuals/README.md`；旧 v1.3 工程流程图已归档。

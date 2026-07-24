@@ -1,9 +1,10 @@
 # 数据采集技术架构
 
-> 文档版本：v0.2  
+> 文档版本：v0.3
 > 负责范围：戒指、眼镜、手机、触发、采集、短期证据和云端传输  
 > 上游产品文档：[分层技术架构](README.md)  
 > 下游接口文档：[云端记忆平台架构](02-Memory-Platform-Architecture.md)
+> 通信接口文档：[设备与云端通信](04-Device-Cloud-Communication.md)
 
 ## 1. 目标
 
@@ -22,15 +23,22 @@
 
 ## 2. 当前事实与可行性结论
 
-### 2.1 已验证事实
+### 2.1 已验证与已实现事实
 
-- iOS Reality App 可以通过 CXR-L 获取眼镜图片和短音频。
-- 同一 iOS App 可以通过 CoreBluetooth 连接 Ring Sound 戒指。
+- 历史 iOS Reality App 可以通过 CXR-L 获取眼镜图片和短音频。
+- 历史 iOS App 可以通过 CoreBluetooth 连接 Ring Sound 戒指。
 - 戒指使用 Nordic UART Service，协议版本为 v4。
 - 手机可接收戒指 `0x0605` 六轴 IMU 批次，并用透明阈值规则判断快速移动。
 - 快速移动判断可以关联一次眼镜图片请求和一个短音频窗口。
-- 当前 RV101 Probe 已搭建 CameraX、前台服务和佩戴/摘下广播框架，但尚未真机
-  验证。
+- 旧测试链已经留下小型图片、音频和外置戒指 IMU 兼容数据包。
+- 正式 `apps/reality-memory-glasses/` 已实现 CameraX 图片/短视频、AudioRecord、
+  SensorManager、佩戴广播、会话状态、本地 AES-256-GCM Evidence 队列和测试提醒
+  入口。
+- 正式 App 已按 v1 契约生成 `CaptureSession`、`CaptureIntent`、
+  `CaptureWindow`、`CaptureAttempt`、`SourceEnvelope` 和 `EvidenceItem`。
+
+以上正式眼镜 App 能力是代码实现事实，不等于 RV101 真机已经通过。相机、音频、
+传感器、佩戴广播、后台和功耗仍需持有开发线的队友验证。
 
 ### 2.2 Android API 层结论
 
@@ -46,60 +54,56 @@ Android 原生平台支持 BLE Central，也就是由 Android 设备扫描并作
 但目前没有找到 Rokid 针对 RV101 明确承诺“第三方 APK 可长期稳定作为 BLE
 Central”的官方条款。官方裸机 Sample 也没有 BLE 示例。因此当前结论必须写成：
 
-> Android API 层可实现，RV101 硬件、固件权限、后台连接和多无线电共存仍待开发
-> 线到位后真机确认，不能提前标记为已支持。
+> Android API 层可实现，RV101 硬件、固件权限、后台连接和多无线电共存仍待真机
+> 确认，不能提前标记为已支持。
 
 ### 2.3 眼镜直连云端结论
 
-Android App 可以通过 `INTERNET` 和 `ACCESS_NETWORK_STATE` 使用 HTTPS。当前
-RV101 Probe 的 Manifest 还没有声明网络权限，也没有上传模块。眼镜直传云端在
-标准 Android 层可实现，但仍需要真机验证：
+Android App 可以通过 `INTERNET` 和 `ACCESS_NETWORK_STATE` 使用 HTTPS。正式
+眼镜 App 已声明网络权限并具备本地加密 Outbox，但尚未实现设备绑定和上传客户端。
+眼镜直传云端在标准 Android 层可实现，但仍需要真机验证：
 
 - 眼镜是否能获得稳定、可用且经过验证的互联网连接。
 - 后台和熄屏时网络请求是否持续。
 - BLE、Wi-Fi、CameraX、AudioRecord 同时工作是否互相影响。
 - 上传对温升、耗电和采集延迟的影响。
 
-## 3. 三档设备路径
+## 3. 当前设备路径
 
-### 3.1 P0 优先路径：戒指直连眼镜，眼镜直传云端
+### 3.1 P0 主路径：眼镜自主触发，眼镜直传云端
 
 ```text
-Ring Sound
-  -> BLE NUS
-Glass RingAdapter
-  -> SensorWindow / HardwareEvent
-Local Trigger Engine
+Wear Event / Glass IMU / 用户“记一下”
+  -> Local Trigger Engine
   -> CaptureIntent
-Local PolicyCheck
+  -> Local PolicyCheck
   -> CameraX / AudioRecord / SensorManager
-Encrypted Evidence Buffer
+  -> Encrypted Evidence Buffer
   -> SourceEnvelope + EvidenceItem
-Glass Upload Client
+  -> Glass Upload Client
   -> Memory Platform Ingest API
 ```
 
-这是长期首选，因为触发和采集都在用户佩戴的设备附近完成，不依赖手机 App
-存活，延迟也最低。
+这是当前正式首选，因为触发和采集都在眼镜本机完成，不依赖手机 App 或戒指存活。
 
 成立条件：
 
-1. RV101 可以扫描、连接并稳定订阅戒指 NUS。
-2. 眼镜 Runtime 可以在受支持的生命周期内维持戒指通知。
-3. 戒指和眼镜的功耗满足目标佩戴时长。
+1. RV101 的佩戴广播、SensorManager、CameraX 和 AudioRecord 真机可用。
+2. 眼镜 Runtime 可以在受支持的生命周期内保持前台服务。
+3. 运动触发、基线采集和媒体策略满足功耗、温升与信息增量要求。
 4. 眼镜能直接完成 HTTPS 上传或离线加密排队。
 5. 用户暂停、摘下、策略收紧和删除能及时作用到眼镜。
 
-### 3.2 P1 兼容路径：戒指经手机触发眼镜 Runtime
+### 3.2 P1 可选戒指路径：直连眼镜或经手机触发
 
 ```text
 Ring Sound
-  -> BLE NUS
-Reality Mobile App
+  -> BLE NUS -> Glass RingAdapter
+  或
+  -> BLE NUS -> Reality Mobile App
   -> SensorWindow
   -> Local Trigger Engine
   -> CaptureIntent
-  -> Local Command Transport
 Glass Runtime
   -> PolicyCheck
   -> Capture
@@ -108,14 +112,15 @@ Glass Runtime
 
 使用条件：
 
-- RV101 不支持或不能稳定承担 BLE Central。
-- 戒指需要手机端协议或厂商 SDK。
-- 眼镜直传不稳定，但手机在附近且中继可靠。
+- 戒指信号能提高显式语音、手势或动作触发价值。
+- RV101 可以稳定承担 BLE Central 时优先直连眼镜。
+- RV101 不能稳定承担 BLE Central 时由统一手机 App 中继触发。
 
-这条路径有两个独立选择，不能绑死：
+触发路径和证据上传路径是两个独立选择，不能绑死：
 
 | 触发路径 | 证据上传路径 |
 | --- | --- |
+| 戒指 -> 眼镜 | 眼镜 -> 云端 |
 | 戒指 -> 手机 -> 眼镜 | 眼镜 -> 云端 |
 | 戒指 -> 手机 -> 眼镜 | 眼镜 -> 手机 -> 云端 |
 
@@ -126,15 +131,15 @@ Glass Runtime
 - iOS App 后台或被系统终止后，BLE 连接和命令转发不保证持续。
 - 手机到原生 Glass Runtime 的本地命令通道尚未实现。
 - 手机、眼镜和戒指有三套时钟，必须显式记录不确定性。
-- 手机不在附近时，戒指触发链失效。
+- 手机不在附近时，经手机的戒指触发链失效。
 
-### 3.3 P2 降级路径：无戒指的眼镜自主采集
+### 3.3 P2 低资源降级路径
 
 ```text
 Wear Event
   -> 5 秒提示和策略确认
   -> CaptureSession ACTIVE
-Glass IMU / 定时 / 场景变化 / 本地 VAD
+用户显式“记一下” / 极低频基线 / 受限 Glass IMU
   -> CaptureIntent
   -> 有界图片、短视频或短音频
   -> 云端
@@ -142,20 +147,20 @@ Glass IMU / 定时 / 场景变化 / 本地 VAD
 
 使用条件：
 
-- 戒指链路无法达到稳定性或续航指标。
-- 用户没有戒指。
-- 当前活动不适合依赖手部传感器。
+- 自动媒体触发无法达到续航或温升要求。
+- 后台生命周期不允许稳定自动采集。
+- 用户选择更严格的隐私或功耗模式。
 
-这不是完全放弃触发，而是改用眼镜自身信号。Runtime 可以持续协调，但不得连续
-录制。默认触发组合建议：
+Runtime 可以持续协调，但不得连续录制。降级后优先保留：
 
 - 佩戴后一次提示，建立采集 Session。
+- 用户显式“记一下”。
 - 低频定时图片作为基线。
-- 眼镜 IMU 或场景差异提高短窗采集密度。
-- 本地 VAD 只保存命中的短音频片段。
+- 在设备预算允许时使用眼镜 IMU 或场景差异提高短窗采集密度。
+- 音频策略允许时，本地 VAD 只保存命中的短音频片段。
 - 静止、低电量、过热或隐私场景降低或停止采集。
 
-### 3.4 Phase 0 当前过渡路径：手机 CXR-L
+### 3.4 历史兼容路径：手机 CXR-L
 
 ```text
 Ring Sound
@@ -165,7 +170,7 @@ Ring Sound
   -> session.json + evidence + ring/imu.ndjson
 ```
 
-这条路径只用于：
+这条路径现在只用于：
 
 - 采集真实多模态样本。
 - 验证时间对齐和关联编号。
@@ -237,7 +242,11 @@ Ring Sound
 | `LocalCommandTransport` | 在兼容路径接收手机发来的采集意图 |
 | `AuditReporter` | 记录策略命中、采集尝试、上传和删除结果 |
 
-当前 `apps/rokid-glass-probe/` 只实现了其中一部分 Camera 和 Session 骨架。
+正式 `apps/reality-memory-glasses/` 已实现佩戴接收、会话协调、眼镜 IMU、
+确定性运动触发、CameraX、AudioRecord、本地加密队列、来源信封和审计。当前仍缺
+戒指 Adapter、签名策略、本地 VAD、上传客户端、TTL 实际清理、删除回执和手机
+兼容命令。旧
+`apps/rokid-glass-probe/` 只保留为 Camera 与系统事件排障基线。
 
 ## 6. 采集状态机
 
@@ -451,7 +460,7 @@ ACTIVE_OFFLINE
 - 删除与上传竞态时，删除优先。
 - Evidence 删除后保留的审计记录不得包含可恢复媒体。
 
-## 12. 开发线到位后的真机闸门
+## 12. RV101 真机闸门
 
 ### G1：系统能力
 
@@ -471,7 +480,14 @@ adb shell getprop ro.build.version.sdk
 - App 可以获得 Nearby Devices 权限
 - 固件版本和构建号
 
-### G2：戒指扫描与连接
+### G2：正式 App 基础采集
+
+- 验证佩戴、摘下和镜腿广播。
+- 验证 CameraX 无业务预览图片与 2-3 秒短视频。
+- 验证 8 通道 AudioRecord；不支持时记录单通道降级。
+- 验证眼镜加速度计、陀螺仪、轴向和采样时间。
+
+### G3：可选戒指扫描与连接
 
 - 以 NUS Service UUID 过滤扫描。
 - 连接已确认戒指并发现 TX/RX Characteristic。
@@ -479,7 +495,7 @@ adb shell getprop ro.build.version.sdk
 - 启动/停止 IMU 并验证 `0x0605` CRC、序号和采样率。
 - 断连后自动重连并重新开启通知。
 
-### G3：后台稳定性
+### G4：后台稳定性
 
 分别测试：
 
@@ -492,7 +508,7 @@ adb shell getprop ro.build.version.sdk
 目标是 30 分钟连续监听无无解释断连。若系统只允许可见 Activity 或前台服务，
 必须如实记录，不得把实验结果描述为后台常驻已解决。
 
-### G4：多资源共存
+### G5：多资源共存
 
 同时运行：
 
@@ -503,15 +519,15 @@ adb shell getprop ro.build.version.sdk
 
 记录丢包率、拍照延迟、音频断流、CPU、内存、温度和耗电。
 
-### G5：眼镜直传
+### G6：眼镜直传
 
-- 添加 `INTERNET` 和 `ACCESS_NETWORK_STATE`。
+- 使用现有 `INTERNET` 和 `ACCESS_NETWORK_STATE` 权限实现上传客户端。
 - 使用测试设备凭证向开发 Ingest API 上传元数据。
 - 再上传小图片和短音频。
 - 验证断网排队、恢复、幂等和 TTL。
 - 禁止在验证阶段直接接生产用户数据。
 
-### G6：手机兼容命令
+### G7：手机兼容命令
 
 如果 G2 或 G3 不通过，验证手机到眼镜 Runtime 的版本化命令通道：
 
@@ -521,34 +537,25 @@ adb shell getprop ro.build.version.sdk
 - 返回逐模态结果。
 - 手机离线或 App 被杀时的明确降级。
 
-### G7：Go / No-Go 判定
+### G8：Go / No-Go 判定
 
 | 结果 | 采用路径 |
 | --- | --- |
-| G2、G3、G4、G5 全部通过 | P0 戒指直连眼镜，眼镜直传云端 |
-| 戒指直连不通过，手机命令和眼镜直传通过 | P1 手机触发，眼镜直传 |
-| 戒指直连和眼镜直传不通过，手机中继通过 | P1 全链路手机中继 |
-| 戒指链路均不通过，眼镜采集通过 | P2 无戒指的眼镜自主采集 |
+| G2、G4、G5、G6 全部通过 | P0 眼镜自主采集并直传云端 |
+| P0 通过且可选戒指 G3 通过 | P0 + 戒指直连增强 |
+| 戒指直连不通过，手机命令和眼镜直传通过 | P1 手机触发、眼镜直传 |
+| 眼镜直传不通过，手机中继通过 | P1 手机兼容中继 |
+| 自动采集功耗或生命周期不通过 | P2 显式触发和低资源模式 |
 | 眼镜后台采集也不通过 | 设备路线阻塞，需要 Rokid 系统支持或更换硬件 |
 
 ## 13. 当前实现任务
 
-开发线到位前：
-
-1. 把手机端临时 `ProbeCaptureObservation` 映射到正式
-   `CaptureIntent + SourceEnvelope + EvidenceItem`。
-2. 继续用 iOS App 采集图片、音频和戒指窗口。
-3. 固化时间字段、传输路由和关联编号。
-4. 让 PC Viewer 展示采集意图、逐模态结果和时间不确定性。
-5. 为云端解析团队提供版本化测试数据包。
-
-开发线到位后：
-
-1. 在 Glass Probe 添加 BLE 权限、能力探测和最小 NUS 客户端。
-2. 完成 G1-G4，先决定戒指路径。
-3. 添加 AudioRecord/VAD 和短视频。
-4. 添加策略、加密队列和直传元数据。
-5. 完成 G5-G7 后冻结正式部署路径。
+1. 在持有 RV101 和开发线的电脑完成 G1、G2、G4、G5。
+2. 修正真机返回的图片、视频、音频和 IMU 参数，不用桌面假设伪造能力。
+3. 实现设备绑定、受限凭证和三步 Evidence 上行。
+4. 实现 TTL、断网重试、删除回执和设备解绑。
+5. 在主路径稳定后再决定是否实现眼镜直连戒指；戒指不阻塞 P0。
+6. 依据真机数据决定下行轮询、长连接或系统推送，业务载荷另行 review。
 
 ## 14. 参考资料
 
@@ -560,3 +567,4 @@ adb shell getprop ro.build.version.sdk
 - [Rokid 眼镜端裸机开发 v1.0.0](https://custom.rokid.com/prod/rokid_web/ff28c865a9634876be98cbc293588460/pc/cn/index.html)
 - `hardware/ring-sound-sdk/protocol.md`
 - `apps/rokid-glass-probe/docs/ROKID-DEVELOPMENT-GUIDE.md`
+- [设备与云端通信](04-Device-Cloud-Communication.md)
