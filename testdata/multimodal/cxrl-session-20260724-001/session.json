@@ -1,0 +1,337 @@
+{
+  "audioObservations" : [
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 65920,
+      "channels" : 1,
+      "codec" : "PCM_S16LE_16KHZ",
+      "durationMilliseconds" : 1111,
+      "endedAt" : "2026-07-24T01:07:09Z",
+      "id" : "96F7B31A-BB53-4E26-918A-CE1FB337835D",
+      "localMediaReference" : "evidence/96f7b31a-bb53-4e26-918a-ce1fb337835d.pcm",
+      "peakDBFS" : -30.852258983327545,
+      "sessionID" : "CE998EDB-CC5F-4C18-A93F-55D6B97E7F9D",
+      "startedAt" : "2026-07-24T01:07:08Z",
+      "trigger" : "SESSION_VAD"
+    },
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 106880,
+      "channels" : 1,
+      "codec" : "PCM_S16LE_16KHZ",
+      "durationMilliseconds" : 2366,
+      "endedAt" : "2026-07-24T01:08:04Z",
+      "id" : "9A16B28D-143B-42E3-95C6-32BEED50F285",
+      "localMediaReference" : "evidence/9a16b28d-143b-42e3-95c6-32beed50f285.pcm",
+      "peakDBFS" : -28.3998444278496,
+      "sessionID" : "CE998EDB-CC5F-4C18-A93F-55D6B97E7F9D",
+      "startedAt" : "2026-07-24T01:08:02Z",
+      "trigger" : "SESSION_VAD"
+    },
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 46080,
+      "channels" : 1,
+      "codec" : "PCM_S16LE_16KHZ",
+      "durationMilliseconds" : 1183,
+      "endedAt" : "2026-07-24T01:08:08Z",
+      "id" : "611E5422-428D-43E6-A982-CD414BF63AB7",
+      "localMediaReference" : "evidence/611e5422-428d-43e6-a982-cd414bf63ab7.pcm",
+      "peakDBFS" : -30.212606454515182,
+      "sessionID" : "CE998EDB-CC5F-4C18-A93F-55D6B97E7F9D",
+      "startedAt" : "2026-07-24T01:08:06Z",
+      "trigger" : "SESSION_VAD"
+    },
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 239360,
+      "channels" : 1,
+      "codec" : "PCM_S16LE_16KHZ",
+      "durationMilliseconds" : 6499,
+      "endedAt" : "2026-07-24T01:08:18Z",
+      "id" : "4E9CCC89-4F22-42C1-BD2E-84F46EFA188F",
+      "localMediaReference" : "evidence/4e9ccc89-4f22-42c1-bd2e-84f46efa188f.pcm",
+      "peakDBFS" : -26.57621139612552,
+      "sessionID" : "CE998EDB-CC5F-4C18-A93F-55D6B97E7F9D",
+      "startedAt" : "2026-07-24T01:08:11Z",
+      "trigger" : "SESSION_VAD"
+    },
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 87680,
+      "channels" : 1,
+      "codec" : "PCM_S16LE_16KHZ",
+      "durationMilliseconds" : 1757,
+      "endedAt" : "2026-07-24T01:08:23Z",
+      "id" : "F3014B67-9525-47BE-9B50-33413326AFEF",
+      "localMediaReference" : "evidence/f3014b67-9525-47be-9b50-33413326afef.pcm",
+      "peakDBFS" : -29.434278065196615,
+      "sessionID" : "CE998EDB-CC5F-4C18-A93F-55D6B97E7F9D",
+      "startedAt" : "2026-07-24T01:08:21Z",
+      "trigger" : "SESSION_VAD"
+    }
+  ],
+  "audioPolicy" : {
+    "maxPreRollBytes" : 32000,
+    "maxSegmentMilliseconds" : 15000,
+    "minSegmentMilliseconds" : 400,
+    "rawAudioPersistedOnlyWhenRetainLocalSamples" : true,
+    "sessionVADEnabled" : true,
+    "silenceEndMilliseconds" : 1000,
+    "speechStartFrames" : 3,
+    "streamCodec" : "PCM_S16LE_16KHZ",
+    "vadThresholdDBFS" : -38
+  },
+  "auditEvents" : [
+    {
+      "detail" : "interval=30s",
+      "id" : "E37ADC52-3B0F-484A-9516-59E11B98A309",
+      "occurredAt" : "2026-07-24T01:07:04Z",
+      "type" : "SESSION_STARTED"
+    },
+    {
+      "detail" : "duration=1111ms;bytes=65920",
+      "id" : "763982D2-0FA8-4794-9417-DC20B4A5CBC8",
+      "occurredAt" : "2026-07-24T01:07:09Z",
+      "type" : "AUDIO_SEGMENT_COMPLETED"
+    },
+    {
+      "id" : "B8707E04-2340-4652-9A26-8A7AF112F4A7",
+      "occurredAt" : "2026-07-24T01:07:37Z",
+      "type" : "CAPTURE_SUCCEEDED"
+    },
+    {
+      "detail" : "duration=2366ms;bytes=106880",
+      "id" : "43EAC38A-F727-48CB-AA93-0DE19042BBCB",
+      "occurredAt" : "2026-07-24T01:08:04Z",
+      "type" : "AUDIO_SEGMENT_COMPLETED"
+    },
+    {
+      "detail" : "duration=1183ms;bytes=46080",
+      "id" : "56FF210B-7E13-4BDE-8E3A-5F3468293C5E",
+      "occurredAt" : "2026-07-24T01:08:08Z",
+      "type" : "AUDIO_SEGMENT_COMPLETED"
+    },
+    {
+      "id" : "D09A3E67-68B9-42C9-9208-9D2A1BA3A203",
+      "occurredAt" : "2026-07-24T01:08:08Z",
+      "type" : "CAPTURE_SUCCEEDED"
+    },
+    {
+      "detail" : "duration=6499ms;bytes=239360",
+      "id" : "2CE95670-AEDA-4791-898D-4DD2582E16D6",
+      "occurredAt" : "2026-07-24T01:08:18Z",
+      "type" : "AUDIO_SEGMENT_COMPLETED"
+    },
+    {
+      "detail" : "duration=1757ms;bytes=87680",
+      "id" : "9C03B681-2388-4E89-95F5-A86688C2B94C",
+      "occurredAt" : "2026-07-24T01:08:23Z",
+      "type" : "AUDIO_SEGMENT_COMPLETED"
+    },
+    {
+      "detail" : "USER_PAUSED",
+      "id" : "DF48199F-6DCA-4A2B-82A2-1CC6F7237D83",
+      "occurredAt" : "2026-07-24T01:08:35Z",
+      "type" : "SESSION_PAUSED"
+    },
+    {
+      "id" : "7A2A660F-DCF3-46CF-B0D6-6E05BAD147A5",
+      "occurredAt" : "2026-07-24T01:08:38Z",
+      "type" : "CAPTURE_SUCCEEDED"
+    },
+    {
+      "detail" : "后台",
+      "id" : "B8E81DB4-E87C-4B2E-97A9-864BB55673A7",
+      "occurredAt" : "2026-07-24T01:21:02Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "非活跃",
+      "id" : "DF16AA3C-7ACD-4F7A-809B-EEAC3B6C843C",
+      "occurredAt" : "2026-07-24T01:21:12Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "前台",
+      "id" : "FE2CCAFF-3E77-4F06-B0F0-96202159E87D",
+      "occurredAt" : "2026-07-24T01:21:13Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "后台",
+      "id" : "9C761DA5-F639-4762-8855-59ADC284033A",
+      "occurredAt" : "2026-07-24T01:21:14Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "非活跃",
+      "id" : "7346B4F9-3F65-4B46-B103-2F9F61A88BAC",
+      "occurredAt" : "2026-07-24T01:21:25Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "前台",
+      "id" : "6FD4AFE1-0AA1-44C5-9C4E-55D79FF80C78",
+      "occurredAt" : "2026-07-24T01:21:26Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "后台",
+      "id" : "E28861FB-C8B6-416D-9D3E-9BC3FC619472",
+      "occurredAt" : "2026-07-24T01:42:49Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "非活跃",
+      "id" : "115D69E9-2998-40D4-A5AA-2D6D06036CF8",
+      "occurredAt" : "2026-07-24T01:47:14Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "前台",
+      "id" : "BB07CC87-4AE1-4400-937B-DF713DEC068B",
+      "occurredAt" : "2026-07-24T01:47:15Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "非活跃",
+      "id" : "E3832AD5-5757-4357-A46B-C38B87750139",
+      "occurredAt" : "2026-07-24T01:47:15Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "后台",
+      "id" : "606BFCA8-911C-4140-9440-D50D12B91847",
+      "occurredAt" : "2026-07-24T01:47:16Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "非活跃",
+      "id" : "FD42F203-1D82-468D-8143-AC3139A72C44",
+      "occurredAt" : "2026-07-24T01:47:23Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "前台",
+      "id" : "3F53503A-AA97-4B1A-B154-0A4E841CE227",
+      "occurredAt" : "2026-07-24T01:47:23Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "非活跃",
+      "id" : "EB990FC1-1680-41B4-B0DC-52177E3CCB8C",
+      "occurredAt" : "2026-07-24T01:47:24Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "后台",
+      "id" : "C0E33161-0BC6-4D3A-A94D-8D0A9DE70858",
+      "occurredAt" : "2026-07-24T01:47:25Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "非活跃",
+      "id" : "14B5E0EE-29C2-46CB-90B0-AC663BEEC81E",
+      "occurredAt" : "2026-07-24T01:47:25Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "前台",
+      "id" : "7E4FC03F-24D8-48B0-BEE0-EDC949DD5771",
+      "occurredAt" : "2026-07-24T01:47:26Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "后台",
+      "id" : "E6DFCFC0-B85C-4A75-8896-23A4BA22D5F2",
+      "occurredAt" : "2026-07-24T01:47:35Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "非活跃",
+      "id" : "65EE751D-7A44-4D1C-9990-45FF74DD4D56",
+      "occurredAt" : "2026-07-24T01:48:24Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "前台",
+      "id" : "DCB197D4-F977-4649-B082-11A7C0B5E2DA",
+      "occurredAt" : "2026-07-24T01:48:24Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "非活跃",
+      "id" : "4455DD6D-10B9-4DE1-B9CA-50A1EE100F87",
+      "occurredAt" : "2026-07-24T01:48:25Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    },
+    {
+      "detail" : "后台",
+      "id" : "5F89EAB6-D9E4-4737-8462-E1392A4D27E4",
+      "occurredAt" : "2026-07-24T01:48:25Z",
+      "type" : "APP_LIFECYCLE_CHANGED"
+    }
+  ],
+  "deviceSummaryAtStart" : "尚未读取",
+  "id" : "CE998EDB-CC5F-4C18-A93F-55D6B97E7F9D",
+  "intervalSeconds" : 30,
+  "localMediaTTLSeconds" : 86400,
+  "observations" : [
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 81028,
+      "captureLatencyMilliseconds" : 3248,
+      "completedAt" : "2026-07-24T01:07:37Z",
+      "deviceSummary" : "尚未读取",
+      "id" : "8A29610F-9887-4F03-8061-B7745CAF9ADE",
+      "localMediaReference" : "evidence/8a29610f-9887-4f03-8061-b7745caf9ade.jpg",
+      "outcome" : "SUCCEEDED",
+      "scheduledAt" : "2026-07-24T01:07:34Z",
+      "sessionID" : "CE998EDB-CC5F-4C18-A93F-55D6B97E7F9D",
+      "trigger" : "PERIODIC",
+      "wearingStatus" : "未知"
+    },
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 71620,
+      "captureLatencyMilliseconds" : 3496,
+      "completedAt" : "2026-07-24T01:08:08Z",
+      "deviceSummary" : "尚未读取",
+      "id" : "6FE8FA34-ABF2-43E8-A20E-BF0653C88F07",
+      "localMediaReference" : "evidence/6fe8fa34-abf2-43e8-a20e-bf0653c88f07.jpg",
+      "outcome" : "SUCCEEDED",
+      "scheduledAt" : "2026-07-24T01:08:04Z",
+      "sessionID" : "CE998EDB-CC5F-4C18-A93F-55D6B97E7F9D",
+      "trigger" : "PERIODIC",
+      "wearingStatus" : "未知"
+    },
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 79076,
+      "captureLatencyMilliseconds" : 3576,
+      "completedAt" : "2026-07-24T01:08:38Z",
+      "deviceSummary" : "尚未读取",
+      "id" : "2D8385AA-7E5C-408F-BB2F-2BF2A231F57B",
+      "localMediaReference" : "evidence/2d8385aa-7e5c-408f-bb2f-2bf2a231f57b.jpg",
+      "outcome" : "SUCCEEDED",
+      "scheduledAt" : "2026-07-24T01:08:34Z",
+      "sessionID" : "CE998EDB-CC5F-4C18-A93F-55D6B97E7F9D",
+      "trigger" : "PERIODIC",
+      "wearingStatus" : "未知"
+    }
+  ],
+  "retainLocalSamples" : true,
+  "schemaVersion" : "rme.capture-session.v1",
+  "startedAt" : "2026-07-24T01:07:04Z",
+  "state" : "paused",
+  "uploadAllowed" : false
+}
