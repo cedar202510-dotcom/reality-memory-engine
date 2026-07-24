@@ -1,0 +1,92 @@
+{
+  "properties": {
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "observation_ids": {
+      "items": {},
+      "title": "Observation Ids",
+      "type": "array"
+    },
+    "entity_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Entity Id"
+    },
+    "event_type": {
+      "title": "Event Type",
+      "type": "string"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+    },
+    "confidence": {
+      "additionalProperties": true,
+      "title": "Confidence",
+      "type": "object"
+    },
+    "status": {
+      "title": "Status",
+      "type": "string"
+    },
+    "conflict_set_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Conflict Set Id"
+    },
+    "source": {
+      "title": "Source",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "resolved_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Resolved At"
+    }
+  },
+  "required": [
+    "id",
+    "observation_ids",
+    "entity_id",
+    "event_type",
+    "payload",
+    "confidence",
+    "status",
+    "conflict_set_id",
+    "source",
+    "created_at",
+    "resolved_at"
+  ],
+  "title": "MemoryCandidateOut",
+  "type": "object"
+}

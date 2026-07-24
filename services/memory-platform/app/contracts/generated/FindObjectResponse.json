@@ -1,0 +1,151 @@
+{
+  "$defs": {
+    "EntityRef": {
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "canonical_name": {
+          "title": "Canonical Name",
+          "type": "string"
+        },
+        "aliases": {
+          "items": {},
+          "title": "Aliases",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "canonical_name"
+      ],
+      "title": "EntityRef",
+      "type": "object"
+    },
+    "LocationAlternative": {
+      "properties": {
+        "location": {
+          "title": "Location",
+          "type": "string"
+        },
+        "last_seen_time": {
+          "format": "date-time",
+          "title": "Last Seen Time",
+          "type": "string"
+        },
+        "confidence": {
+          "title": "Confidence",
+          "type": "number"
+        }
+      },
+      "required": [
+        "location",
+        "last_seen_time",
+        "confidence"
+      ],
+      "title": "LocationAlternative",
+      "type": "object"
+    }
+  },
+  "description": "where-is 统一响应。永远带置信度与新鲜度表述。",
+  "properties": {
+    "query": {
+      "title": "Query",
+      "type": "string"
+    },
+    "channel": {
+      "enum": [
+        "projection",
+        "deep_retrieval",
+        "not_found"
+      ],
+      "title": "Channel",
+      "type": "string"
+    },
+    "entity": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EntityRef"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "location": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Location"
+    },
+    "last_seen_time": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Seen Time"
+    },
+    "freshness": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Freshness"
+    },
+    "confidence": {
+      "default": 0.0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "answer_text": {
+      "default": "",
+      "title": "Answer Text",
+      "type": "string"
+    },
+    "alternatives": {
+      "items": {
+        "$ref": "#/$defs/LocationAlternative"
+      },
+      "title": "Alternatives",
+      "type": "array"
+    },
+    "timeline_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Timeline Url"
+    }
+  },
+  "required": [
+    "query",
+    "channel"
+  ],
+  "title": "FindObjectResponse",
+  "type": "object"
+}
