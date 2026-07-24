@@ -1,5 +1,24 @@
 # RV101 眼镜与电脑后端联调
 
+## 0. 使用正确的联调分支
+
+电脑端后端和配套脚本必须使用以下分支：
+
+```text
+codex/glasses-backend-integration
+```
+
+在测试电脑上执行：
+
+```bash
+git fetch origin
+git switch codex/glasses-backend-integration
+git pull --ff-only origin codex/glasses-backend-integration
+```
+
+后续命令都在该分支的仓库根目录执行。不要从 `main` 或其他分支启动本轮联调后端。
+APK 直接使用 GitHub 测试包内的成品，不需要重新构建。
+
 ## 1. 连接方式
 
 首轮联调不要求云端，也不要求眼镜和电脑在同一 Wi-Fi。开发线连接 RV101 后，用

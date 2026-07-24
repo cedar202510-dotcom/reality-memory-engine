@@ -20,6 +20,8 @@
 
 ## 2. 测试前准备
 
+- 仓库已经检出 `codex/glasses-backend-integration` 分支；后端和脚本均从该分支运行，
+  不要使用 `main` 或其他分支。
 - RV101 眼镜与 Rokid 专用开发线。
 - 手机 Rokid AI App 已连接眼镜，并打开“眼镜 ADB 调试”。
 - 电脑已安装 Android Platform-Tools，`adb devices` 只出现一台状态为 `device` 的设备。
