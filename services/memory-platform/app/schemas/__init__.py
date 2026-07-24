@@ -364,6 +364,24 @@ class SceneSearchRequest(BaseModel):
         return self
 
 
+class RecentFrameEntry(BaseModel):
+    """联调面板用：最近摄入的一帧（含处理状态，caption 为空表示感知尚未完成）。"""
+
+    frame_asset_id: uuid.UUID
+    captured_at: datetime
+    caption: str | None = None
+    scene_tags: list[Any] = Field(default_factory=list)
+    evidence_available: bool
+    evidence_url: str | None = None
+
+
+class RecentFramesResponse(BaseModel):
+    """最近摄入帧列表 + 摄入积压量（pending_outbox>0 表示还有帧在排队等感知）。"""
+
+    frames: list[RecentFrameEntry]
+    pending_outbox: int
+
+
 class SceneSearchHit(BaseModel):
     """单条命中：帧 + 相似度分数 + 证据可用性（媒体 TTL 删除后 evidence_url 为 null）。"""
 

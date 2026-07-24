@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Home, History, Search, Mic, UserRound, ArrowDown, ChevronLeft } from "lucide-react";
+import { Home, History, Search, Mic, UserRound, ArrowDown, ChevronLeft, Cast } from "lucide-react";
+import LiveView from "./LiveView";
+import { whereIs } from "./api";
 
 const rooms = ["客厅", "书房", "卧室", "玄关", "卫生间"];
 
@@ -55,6 +57,7 @@ const nav = [
   { id: "now", label: "现在", Icon: Home },
   { id: "rewind", label: "回拨", Icon: History },
   { id: "ask", label: "询问", Icon: Search },
+  { id: "live", label: "联调", Icon: Cast },
 ];
 
 function Placeholder({ label, item, compact = false }) {
@@ -144,7 +147,10 @@ function RewindView({ openItem }) {
 
 function AskView({ query, setQuery, ask, answer, openItem, openGlass }) {
   return <div className="page ask-page"><header className="page-heading"><div><p className="eyebrow">询问</p><h1>直接问现实。</h1><p>这是一次临时查询，不是一段需要维护的对话。</p></div></header>
-    <div className="ask-center"><QueryBar value={query} setValue={setQuery} ask={ask}/>{answer && <section className="answer"><span>当前答案</span><h2>找到了，你的充电器掉在工作桌下面了。</h2><p>最后确认于今天 10:18 · 客厅工作区</p><div><button onClick={() => openItem("charger")}>查看位置变化</button><button onClick={openGlass}>在眼镜中查看</button></div></section>}<div className="suggestions"><span>也可以问</span>{["钥匙在哪里？", "我看到第几页了？", "上次倒垃圾是什么时候？"].map(x => <button key={x} onClick={() => { setQuery(x); }}>{x}</button>)}</div></div>
+    <div className="ask-center"><QueryBar value={query} setValue={setQuery} ask={ask}/>
+      {answer?.loading && <section className="answer"><span>正在询问现实</span><h2>正在检索记忆…</h2><p>首次询问新物体会做混合召回与画面精判，可能需要几秒。</p></section>}
+      {answer && !answer.loading && <section className="answer"><span>{answer.demo ? "演示答案（后端未连接）" : "当前答案"}</span><h2>{answer.title}</h2><p>{answer.sub}</p><div>{answer.demo && <button onClick={() => openItem("charger")}>查看位置变化</button>}<button onClick={openGlass}>在眼镜中查看</button></div></section>}
+      <div className="suggestions"><span>也可以问</span>{["钥匙在哪里？", "我看到第几页了？", "上次倒垃圾是什么时候？"].map(x => <button key={x} onClick={() => { setQuery(x); }}>{x}</button>)}</div></div>
   </div>;
 }
 
@@ -222,25 +228,41 @@ function App() {
   const [selectedId, setSelectedId] = useState("charger");
   const [paused, setPaused] = useState(false);
   const [query, setQuery] = useState("我的充电器在哪里？");
-  const [answer, setAnswer] = useState(false);
+  const [answer, setAnswer] = useState(null);
   const [glass, setGlass] = useState(false);
   const [toastText, setToastText] = useState("");
   const selected = useMemo(() => items.find(x => x.id === selectedId) || items[0], [selectedId]);
   const toast = (text) => { setToastText(text); setTimeout(() => setToastText(""), 2400); };
   const navigate = (next) => { if (view !== "detail") setPrevious(view); setView(next); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const openItem = (id) => { setPrevious(view); setSelectedId(id); setView("detail"); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  const ask = () => { setAnswer(true); setView("ask"); };
+  const ask = async () => {
+    setView("ask");
+    setAnswer({ loading: true });
+    // 「我的充电器在哪里？」→「充电器」：where-is 收物体名，不收整句
+    const name = query.replace(/^(我的|请问|帮我找|找一下)+/, "").replace(/(在哪里|在哪儿|在哪|去哪了)?[？?。]*$/, "").trim() || query;
+    try {
+      const resp = await whereIs(name, true);
+      setAnswer({
+        title: resp.answer_text || `没有找到「${name}」的位置记忆。`,
+        sub: `通道 ${resp.channel} · 置信度 ${Math.round((resp.confidence || 0) * 100)}%${resp.location ? ` · ${resp.location}` : ""}`,
+      });
+    } catch {
+      // 后端未连接 → 回退演示答案，保持原型可独立展示
+      setAnswer({ demo: true, title: "找到了，你的充电器掉在工作桌下面了。", sub: "最后确认于今天 10:18 · 客厅工作区" });
+    }
+  };
   let content;
   if (view === "now") content = <NowView navigate={navigate} openItem={openItem} openGlass={() => setGlass(true)} query={query} setQuery={setQuery} ask={ask}/>;
   else if (view === "rewind") content = <RewindView openItem={openItem}/>;
   else if (view === "ask") content = <AskView query={query} setQuery={setQuery} ask={ask} answer={answer} openItem={openItem} openGlass={() => setGlass(true)}/>;
   else if (view === "all") content = <AllView openItem={openItem}/>;
   else if (view === "detail") content = <ItemDetail item={selected} back={() => navigate(previous)} toast={toast}/>;
+  else if (view === "live") content = <LiveView/>;
   else if (view === "memory") content = <MemoryView/>;
   else if (view === "devices") content = <DevicesView openGlass={() => setGlass(true)}/>;
   else if (view === "privacy") content = <PrivacyView paused={paused} setPaused={setPaused} toast={toast}/>;
   else content = <OpenView/>;
-  return <div className="app-shell"><Header paused={paused} setPaused={setPaused} navigate={navigate} toast={toast}/><Navigation view={view} navigate={navigate}/><main className="content">{content}</main>{view !== "now" && view !== "ask" && view !== "all" && view !== "detail" && <button className="floating-query" onClick={() => navigate("ask")}>询问现实</button>}{toastText && <div className="toast">{toastText}</div>}{glass && <GlassView close={() => setGlass(false)}/>}</div>;
+  return <div className="app-shell"><Header paused={paused} setPaused={setPaused} navigate={navigate} toast={toast}/><Navigation view={view} navigate={navigate}/><main className="content">{content}</main>{view !== "now" && view !== "ask" && view !== "all" && view !== "detail" && view !== "live" && <button className="floating-query" onClick={() => navigate("ask")}>询问现实</button>}{toastText && <div className="toast">{toastText}</div>}{glass && <GlassView close={() => setGlass(false)}/>}</div>;
 }
 
 export default App;

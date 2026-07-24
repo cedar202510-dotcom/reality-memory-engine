@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from datetime import timedelta
@@ -20,7 +20,15 @@ from ..llm.base import LLMClient
 from ..memory.events import append_event, latest_valid_event, record_audit
 from ..memory.projections import recompute_projection
 from ..memory.seed import get_default_household_id
-from ..models import Entity, EvidenceItem, FrameAsset, MemoryEvent, StateProjection, utcnow
+from ..models import (
+    Entity,
+    EvidenceItem,
+    FrameAsset,
+    MemoryEvent,
+    OutboxEvent,
+    StateProjection,
+    utcnow,
+)
 from ..schemas import (
     AudioSearchHit,
     CorrectRequest,
@@ -29,6 +37,8 @@ from ..schemas import (
     FindObjectResponse,
     PreferenceHit,
     PreferenceResponse,
+    RecentFrameEntry,
+    RecentFramesResponse,
     SceneSearchHit,
     SceneSearchRequest,
     SceneSearchResponse,
@@ -183,6 +193,48 @@ async def scene_search_endpoint(
         hits=items,
         audio_hits=audio_items,
     )
+
+
+@router.get("/frames/recent", response_model=RecentFramesResponse)
+async def recent_frames_endpoint(
+    limit: int = Query(default=12, ge=1, le=50),
+    session: AsyncSession = Depends(get_session),
+    ctx: GrantContext | None = Depends(grant_or_owner()),
+) -> RecentFramesResponse:
+    """联调面板：最近摄入的帧（按拍摄时间倒序）+ 感知积压量。
+
+    与原始证据同边界：仅 owner 可用，Agent token 一律 403（§5）。
+    """
+    if ctx is not None:
+        raise HTTPException(status_code=403, detail="摄入明细默认不暴露给 Agent（§5）")
+    frames = list(
+        (
+            await session.scalars(
+                select(FrameAsset).order_by(FrameAsset.captured_at.desc()).limit(limit)
+            )
+        ).all()
+    )
+    entries: list[RecentFrameEntry] = []
+    for frame in frames:
+        alive = _evidence_alive(await _evidence_item_of(session, frame))
+        entries.append(
+            RecentFrameEntry(
+                frame_asset_id=frame.id,
+                captured_at=frame.captured_at,
+                caption=frame.caption,
+                scene_tags=frame.scene_tags or [],
+                evidence_available=alive,
+                evidence_url=f"/v1/memory/frames/{frame.id}/evidence" if alive else None,
+            )
+        )
+    pending = (
+        await session.scalar(
+            select(func.count())
+            .select_from(OutboxEvent)
+            .where(OutboxEvent.processed_at.is_(None), OutboxEvent.topic == "frame.process")
+        )
+    ) or 0
+    return RecentFramesResponse(frames=entries, pending_outbox=int(pending))
 
 
 @router.get("/frames/{frame_asset_id}/evidence")

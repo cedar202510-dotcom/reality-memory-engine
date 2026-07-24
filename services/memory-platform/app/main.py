@@ -7,6 +7,7 @@ from __future__ import annotations
 import contextlib
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from .asr import build_transcriber
 from .asr.base import Transcriber
@@ -56,6 +57,15 @@ def create_app(
             await stop_workers(stop, tasks)
 
     app = FastAPI(title="RME Memory Platform", version="0.1.0", lifespan=lifespan)
+    cors_origins = [o.strip() for o in get_settings().cors_allow_origins.split(",") if o.strip()]
+    if cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     app.state.llm: LLMClient = build_llm_client(fake_llm)
     app.state.vision: VisionEncoder = (
         fake_vision if fake_vision is not None else build_vision_encoder(get_settings())

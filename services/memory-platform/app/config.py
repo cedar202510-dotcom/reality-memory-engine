@@ -101,6 +101,11 @@ class Settings(BaseSettings):
     # 查询响应 cache_until = now + 该秒数（Agent 侧缓存上限；纠正/遗忘后以平台为准）
     query_cache_ttl_seconds: int = 300
 
+    # --- 前端联调 ---
+    # 允许跨域的前端来源，逗号分隔；默认放行 Vite dev server（联调用）。
+    # 生产收紧为实际前端域名；置空则不挂 CORS 中间件。
+    cors_allow_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
     # --- Signal（主动式，M4） ---
     signal_ttl_hours: int = 24              # 信号过期时间（过期不投递）
     signal_cooldown_seconds: int = 6 * 3600  # 同一 cooldown_key 再次生成的最小间隔
