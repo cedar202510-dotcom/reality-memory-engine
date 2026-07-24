@@ -1,6 +1,6 @@
 # Reality Memory iOS App
 
-统一的 Reality Memory 手机 App。当前 iOS 版本先通过 CXR-L iOS SDK 1.0.4 接入 Rokid Glasses，用来验证图片、短音频/VAD、采集 Session 和本地证据清单；它不是眼镜专用 App，也不与音频、图片等模态拆成多个用户 App。
+统一的 Reality Memory 手机 App。当前 iOS 版本通过 CXR-L iOS SDK 1.0.4 接入 Rokid Glasses，并通过 CoreBluetooth 接入 Ring Sound 戒指，用来验证图片、短音频/VAD、戒指六轴传感器、跨设备触发、采集 Session 和本地证据清单；它不是眼镜专用 App，也不与音频、图片等模态拆成多个用户 App。
 
 验证顺序：
 
@@ -11,7 +11,23 @@
 5. 请求一张 1024 x 768 JPEG 并在手机内存中预览。
 6. 以 5、15、30 或 60 秒间隔运行受控采集 Session。
 7. 可选开启会话内短音频/VAD，将命中的语音片段元数据写入同一个 Session。
-8. 将 Session、采集结果、音频片段和审计事件写入结构化 JSON。
+8. 可连接 Ring Sound 戒指，完整记录 `0x0605` 六轴 IMU 批次。
+9. 用透明阈值规则判断“快速移动”，并触发带同一判断编号的眼镜图片和 8 秒短音频窗口。
+10. 将 Session、采集结果、音频片段、戒指判断和审计事件写入结构化 JSON。
+
+## 戒指联动
+
+手机 App 直接实现 Ring Sound v4 的 Nordic UART Service 协议，不依赖电脑中转。iOS 不向 App 暴露蓝牙 MAC 地址，所以手机端以 CoreBluetooth 设备 UUID 标识戒指；传感器字段仍与供应商协议及 Windows 采集方案保持一致。
+
+真机操作顺序：
+
+1. 点“扫描”，选择戒指并连接。
+2. 单击戒指切换到手势模式。
+3. 点“开启传感器”。只有收到 `0x0602 error_code=0` 后，界面才显示“传感器采集中”；若提示设备忙，重新切换戒指模式再试。
+4. 开启“保留本地样本”，否则只保存统计和动作判断，不保存完整原始六轴数据。
+5. 保持“快速移动触发眼镜采集”和“触发时采集 8 秒短音频”开启，再开始采集会话。
+
+原始 IMU 不滤波、不换算、不去重。每批保留设备时间戳、连续序号和手机收到批次的绝对时间。当前“快速移动”只是测试规则，不是最终动作模型：它比较相邻样本的加速度向量变化和陀螺仪向量幅度，支持高、中、低三档灵敏度，并有 8 秒冷却时间。
 
 ## 采集 Session
 
@@ -30,11 +46,14 @@ Application Support/RealityMemoryProbe/
   debug-events.ndjson
   sessions/<session-id>/
     session.json
-    evidence/<observation-id>.jpg
+    evidence/<observation-id>.webp
     evidence/<observation-id>.pcm
+    ring/imu.ndjson
 ```
 
-`session.json` 使用 `rme.capture-session.v1`，可作为后续结构化解析和 ActivityEpisode/MemoryCandidate 闭环的输入清单。图片 Observation 和音频 Observation 都属于同一个采集 Session；其中 Session 是设备采集边界，ActivityEpisode 才是后续分析出的“做饭、找东西、阅读”等现实活动边界。
+`session.json` 使用 `rme.capture-session.v1`，可作为后续结构化解析和 ActivityEpisode/MemoryCandidate 闭环的输入清单。图片、音频和戒指动作判断都属于同一个采集 Session；其中 Session 是设备采集边界，ActivityEpisode 才是后续分析出的“做饭、找东西、阅读”等现实活动边界。
+
+`ring/imu.ndjson` 每行是一批 `rme.ring-imu-batch.v1` 原始数据。`session.json` 只记录传感器参数、批次数、样本数、序号异常、动作判断和文件引用，避免长会话反复重写全部传感器样本。
 
 ## 打开工程
 

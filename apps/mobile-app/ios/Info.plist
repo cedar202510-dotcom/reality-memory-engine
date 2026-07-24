@@ -40,9 +40,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>用于连接 Rokid Glasses 并验证图像采集链路。</string>
+	<string>用于连接 Rokid Glasses 和戒指，在授权会话中接收设备事件与传感器数据。</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>用于连接 Rokid Glasses 并验证图像采集链路。</string>
+	<string>用于连接 Rokid Glasses 和戒指，在授权会话中接收设备事件与传感器数据。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于在本地网络中连接已绑定的智能硬件并接收授权数据。</string>
 	<key>NSMicrophoneUsageDescription</key>

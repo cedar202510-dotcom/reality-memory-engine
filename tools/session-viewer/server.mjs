@@ -83,22 +83,24 @@ function secondsBetween(base, value) {
 function pickObservationType(observation) {
   const mediaType = observation.mediaType || observation.type || observation.modality || "";
   const localRef = observation.localRef || observation.localPath || observation.localMediaReference || "";
+  if (observation.classification || /^RING_/i.test(mediaType)) return "ring";
   if (/audio/i.test(mediaType) || /\.pcm$/i.test(localRef)) return "audio";
   if (/image|photo/i.test(mediaType) || /\.(jpe?g|png|webp|heic)$/i.test(localRef)) return "image";
   return "event";
 }
 
 function normalizeObservation(session, observation, index) {
-  const startedAt = observation.startedAt || observation.scheduledAt || observation.capturedAt || observation.requestedAt || observation.createdAt || null;
-  const endedAt = observation.endedAt || observation.completedAt || null;
-  const completedAt = observation.completedAt || endedAt || startedAt;
+  const startedAt = observation.startedAt || observation.windowStartedAt || observation.scheduledAt || observation.capturedAt || observation.requestedAt || observation.occurredAt || observation.createdAt || null;
+  const endedAt = observation.endedAt || observation.windowEndedAt || observation.completedAt || null;
+  const completedAt = observation.completedAt || observation.detectedAt || observation.occurredAt || endedAt || startedAt;
   const type = pickObservationType(observation);
   return {
     index,
     id: observation.id || observation.observationId || `observation-${index}`,
     type,
-    status: observation.analysisState || observation.status || observation.outcome || "UNKNOWN",
+    status: observation.analysisState || observation.status || observation.outcome || observation.classification || "UNKNOWN",
     trigger: observation.trigger || observation.captureTrigger || observation.reason || null,
+    triggerDecisionId: observation.triggerDecisionID || observation.triggerDecisionId || null,
     startedAt,
     endedAt,
     completedAt,
@@ -117,10 +119,95 @@ function getObservations(session) {
     ...(Array.isArray(session.imageObservations) ? session.imageObservations : []),
     ...(Array.isArray(session.audioObservations) ? session.audioObservations : []),
     ...(Array.isArray(session.observations) ? session.observations : []),
+    ...(Array.isArray(session.ringMotionAssessments) ? session.ringMotionAssessments : []),
+    ...(Array.isArray(session.ringHardwareEvents) ? session.ringHardwareEvents : []),
   ];
   return direct
     .map((observation, index) => normalizeObservation(session, observation, index))
     .sort((a, b) => (a.startOffsetSec ?? a.endOffsetSec ?? 0) - (b.startOffsetSec ?? b.endOffsetSec ?? 0));
+}
+
+async function readRingData(sessionId, session = null) {
+  const currentSession = session || await readSession(sessionId);
+  const relativeRef = currentSession.ringDataReference;
+  if (!relativeRef) {
+    return {
+      available: false,
+      reference: null,
+      totalBatches: currentSession.ringBatchCount || 0,
+      totalSamples: currentSession.ringSampleCount || 0,
+      displaySamples: [],
+    };
+  }
+
+  const sessionDir = safeJoin(path.join(captureRoot, "sessions"), sessionId);
+  const filePath = safeJoin(sessionDir, relativeRef);
+  if (!await exists(filePath)) {
+    return {
+      available: false,
+      reference: relativeRef,
+      error: "会话记录了戒指文件，但拉取目录中找不到该文件",
+      totalBatches: currentSession.ringBatchCount || 0,
+      totalSamples: currentSession.ringSampleCount || 0,
+      displaySamples: [],
+    };
+  }
+
+  const lines = (await readFile(filePath, "utf8")).split(/\r?\n/).filter(Boolean);
+  const batches = [];
+  const samples = [];
+  let previous = null;
+  for (const line of lines) {
+    const batch = JSON.parse(line);
+    batches.push(batch);
+    const batchSamples = Array.isArray(batch.samples) ? batch.samples : [];
+    const lastDeviceTimestamp = batchSamples.at(-1)?.timestampMilliseconds;
+    const receivedMilliseconds = new Date(batch.receivedAt).getTime();
+    batchSamples.forEach((sample, index) => {
+      const deviceTimestamp = Number(sample.timestampMilliseconds || 0);
+      const estimatedMilliseconds = Number.isFinite(receivedMilliseconds) && lastDeviceTimestamp !== undefined
+        ? receivedMilliseconds - Math.max(0, Number(lastDeviceTimestamp) - deviceTimestamp)
+        : receivedMilliseconds;
+      const accelMagnitude = Math.hypot(Number(sample.accelX || 0), Number(sample.accelY || 0), Number(sample.accelZ || 0));
+      const gyroMagnitude = Math.hypot(Number(sample.gyroX || 0), Number(sample.gyroY || 0), Number(sample.gyroZ || 0));
+      const accelDelta = previous
+        ? Math.hypot(
+            Number(sample.accelX || 0) - Number(previous.accelX || 0),
+            Number(sample.accelY || 0) - Number(previous.accelY || 0),
+            Number(sample.accelZ || 0) - Number(previous.accelZ || 0),
+          )
+        : 0;
+      const normalized = {
+        sequence: Number(batch.sequenceStart || 0) + index,
+        deviceTimestampMilliseconds: deviceTimestamp,
+        receivedAt: batch.receivedAt,
+        hostEstimatedAt: Number.isFinite(estimatedMilliseconds) ? new Date(estimatedMilliseconds).toISOString() : batch.receivedAt,
+        offsetSeconds: secondsBetween(currentSession.startedAt, Number.isFinite(estimatedMilliseconds) ? new Date(estimatedMilliseconds).toISOString() : batch.receivedAt),
+        accelX: sample.accelX,
+        accelY: sample.accelY,
+        accelZ: sample.accelZ,
+        gyroX: sample.gyroX,
+        gyroY: sample.gyroY,
+        gyroZ: sample.gyroZ,
+        accelMagnitude,
+        accelDelta,
+        gyroMagnitude,
+      };
+      samples.push(normalized);
+      previous = sample;
+    });
+  }
+
+  const maxDisplaySamples = 5_000;
+  const stride = Math.max(1, Math.ceil(samples.length / maxDisplaySamples));
+  return {
+    available: true,
+    reference: relativeRef,
+    totalBatches: batches.length,
+    totalSamples: samples.length,
+    displayStride: stride,
+    displaySamples: samples.filter((_, index) => index % stride === 0),
+  };
 }
 
 async function readSession(sessionId) {
@@ -159,6 +246,8 @@ async function listSessions() {
         audioPolicy: session.audioPolicy || null,
         imageCount: session.viewer.imageCount,
         audioCount: session.viewer.audioCount,
+        ringSampleCount: session.ringSampleCount || 0,
+        ringMotionCount: Array.isArray(session.ringMotionAssessments) ? session.ringMotionAssessments.length : 0,
         eventCount: session.viewer.eventCount,
         auditCount: session.viewer.auditCount,
       });
@@ -229,6 +318,21 @@ async function sendAudio(res, sessionId, relativeRef, sampleRate) {
   createReadStream(filePath).pipe(res);
 }
 
+async function sendRingRaw(res, sessionId) {
+  const session = await readSession(sessionId);
+  if (!session.ringDataReference) throw new Error("本次会话没有戒指原始数据文件");
+  const sessionDir = safeJoin(path.join(captureRoot, "sessions"), sessionId);
+  const filePath = safeJoin(sessionDir, session.ringDataReference);
+  const fileStat = await stat(filePath);
+  res.writeHead(200, {
+    "content-type": "application/x-ndjson; charset=utf-8",
+    "content-length": fileStat.size,
+    "content-disposition": `attachment; filename="${sessionId}-ring-imu.ndjson"`,
+    "cache-control": "no-store",
+  });
+  createReadStream(filePath).pipe(res);
+}
+
 const page = String.raw`<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -245,6 +349,8 @@ const page = String.raw`<!doctype html>
       --image: #1f7a70;
       --audio: #b25c22;
       --event: #4967a9;
+      --ring: #8a3f67;
+      --gyro: #287a91;
       --bad: #b42318;
       --ok: #1d7f43;
     }
@@ -387,6 +493,55 @@ const page = String.raw`<!doctype html>
     .marker.image { background: var(--image); }
     .marker.audio { background: var(--audio); transform: none; opacity: .9; }
     .marker.event { background: var(--event); }
+    .marker.ring { background: var(--ring); }
+    .ring-panel {
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      padding: 16px 0;
+      margin: 18px 0;
+    }
+    .ring-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+    .ring-chart-wrap {
+      width: 100%;
+      height: 250px;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      padding: 8px;
+    }
+    #ringChart { width: 100%; height: 100%; display: block; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0 12px; }
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 16px;
+      height: 3px;
+      margin-right: 6px;
+      vertical-align: middle;
+      background: var(--ring);
+    }
+    .legend span.gyro::before { background: var(--gyro); }
+    .assessment-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .assessment {
+      border-left: 4px solid var(--ring);
+      background: #fff;
+      padding: 10px 12px;
+    }
+    .download-link {
+      color: #245f89;
+      font-size: 12px;
+      white-space: nowrap;
+    }
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -473,7 +628,7 @@ const page = String.raw`<!doctype html>
     </section>
   </main>
   <script>
-    const state = { sessions: [], current: null, sampleRate: 16000 };
+    const state = { sessions: [], current: null, sampleRate: 16000, ringData: null };
     const $ = (id) => document.getElementById(id);
 
     function fmtTime(value) {
@@ -517,6 +672,7 @@ const page = String.raw`<!doctype html>
             '<span class="pill">' + esc(item.state) + '</span>' +
             '<span class="pill">图 ' + esc(item.imageCount) + '</span>' +
             '<span class="pill">音 ' + esc(item.audioCount) + '</span>' +
+            '<span class="pill">戒 ' + esc(item.ringSampleCount || 0) + '</span>' +
             '<span class="pill">' + esc(fmtTime(item.startedAt)) + '</span>' +
           '</div>' +
         '</button>';
@@ -529,17 +685,22 @@ const page = String.raw`<!doctype html>
     async function loadSession(id) {
       state.current = id;
       renderSessionList();
-      const session = await api("/api/session?id=" + encodeURIComponent(id));
-      renderSession(session);
+      const [session, ringData] = await Promise.all([
+        api("/api/session?id=" + encodeURIComponent(id)),
+        api("/api/ring-data?id=" + encodeURIComponent(id)),
+      ]);
+      state.ringData = ringData;
+      renderSession(session, ringData);
     }
 
-    function renderSession(session) {
+    function renderSession(session, ringData) {
       const obs = session.viewer.observations;
       const maxSec = Math.max(10, ...obs.map((item) => item.endOffsetSec ?? item.startOffsetSec ?? 0));
       $("workspace").innerHTML = [
         renderToolbar(session),
         renderSummary(session),
         renderTimeline(obs, maxSec),
+        renderRingPanel(session, ringData),
         '<div class="grid">' + obs.map((item) => renderObservation(session.viewer.sessionId, item)).join("") + '</div>'
       ].join("");
       $("sampleRate").addEventListener("change", (event) => {
@@ -548,6 +709,9 @@ const page = String.raw`<!doctype html>
           audio.src = audioSrc(session.viewer.sessionId, audio.dataset.ref);
         });
       });
+      if (ringData.available && ringData.displaySamples.length) {
+        drawRingChart(ringData.displaySamples);
+      }
     }
 
     function renderToolbar(session) {
@@ -566,6 +730,8 @@ const page = String.raw`<!doctype html>
         ["结束", fmtTime(session.endedAt)],
         ["图片", session.viewer.imageCount],
         ["短音频", session.viewer.audioCount],
+        ["戒指样本", session.ringSampleCount || 0],
+        ["快速移动", session.ringMotionAssessments?.length || 0],
         ["审计事件", session.viewer.auditCount],
       ];
       return '<div class="summary">' + items.map(([label, value]) =>
@@ -584,12 +750,107 @@ const page = String.raw`<!doctype html>
       const markers = obs.map((item) => {
         const start = Math.min(100, ((item.startOffsetSec ?? item.endOffsetSec ?? 0) / maxSec) * 100);
         const end = Math.min(100, ((item.endOffsetSec ?? item.startOffsetSec ?? 0) / maxSec) * 100);
-        const width = item.type === "audio" ? Math.max(1.2, end - start) : 1.8;
+        const width = item.type === "audio" || item.type === "ring" ? Math.max(1.2, end - start) : 1.8;
         return '<span class="marker ' + esc(item.type) + '" title="' + esc(item.type + " " + fmtOffset(item.startOffsetSec)) +
           '" style="left:' + start + '%;width:' + width + '%"></span>';
       }).join("");
       return '<div class="timeline"><div class="small">时间线：从 Session 开始计时，总跨度约 ' + esc(maxSec.toFixed(1)) +
-        ' 秒。绿色是图片，橙色是短音频，蓝色是事件。</div><div class="rail">' + ticks + markers + '</div></div>';
+        ' 秒。绿色是图片，橙色是短音频，紫红色是戒指判断，蓝色是其他事件。</div><div class="rail">' + ticks + markers + '</div></div>';
+    }
+
+    function renderRingPanel(session, ringData) {
+      const assessments = Array.isArray(session.ringMotionAssessments) ? session.ringMotionAssessments : [];
+      const rawLink = ringData.reference
+        ? '<a class="download-link" href="/ring/raw?session=' + encodeURIComponent(session.viewer.sessionId) + '" download>下载完整原始 NDJSON</a>'
+        : "";
+      const configuration = session.ringSensor
+        ? session.ringSensor.sampleRateHz + ' Hz · ±' + session.ringSensor.accelRangeG + ' g · ±' + session.ringSensor.gyroRangeDPS + ' dps'
+        : "未记录";
+      const chart = ringData.available && ringData.displaySamples.length
+        ? '<div class="legend"><span>加速度变化量</span><span class="gyro">陀螺仪幅度</span></div><div class="ring-chart-wrap"><canvas id="ringChart"></canvas></div>'
+        : '<div class="small">' + esc(ringData.error || "本次会话没有保留戒指原始数据；手机端需开启“保留本地样本”。") + '</div>';
+      const assessmentItems = assessments.map((item) => {
+        const linked = session.viewer.observations.filter((observation) => observation.triggerDecisionId === item.id);
+        const linkedImages = linked.filter((item) => item.type === "image").length;
+        const linkedAudios = linked.filter((item) => item.type === "audio").length;
+        return '<div class="assessment">' +
+          '<div class="item-title"><span>' + esc(item.displayLabel || item.classification) + '</span><span class="pill">' + esc(fmtOffset(secondsBetweenClient(session.startedAt, item.detectedAt))) + '</span></div>' +
+          '<div class="small">加速度变化峰值 ' + esc(Number(item.peakAccelerationDeltaRaw || 0).toFixed(0)) +
+          ' · 陀螺仪峰值 ' + esc(Number(item.peakGyroscopeMagnitudeRaw || 0).toFixed(0)) +
+          ' · 灵敏度 ' + esc(item.sensitivity || "-") + '</div>' +
+          '<div class="small">判断编号 ' + esc(item.id) + ' · 关联图片 ' + linkedImages + ' · 关联音频 ' + linkedAudios +
+          (item.suppressionReason ? ' · 未触发原因 ' + esc(item.suppressionReason) : '') + '</div>' +
+        '</div>';
+      }).join("");
+      return '<section class="ring-panel">' +
+        '<div class="ring-header"><div><strong>戒指信号与动作判断</strong><div class="small">原始六轴信号 → 快速移动判断 → 眼镜图片/短音频</div></div>' + rawLink + '</div>' +
+        '<div class="small">传感器参数：' + esc(configuration) + ' · 原始批次 ' + esc(ringData.totalBatches || 0) +
+        ' · 原始样本 ' + esc(ringData.totalSamples || 0) + ' · 序号异常 ' + esc(session.ringSequenceGapCount || 0) +
+        (ringData.displayStride > 1 ? ' · 曲线每 ' + esc(ringData.displayStride) + ' 点显示 1 点' : '') + '</div>' +
+        chart +
+        '<div class="assessment-list">' + (assessmentItems || '<div class="small">尚未形成“快速移动”判断。</div>') + '</div>' +
+      '</section>';
+    }
+
+    function secondsBetweenClient(base, value) {
+      if (!base || !value) return null;
+      const diff = new Date(value).getTime() - new Date(base).getTime();
+      return Number.isFinite(diff) ? Math.max(0, diff / 1000) : null;
+    }
+
+    function drawRingChart(samples) {
+      const canvas = $("ringChart");
+      if (!canvas || !samples.length) return;
+      const ratio = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.max(1, Math.floor(rect.width * ratio));
+      canvas.height = Math.max(1, Math.floor(rect.height * ratio));
+      const ctx = canvas.getContext("2d");
+      ctx.scale(ratio, ratio);
+      const width = rect.width;
+      const height = rect.height;
+      const pad = { left: 42, right: 12, top: 16, bottom: 24 };
+      const plotWidth = Math.max(1, width - pad.left - pad.right);
+      const plotHeight = Math.max(1, height - pad.top - pad.bottom);
+      const minTime = Math.min(...samples.map((item) => Number(item.offsetSeconds || 0)));
+      const maxTime = Math.max(minTime + 0.001, ...samples.map((item) => Number(item.offsetSeconds || 0)));
+      const maxAccel = Math.max(1, ...samples.map((item) => Number(item.accelDelta || 0)));
+      const maxGyro = Math.max(1, ...samples.map((item) => Number(item.gyroMagnitude || 0)));
+
+      ctx.strokeStyle = "#e1e6e9";
+      ctx.lineWidth = 1;
+      for (let index = 0; index <= 4; index += 1) {
+        const y = pad.top + plotHeight * index / 4;
+        ctx.beginPath();
+        ctx.moveTo(pad.left, y);
+        ctx.lineTo(width - pad.right, y);
+        ctx.stroke();
+      }
+
+      function line(field, maximum, color) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        samples.forEach((item, index) => {
+          const x = pad.left + ((Number(item.offsetSeconds || 0) - minTime) / (maxTime - minTime)) * plotWidth;
+          const y = pad.top + plotHeight - Math.min(1, Number(item[field] || 0) / maximum) * plotHeight;
+          if (index === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      }
+      line("accelDelta", maxAccel, "#8a3f67");
+      line("gyroMagnitude", maxGyro, "#287a91");
+
+      ctx.fillStyle = "#66727c";
+      ctx.font = "11px system-ui";
+      ctx.fillText("0", 12, pad.top + plotHeight + 4);
+      ctx.fillText("+" + minTime.toFixed(1) + "s", pad.left, height - 5);
+      const endLabel = "+" + maxTime.toFixed(1) + "s";
+      ctx.fillText(endLabel, width - pad.right - ctx.measureText(endLabel).width, height - 5);
+      ctx.fillText("加差峰值 " + maxAccel.toFixed(0), pad.left, 11);
+      const gyroLabel = "陀螺峰值 " + maxGyro.toFixed(0);
+      ctx.fillText(gyroLabel, width - pad.right - ctx.measureText(gyroLabel).width, 11);
     }
 
     function mediaSrc(sessionId, ref) {
@@ -601,7 +862,7 @@ const page = String.raw`<!doctype html>
     }
 
     function renderObservation(sessionId, item) {
-      const title = item.type === "image" ? "图片证据" : item.type === "audio" ? "短音频证据" : "事件";
+      const title = item.type === "image" ? "图片证据" : item.type === "audio" ? "短音频证据" : item.type === "ring" ? "戒指动作判断" : "事件";
       const preview = item.type === "image" && item.localRef
         ? '<div class="preview"><img src="' + esc(mediaSrc(sessionId, item.localRef)) + '" alt="capture"></div>'
         : '<div class="preview"><span class="small">' + esc(title) + '</span></div>';
@@ -647,12 +908,24 @@ const server = createServer(async (req, res) => {
       sendJson(res, await readSession(id));
       return;
     }
+    if (requestUrl.pathname === "/api/ring-data") {
+      const id = requestUrl.searchParams.get("id");
+      if (!id) return fail(res, new Error("缺少 session id"), 400);
+      sendJson(res, await readRingData(id));
+      return;
+    }
     if (requestUrl.pathname === "/media") {
       await sendMedia(res, requestUrl.searchParams.get("session"), requestUrl.searchParams.get("ref"));
       return;
     }
     if (requestUrl.pathname === "/audio.wav") {
       await sendAudio(res, requestUrl.searchParams.get("session"), requestUrl.searchParams.get("ref"), requestUrl.searchParams.get("rate"));
+      return;
+    }
+    if (requestUrl.pathname === "/ring/raw") {
+      const sessionId = requestUrl.searchParams.get("session");
+      if (!sessionId) return fail(res, new Error("缺少 session id"), 400);
+      await sendRingRaw(res, sessionId);
       return;
     }
     sendText(res, "Not found", 404);

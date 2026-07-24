@@ -11,6 +11,8 @@ struct ContentView: View {
                     Divider()
                     actionSection
                     Divider()
+                    ringSection
+                    Divider()
                     sessionSection
                     Divider()
                     resultSection
@@ -68,6 +70,12 @@ struct ContentView: View {
                 value: model.audioStreamStatus,
                 symbol: "waveform",
                 isReady: model.isAudioStreamStarted
+            )
+            StatusRow(
+                title: "戒指",
+                value: model.ringConnectionStatus,
+                symbol: "circle.hexagongrid",
+                isReady: model.isRingConnected
             )
         }
         .padding(20)
@@ -161,10 +169,138 @@ struct ContentView: View {
         .padding(20)
     }
 
+    private var ringSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("戒指传感器")
+                    .font(.headline)
+                Spacer()
+                Text(model.ringBluetoothStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if model.ringDevices.isEmpty {
+                LabeledContent("附近设备", value: "尚未扫描")
+            } else {
+                Picker(
+                    "选择设备",
+                    selection: Binding(
+                        get: { model.selectedRingDeviceID },
+                        set: { model.selectRingDevice($0) }
+                    )
+                ) {
+                    ForEach(model.ringDevices) { device in
+                        Text("\(device.name) · \(device.rssi) dBm")
+                            .tag(Optional(device.id))
+                    }
+                }
+                .disabled(model.isRingConnected)
+            }
+
+            HStack(spacing: 12) {
+                ActionButton(
+                    title: "扫描",
+                    symbol: "dot.radiowaves.left.and.right",
+                    prominent: false,
+                    disabled: !model.canScanRing
+                ) {
+                    model.scanRingDevices()
+                }
+
+                ActionButton(
+                    title: model.isRingConnected ? "断开" : "连接",
+                    symbol: model.isRingConnected ? "link.badge.minus" : "link",
+                    prominent: true,
+                    disabled: model.isRingConnected ? false : !model.canConnectSelectedRing
+                ) {
+                    if model.isRingConnected {
+                        model.disconnectRing()
+                    } else {
+                        model.connectSelectedRing()
+                    }
+                }
+            }
+
+            ActionButton(
+                title: model.isRingSensorReporting ? "停止传感器" : "开启传感器",
+                symbol: model.isRingSensorReporting ? "stop.circle" : "waveform.path.ecg",
+                prominent: model.isRingSensorReporting,
+                disabled: !model.isRingConnected
+            ) {
+                if model.isRingSensorReporting {
+                    model.stopRingSensorReport()
+                } else {
+                    model.startRingSensorReport()
+                }
+            }
+
+            LabeledContent("传感器状态", value: model.ringConnectionStatus)
+            if let configuration = model.ringSensorConfiguration {
+                LabeledContent(
+                    "采样参数",
+                    value: "\(configuration.sampleRateHz) Hz · ±\(configuration.accelRangeG) g · ±\(configuration.gyroRangeDPS) dps"
+                )
+            }
+            LabeledContent(
+                "接收统计",
+                value: "\(model.ringBatchCount) 批 · \(model.ringSampleCount) 点 · \(model.ringSequenceGapCount) 次序号异常"
+            )
+            LabeledContent(
+                "实时变化",
+                value: String(
+                    format: "加速度差 %.0f · 陀螺仪 %.0f",
+                    model.ringAccelerationDelta ?? 0,
+                    model.ringGyroscopeMagnitude ?? 0
+                )
+            )
+            Text(model.lastRingJudgement)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            Picker(
+                "快速移动灵敏度",
+                selection: Binding(
+                    get: { model.ringSensitivity },
+                    set: { model.setRingSensitivity($0) }
+                )
+            ) {
+                ForEach(ProbeRingSensitivity.allCases) { sensitivity in
+                    Text(sensitivity.displayName).tag(sensitivity)
+                }
+            }
+            .pickerStyle(.segmented)
+            .disabled(model.sessionState == .active)
+
+            Toggle(
+                "快速移动触发眼镜采集",
+                isOn: Binding(
+                    get: { model.ringRapidMovementTriggerEnabled },
+                    set: { model.setRingRapidMovementTriggerEnabled($0) }
+                )
+            )
+            .disabled(model.sessionState == .active)
+
+            Toggle(
+                "触发时采集 8 秒短音频",
+                isOn: Binding(
+                    get: { model.ringTriggeredAudioEnabled },
+                    set: { model.setRingTriggeredAudioEnabled($0) }
+                )
+            )
+            .disabled(model.sessionState == .active || !model.ringRapidMovementTriggerEnabled)
+
+            Text("戒指需处于手势模式；若提示设备忙，请单击戒指切换模式后重新开启传感器。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(20)
+    }
+
     private var sessionSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("采集 Session")
+                Text("采集会话（Session）")
                     .font(.headline)
                 Spacer()
                 if let url = model.latestSessionURL {
@@ -264,6 +400,10 @@ struct ContentView: View {
             LabeledContent(
                 "语音片段",
                 value: "\(model.currentSession?.audioSegmentCount ?? 0) 段"
+            )
+            LabeledContent(
+                "戒指数据",
+                value: "\(model.currentSession?.ringSampleCount ?? 0) 点 · \(model.currentSession?.ringMotionAssessments.count ?? 0) 次快速移动"
             )
 
             if let nextCaptureAt = model.nextCaptureAt {

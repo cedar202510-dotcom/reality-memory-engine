@@ -23,6 +23,7 @@ enum ProbeSessionState: String, Codable {
 enum ProbeCaptureTrigger: String, Codable {
     case manual = "MANUAL"
     case periodic = "PERIODIC"
+    case ringMotion = "RING_MOTION"
 }
 
 enum ProbeCaptureOutcome: String, Codable {
@@ -37,6 +38,7 @@ struct ProbeCaptureObservation: Identifiable, Codable {
     let scheduledAt: Date
     let completedAt: Date
     let trigger: ProbeCaptureTrigger
+    let triggerDecisionID: UUID?
     let outcome: ProbeCaptureOutcome
     let reason: String?
     let byteCount: Int?
@@ -52,6 +54,7 @@ struct ProbeAudioObservation: Identifiable, Codable {
     let id: UUID
     let sessionID: UUID
     let trigger: String
+    let triggerDecisionID: UUID?
     let startedAt: Date
     let endedAt: Date
     let durationMilliseconds: Int
@@ -76,6 +79,64 @@ struct ProbeAudioPolicySnapshot: Codable {
     let rawAudioPersistedOnlyWhenRetainLocalSamples: Bool
 }
 
+struct ProbeRingPolicySnapshot: Codable {
+    let sensorCollectionEnabled: Bool
+    let rapidMovementTriggerEnabled: Bool
+    let triggeredAudioEnabled: Bool
+    let sensitivity: ProbeRingSensitivity
+    let accelerationDeltaThresholdRaw: Double
+    let gyroscopeMagnitudeThresholdRaw: Double
+    let triggerCooldownMilliseconds: Int
+    let triggeredAudioWindowMilliseconds: Int
+    let detectorRuleVersion: String
+}
+
+struct ProbeRingSensorSnapshot: Codable {
+    let deviceID: String
+    let deviceName: String
+    let sampleRateHz: Int
+    let accelRangeG: Int
+    let gyroRangeDPS: Int
+}
+
+struct ProbeRingMotionAssessment: Identifiable, Codable {
+    let id: UUID
+    let sessionID: UUID
+    let windowStartedAt: Date
+    let windowEndedAt: Date
+    let detectedAt: Date
+    let classification: String
+    let displayLabel: String
+    let sampleCount: Int
+    let peakAccelerationDeltaRaw: Double
+    let peakGyroscopeMagnitudeRaw: Double
+    let detectorRuleVersion: String
+    let sensitivity: ProbeRingSensitivity
+    let captureRequested: Bool
+    let requestedModalities: [String]
+    let suppressionReason: String?
+}
+
+struct ProbeRingHardwareEventRecord: Identifiable, Codable {
+    let id: UUID
+    let occurredAt: Date
+    let deviceTimestampMilliseconds: UInt32
+    let type: String
+    let detail: String?
+}
+
+struct ProbeRingIMUBatchRecord: Codable {
+    let schemaVersion: String
+    let sessionID: UUID
+    let sourceEnvelopeID: UUID
+    let deviceID: String
+    let receivedAt: Date
+    let sequenceStart: UInt32
+    let frameCount: Int
+    let sampleSize: Int
+    let samples: [RingIMUSample]
+}
+
 struct ProbeAuditEvent: Identifiable, Codable {
     let id: UUID
     let occurredAt: Date
@@ -94,9 +155,17 @@ struct ProbeCaptureSession: Identifiable, Codable {
     let localMediaTTLSeconds: Int
     let uploadAllowed: Bool
     let audioPolicy: ProbeAudioPolicySnapshot
+    let ringPolicy: ProbeRingPolicySnapshot
     let deviceSummaryAtStart: String
     var observations: [ProbeCaptureObservation]
     var audioObservations: [ProbeAudioObservation]
+    var ringSensor: ProbeRingSensorSnapshot?
+    var ringDataReference: String?
+    var ringBatchCount: Int
+    var ringSampleCount: Int
+    var ringSequenceGapCount: Int
+    var ringMotionAssessments: [ProbeRingMotionAssessment]
+    var ringHardwareEvents: [ProbeRingHardwareEventRecord]
     var auditEvents: [ProbeAuditEvent]
 
     var succeededCount: Int {
@@ -176,7 +245,7 @@ final class ProbeArtifactStore {
             withIntermediateDirectories: true
         )
 
-        let filename = "\(observationID.uuidString.lowercased()).jpg"
+        let filename = "\(observationID.uuidString.lowercased()).\(imageFileExtension(for: data))"
         let url = directory.appendingPathComponent(filename)
         try data.write(to: url, options: .atomic)
         return "evidence/\(filename)"
@@ -197,6 +266,54 @@ final class ProbeArtifactStore {
             options: [.atomic, .completeFileProtectionUnlessOpen]
         )
         return "evidence/\(filename)"
+    }
+
+    @discardableResult
+    func appendRingBatch(_ batch: ProbeRingIMUBatchRecord) throws -> String {
+        let directory = try sessionDirectory(for: batch.sessionID)
+            .appendingPathComponent("ring", isDirectory: true)
+        try fileManager.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+
+        let filename = "imu.ndjson"
+        let url = directory.appendingPathComponent(filename)
+        let lineEncoder = JSONEncoder()
+        lineEncoder.dateEncodingStrategy = .iso8601
+        var data = try lineEncoder.encode(batch)
+        data.append(0x0A)
+
+        if fileManager.fileExists(atPath: url.path) {
+            let handle = try FileHandle(forWritingTo: url)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
+            try handle.close()
+        } else {
+            try data.write(
+                to: url,
+                options: [.atomic, .completeFileProtectionUnlessOpen]
+            )
+        }
+        return "ring/\(filename)"
+    }
+
+    private func imageFileExtension(for data: Data) -> String {
+        if
+            data.count >= 12,
+            String(data: data.prefix(4), encoding: .ascii) == "RIFF",
+            String(data: data.dropFirst(8).prefix(4), encoding: .ascii) == "WEBP"
+        {
+            return "webp"
+        }
+        if data.count >= 3, data[0] == 0xFF, data[1] == 0xD8, data[2] == 0xFF {
+            return "jpg"
+        }
+        if data.count >= 8, Array(data.prefix(8)) == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+            return "png"
+        }
+        return "bin"
     }
 
     private func sessionDirectory(for id: UUID) throws -> URL {

@@ -11,11 +11,21 @@ final class GlassProbeModel: ObservableObject {
         let sessionID: UUID?
         let scheduledAt: Date
         let trigger: ProbeCaptureTrigger
+        let triggerDecisionID: UUID?
+    }
+
+    private struct ActiveRingAudioWindow {
+        let decisionID: UUID
+        let startedAt: Date
+        var endsAt: Date
+        var data: Data
+        var peakDBFS: Double
     }
 
     private enum AudioCaptureMode: Equatable {
         case manualTest
         case sessionVAD
+        case ringTriggered(UUID)
 
         var displayName: String {
             switch self {
@@ -23,7 +33,24 @@ final class GlassProbeModel: ObservableObject {
                 "测试采集中"
             case .sessionVAD:
                 "Session 采集中"
+            case .ringTriggered:
+                "戒指触发采集中"
             }
+        }
+
+        var isManualTest: Bool {
+            self == .manualTest
+        }
+
+        var isSessionVAD: Bool {
+            self == .sessionVAD
+        }
+
+        var triggerDecisionID: UUID? {
+            if case .ringTriggered(let decisionID) = self {
+                return decisionID
+            }
+            return nil
         }
     }
 
@@ -33,6 +60,7 @@ final class GlassProbeModel: ObservableObject {
     )
     private static let photoTimeoutSeconds: TimeInterval = 12
     private static let audioTestSeconds: TimeInterval = 30
+    private static let ringTriggeredAudioWindowSeconds: TimeInterval = 8
 
     @Published private(set) var rokidAppInstalled = false
     @Published private(set) var authStatus = "未授权"
@@ -65,17 +93,39 @@ final class GlassProbeModel: ObservableObject {
     @Published private(set) var isSpeechActive = false
     @Published private(set) var audioSegmentCount = 0
     @Published private(set) var lastAudioSummary = "尚未测试"
+    @Published private(set) var ringBluetoothStatus = "正在读取蓝牙状态"
+    @Published private(set) var ringConnectionStatus = "未连接"
+    @Published private(set) var ringDevices: [RingDiscoveredDevice] = []
+    @Published private(set) var selectedRingDeviceID: UUID?
+    @Published private(set) var isRingConnected = false
+    @Published private(set) var isRingSensorReporting = false
+    @Published private(set) var ringSensorConfiguration: RingSensorConfiguration?
+    @Published private(set) var ringBatchCount = 0
+    @Published private(set) var ringSampleCount = 0
+    @Published private(set) var ringSequenceGapCount = 0
+    @Published private(set) var ringAccelerationMagnitude: Double?
+    @Published private(set) var ringGyroscopeMagnitude: Double?
+    @Published private(set) var ringAccelerationDelta: Double?
+    @Published private(set) var lastRingJudgement = "尚未收到戒指动作数据"
+    @Published private(set) var ringRapidMovementTriggerEnabled = true
+    @Published private(set) var ringTriggeredAudioEnabled = true
+    @Published private(set) var ringSensitivity: ProbeRingSensitivity = .medium
 
     private let client: any RGCxrClient
     private let artifactStore = ProbeArtifactStore()
+    private let ringAdapter = RingDeviceAdapter()
     private var cancellables = Set<AnyCancellable>()
     private var captureLoopTask: Task<Void, Never>?
     private var photoTimeoutTask: Task<Void, Never>?
     private var pendingPhotoRequest: PendingPhotoRequest?
     private var audioTestTask: Task<Void, Never>?
+    private var ringAudioStopTask: Task<Void, Never>?
     private var audioCaptureMode: AudioCaptureMode?
+    private var activeRingAudioWindow: ActiveRingAudioWindow?
     private let audioSegmenter = ProbeAudioSpeechSegmenter()
     private var audioChannels: UInt32 = 1
+    private var ringMotionDetector = RingRapidMovementDetector()
+    private var nextExpectedRingSequence: UInt32?
 
     var canAuthorize: Bool {
         rokidAppInstalled && !isAuthenticating
@@ -95,6 +145,18 @@ final class GlassProbeModel: ObservableObject {
 
     var canToggleAudioTest: Bool {
         isAudioTestRunning || (audioCaptureMode == nil && isConnected && isCustomViewRunning)
+    }
+
+    var canScanRing: Bool {
+        !isRingConnected && ringConnectionStatus != "扫描中" && ringConnectionStatus != "连接中"
+    }
+
+    var canConnectSelectedRing: Bool {
+        selectedRingDeviceID != nil && !isRingConnected
+    }
+
+    var selectedRingDevice: RingDiscoveredDevice? {
+        ringDevices.first { $0.id == selectedRingDeviceID }
     }
 
     var audioStreamStatus: String {
@@ -134,6 +196,7 @@ final class GlassProbeModel: ObservableObject {
         client = CxrClient.shared
 
         bindEvents()
+        bindRingAdapter()
         applyAuthState(client.auth.currentState)
         refreshEnvironment()
         appendLog("CXR-L SDK 已初始化为 CUSTOMVIEW")
@@ -207,7 +270,69 @@ final class GlassProbeModel: ObservableObject {
     }
 
     func takePhoto() {
-        requestPhoto(trigger: .manual, sessionID: nil)
+        requestPhoto(trigger: .manual, sessionID: nil, triggerDecisionID: nil)
+    }
+
+    func scanRingDevices() {
+        ringAdapter.scan()
+    }
+
+    func selectRingDevice(_ id: UUID?) {
+        guard !isRingConnected else {
+            return
+        }
+        selectedRingDeviceID = id
+    }
+
+    func connectSelectedRing() {
+        guard let selectedRingDeviceID else {
+            appendLog("请先扫描并选择戒指")
+            return
+        }
+        ringAdapter.connect(deviceID: selectedRingDeviceID)
+    }
+
+    func disconnectRing() {
+        ringAdapter.disconnect()
+    }
+
+    func startRingSensorReport() {
+        guard isRingConnected else {
+            appendLog("请先连接戒指")
+            return
+        }
+        ringMotionDetector.reset()
+        nextExpectedRingSequence = nil
+        ringAdapter.startSensorReport()
+    }
+
+    func stopRingSensorReport() {
+        ringAdapter.stopSensorReport()
+    }
+
+    func setRingRapidMovementTriggerEnabled(_ enabled: Bool) {
+        guard sessionState != .active else {
+            return
+        }
+        ringRapidMovementTriggerEnabled = enabled
+        appendLog(enabled ? "戒指快速移动触发已开启" : "戒指快速移动触发已关闭")
+    }
+
+    func setRingTriggeredAudioEnabled(_ enabled: Bool) {
+        guard sessionState != .active else {
+            return
+        }
+        ringTriggeredAudioEnabled = enabled
+        appendLog(enabled ? "戒指触发短音频已开启" : "戒指触发短音频已关闭")
+    }
+
+    func setRingSensitivity(_ sensitivity: ProbeRingSensitivity) {
+        guard sessionState != .active else {
+            return
+        }
+        ringSensitivity = sensitivity
+        ringMotionDetector.reset()
+        appendLog("戒指快速移动灵敏度已设置为\(sensitivity.displayName)")
     }
 
     func toggleAudioTest() {
@@ -240,7 +365,7 @@ final class GlassProbeModel: ObservableObject {
     }
 
     func stopAudioTest(reason: String = "USER_STOPPED") {
-        guard audioCaptureMode == .manualTest else {
+        guard audioCaptureMode?.isManualTest == true else {
             return
         }
         stopAudioCapture(reason: reason)
@@ -273,20 +398,28 @@ final class GlassProbeModel: ObservableObject {
         }
 
         audioTestTask?.cancel()
+        ringAudioStopTask?.cancel()
         audioSegmenter.reset()
         audioCaptureMode = mode
-        isAudioTestRunning = mode == .manualTest
-        isSessionAudioRunning = mode == .sessionVAD
+        isAudioTestRunning = mode.isManualTest
+        isSessionAudioRunning = mode.isSessionVAD || mode.triggerDecisionID != nil
         isAudioStreamStarted = false
         audioPacketCount = 0
         audioByteCount = 0
         audioLevelDBFS = nil
         isSpeechActive = false
         audioSegmentCount = 0
-        lastAudioSummary = mode == .manualTest
-            ? "等待眼镜 PCM 音频流"
-            : "等待眼镜 PCM 音频流（会话内 VAD）"
-        appendLog(mode == .manualTest ? "开始 30 秒音频/VAD 测试" : "开始会话内短音频/VAD")
+        switch mode {
+        case .manualTest:
+            lastAudioSummary = "等待眼镜 PCM 音频流"
+            appendLog("开始 30 秒音频/VAD 测试")
+        case .sessionVAD:
+            lastAudioSummary = "等待眼镜 PCM 音频流（会话内 VAD）"
+            appendLog("开始会话内短音频/VAD")
+        case .ringTriggered:
+            lastAudioSummary = "等待眼镜 PCM 音频流（戒指触发窗口）"
+            appendLog("戒指快速移动已触发 8 秒短音频窗口")
+        }
 
         if let error = client.startRecord("stream", codec: .pcm, mode: .antClose) {
             audioCaptureMode = nil
@@ -307,8 +440,15 @@ final class GlassProbeModel: ObservableObject {
 
         audioTestTask?.cancel()
         audioTestTask = nil
+        ringAudioStopTask?.cancel()
+        ringAudioStopTask = nil
+        if activeRingAudioWindow != nil {
+            finalizeRingTriggeredAudioWindow(endedAt: Date())
+        }
         if let segment = audioSegmenter.finish() {
-            recordAudioSegment(segment)
+            if mode.triggerDecisionID == nil {
+                recordAudioSegment(segment)
+            }
         }
         let error = client.stopRecord("stream")
         isAudioTestRunning = false
@@ -316,12 +456,21 @@ final class GlassProbeModel: ObservableObject {
         isAudioStreamStarted = false
         isSpeechActive = false
         audioCaptureMode = nil
+        activeRingAudioWindow = nil
 
         if let error {
             lastAudioSummary = "停止请求失败：\(String(describing: error))"
             appendLog(lastAudioSummary)
         } else {
-            let label = mode == .manualTest ? "音频/VAD 测试" : "会话内短音频/VAD"
+            let label: String
+            switch mode {
+            case .manualTest:
+                label = "音频/VAD 测试"
+            case .sessionVAD:
+                label = "会话内短音频/VAD"
+            case .ringTriggered:
+                label = "戒指触发短音频"
+            }
             lastAudioSummary = "\(label)结束：\(audioPacketCount) 包，\(audioByteCount) 字节，\(audioSegmentCount) 段"
             appendLog("\(label)结束：\(reason)")
         }
@@ -398,9 +547,31 @@ final class GlassProbeModel: ObservableObject {
                 maxPreRollBytes: ProbeAudioSpeechSegmenter.maxPreRollBytes,
                 rawAudioPersistedOnlyWhenRetainLocalSamples: true
             ),
+            ringPolicy: ProbeRingPolicySnapshot(
+                sensorCollectionEnabled: isRingSensorReporting,
+                rapidMovementTriggerEnabled: ringRapidMovementTriggerEnabled,
+                triggeredAudioEnabled: ringTriggeredAudioEnabled,
+                sensitivity: ringSensitivity,
+                accelerationDeltaThresholdRaw: ringSensitivity.accelerationDeltaThreshold,
+                gyroscopeMagnitudeThresholdRaw: ringSensitivity.gyroscopeMagnitudeThreshold,
+                triggerCooldownMilliseconds: Int(
+                    RingRapidMovementDetector.triggerCooldownSeconds * 1_000
+                ),
+                triggeredAudioWindowMilliseconds: Int(
+                    Self.ringTriggeredAudioWindowSeconds * 1_000
+                ),
+                detectorRuleVersion: RingRapidMovementDetector.ruleVersion
+            ),
             deviceSummaryAtStart: deviceSummary,
             observations: [],
             audioObservations: [],
+            ringSensor: makeRingSensorSnapshot(),
+            ringDataReference: nil,
+            ringBatchCount: 0,
+            ringSampleCount: 0,
+            ringSequenceGapCount: 0,
+            ringMotionAssessments: [],
+            ringHardwareEvents: [],
             auditEvents: [
                 ProbeAuditEvent(
                     id: UUID(),
@@ -412,8 +583,16 @@ final class GlassProbeModel: ObservableObject {
         )
         sessionState = .active
         capturedImage = nil
+        ringBatchCount = 0
+        ringSampleCount = 0
+        ringSequenceGapCount = 0
+        nextExpectedRingSequence = nil
+        ringMotionDetector.reset()
         persistCurrentSession()
         appendLog("采集 Session 已开始：每 \(captureIntervalSeconds) 秒")
+        if ringRapidMovementTriggerEnabled, !isRingSensorReporting {
+            appendLog("戒指联动尚未采集：请先连接戒指并开启传感器")
+        }
         startSessionAudioIfNeeded()
         startCaptureLoop()
     }
@@ -531,6 +710,386 @@ final class GlassProbeModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    private func bindRingAdapter() {
+        ringAdapter.onStateChanged = { [weak self] state in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                let wasConnected = self.isRingConnected
+                self.ringConnectionStatus = state.displayName
+                self.isRingConnected = state.isConnected
+                self.isRingSensorReporting = state.isSensorReporting
+                switch state {
+                case .bluetoothUnavailable(let reason):
+                    self.ringBluetoothStatus = reason
+                default:
+                    self.ringBluetoothStatus = "可用"
+                }
+                if wasConnected, !state.isConnected {
+                    self.mutateCurrentSession { session in
+                        session.auditEvents.append(
+                            ProbeAuditEvent(
+                                id: UUID(),
+                                occurredAt: Date(),
+                                type: "RING_DISCONNECTED",
+                                detail: state.displayName
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        ringAdapter.onDevicesChanged = { [weak self] devices in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                self.ringDevices = devices
+                if
+                    self.selectedRingDeviceID == nil
+                        || !devices.contains(where: { $0.id == self.selectedRingDeviceID })
+                {
+                    self.selectedRingDeviceID = devices.first?.id
+                }
+            }
+        }
+
+        ringAdapter.onSensorConfiguration = { [weak self] configuration in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                self.ringSensorConfiguration = configuration
+                self.ringMotionDetector.reset()
+                self.nextExpectedRingSequence = nil
+                self.mutateCurrentSession { session in
+                    session.ringSensor = self.makeRingSensorSnapshot()
+                    session.auditEvents.append(
+                        ProbeAuditEvent(
+                            id: UUID(),
+                            occurredAt: Date(),
+                            type: "RING_SENSOR_REPORT_STARTED",
+                            detail: "sampleRate=\(configuration.sampleRateHz)Hz"
+                        )
+                    )
+                }
+            }
+        }
+
+        ringAdapter.onIMUBatch = { [weak self] batch, receivedAt in
+            Task { @MainActor [weak self] in
+                self?.handleRingIMUBatch(batch, receivedAt: receivedAt)
+            }
+        }
+
+        ringAdapter.onHardwareEvent = { [weak self] event in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                self.appendLog("戒指事件：\(event.detail ?? event.type)")
+                guard self.sessionState == .active, self.currentSession != nil else {
+                    return
+                }
+                self.mutateCurrentSession { session in
+                    session.ringHardwareEvents.append(
+                        ProbeRingHardwareEventRecord(
+                            id: UUID(),
+                            occurredAt: event.occurredAt,
+                            deviceTimestampMilliseconds: event.deviceTimestampMilliseconds,
+                            type: event.type,
+                            detail: event.detail
+                        )
+                    )
+                }
+            }
+        }
+
+        ringAdapter.onLog = { [weak self] message in
+            Task { @MainActor [weak self] in
+                self?.appendLog(message)
+            }
+        }
+    }
+
+    private func handleRingIMUBatch(_ batch: RingIMUBatch, receivedAt: Date) {
+        ringBatchCount += 1
+        ringSampleCount += batch.samples.count
+
+        if let expected = nextExpectedRingSequence, batch.sequenceStart != expected {
+            ringSequenceGapCount += 1
+            appendLog("戒指序号不连续：期望 \(expected)，收到 \(batch.sequenceStart)")
+        }
+        nextExpectedRingSequence = batch.sequenceStart &+ UInt32(batch.frameCount)
+
+        let result = ringMotionDetector.process(
+            batch: batch,
+            receivedAt: receivedAt,
+            sensitivity: ringSensitivity
+        )
+        ringAccelerationMagnitude = result.metrics?.accelerationMagnitude
+        ringGyroscopeMagnitude = result.metrics?.gyroscopeMagnitude
+        ringAccelerationDelta = result.metrics?.accelerationDelta
+
+        guard sessionState == .active, let sessionID = currentSession?.id else {
+            if let detection = result.detection {
+                lastRingJudgement = ringJudgementSummary(detection, suffix: "未在采集 Session 中，不触发眼镜")
+            }
+            return
+        }
+
+        var ringDataReference: String?
+        if retainLocalSamples {
+            do {
+                ringDataReference = try artifactStore.appendRingBatch(
+                    ProbeRingIMUBatchRecord(
+                        schemaVersion: "rme.ring-imu-batch.v1",
+                        sessionID: sessionID,
+                        sourceEnvelopeID: UUID(),
+                        deviceID: selectedRingDeviceID?.uuidString.lowercased() ?? "unknown",
+                        receivedAt: receivedAt,
+                        sequenceStart: batch.sequenceStart,
+                        frameCount: batch.frameCount,
+                        sampleSize: batch.sampleSize,
+                        samples: batch.samples
+                    )
+                )
+            } catch {
+                appendLog("戒指原始数据写入失败：\(error.localizedDescription)")
+            }
+        }
+
+        mutateCurrentSession { session in
+            session.ringBatchCount += 1
+            session.ringSampleCount += batch.samples.count
+            session.ringSequenceGapCount = ringSequenceGapCount
+            if let ringDataReference {
+                session.ringDataReference = ringDataReference
+            }
+        }
+
+        if let detection = result.detection {
+            handleRingRapidMovement(detection, sessionID: sessionID)
+        }
+    }
+
+    private func handleRingRapidMovement(
+        _ detection: RingRapidMovementDetection,
+        sessionID: UUID
+    ) {
+        let decisionID = UUID()
+        let captureRequested = ringRapidMovementTriggerEnabled
+        let requestedModalities = captureRequested
+            ? (ringTriggeredAudioEnabled ? ["IMAGE", "AUDIO"] : ["IMAGE"])
+            : []
+        let suppressionReason = captureRequested ? nil : "RING_TRIGGER_DISABLED"
+
+        lastRingJudgement = ringJudgementSummary(
+            detection,
+            suffix: captureRequested ? "已请求眼镜图片和短音频" : "仅记录判断，未开启联动"
+        )
+        appendLog("戒指判断：\(lastRingJudgement)")
+
+        mutateCurrentSession { session in
+            session.ringMotionAssessments.append(
+                ProbeRingMotionAssessment(
+                    id: decisionID,
+                    sessionID: sessionID,
+                    windowStartedAt: detection.windowStartedAt,
+                    windowEndedAt: detection.windowEndedAt,
+                    detectedAt: detection.detectedAt,
+                    classification: "RAPID_MOVEMENT",
+                    displayLabel: "快速移动",
+                    sampleCount: detection.sampleCount,
+                    peakAccelerationDeltaRaw: detection.peakAccelerationDelta,
+                    peakGyroscopeMagnitudeRaw: detection.peakGyroscopeMagnitude,
+                    detectorRuleVersion: RingRapidMovementDetector.ruleVersion,
+                    sensitivity: detection.sensitivity,
+                    captureRequested: captureRequested,
+                    requestedModalities: requestedModalities,
+                    suppressionReason: suppressionReason
+                )
+            )
+            session.auditEvents.append(
+                ProbeAuditEvent(
+                    id: UUID(),
+                    occurredAt: detection.detectedAt,
+                    type: "RING_RAPID_MOVEMENT_DETECTED",
+                    detail: "decision=\(decisionID.uuidString.lowercased())"
+                )
+            )
+        }
+
+        guard captureRequested else {
+            return
+        }
+        requestPhoto(
+            trigger: .ringMotion,
+            sessionID: sessionID,
+            triggerDecisionID: decisionID,
+            scheduledAt: detection.detectedAt
+        )
+        if ringTriggeredAudioEnabled {
+            beginRingTriggeredAudioWindow(
+                decisionID: decisionID,
+                startedAt: detection.detectedAt
+            )
+        }
+    }
+
+    private func beginRingTriggeredAudioWindow(decisionID: UUID, startedAt: Date) {
+        let endsAt = startedAt.addingTimeInterval(Self.ringTriggeredAudioWindowSeconds)
+        activeRingAudioWindow = ActiveRingAudioWindow(
+            decisionID: decisionID,
+            startedAt: startedAt,
+            endsAt: endsAt,
+            data: Data(),
+            peakDBFS: -160
+        )
+
+        if audioCaptureMode?.isSessionVAD == true {
+            appendLog("戒指触发已关联到正在运行的会话音频流")
+        } else if let mode = audioCaptureMode {
+            appendLog("戒指短音频未启动：当前音频流为 \(mode.displayName)")
+            activeRingAudioWindow = nil
+            return
+        } else {
+            guard startAudioCapture(mode: .ringTriggered(decisionID)) else {
+                activeRingAudioWindow = nil
+                return
+            }
+        }
+
+        ringAudioStopTask?.cancel()
+        ringAudioStopTask = Task { [weak self] in
+            try? await Task.sleep(
+                nanoseconds: UInt64(Self.ringTriggeredAudioWindowSeconds * 1_000_000_000)
+            )
+            guard !Task.isCancelled, let self else {
+                return
+            }
+            self.finalizeRingTriggeredAudioWindow(endedAt: Date())
+            if self.audioCaptureMode?.triggerDecisionID == decisionID {
+                self.stopAudioCapture(reason: "RING_TRIGGER_WINDOW_COMPLETED")
+            }
+        }
+    }
+
+    private func appendToRingTriggeredAudioWindow(
+        _ data: Data,
+        levelDBFS: Double?,
+        receivedAt: Date
+    ) {
+        guard var window = activeRingAudioWindow, receivedAt <= window.endsAt else {
+            return
+        }
+        window.data.append(data)
+        if let levelDBFS {
+            window.peakDBFS = max(window.peakDBFS, levelDBFS)
+        }
+        activeRingAudioWindow = window
+    }
+
+    private func finalizeRingTriggeredAudioWindow(endedAt: Date) {
+        guard let window = activeRingAudioWindow else {
+            return
+        }
+        activeRingAudioWindow = nil
+        guard !window.data.isEmpty, let sessionID = currentSession?.id else {
+            mutateCurrentSession { session in
+                session.auditEvents.append(
+                    ProbeAuditEvent(
+                        id: UUID(),
+                        occurredAt: endedAt,
+                        type: "RING_TRIGGER_AUDIO_EMPTY",
+                        detail: "decision=\(window.decisionID.uuidString.lowercased())"
+                    )
+                )
+            }
+            return
+        }
+
+        let observationID = UUID()
+        let durationMilliseconds = max(
+            1,
+            Int(min(endedAt, window.endsAt).timeIntervalSince(window.startedAt) * 1_000)
+        )
+        var localReference: String?
+        if retainLocalSamples {
+            do {
+                localReference = try artifactStore.saveAudio(
+                    window.data,
+                    sessionID: sessionID,
+                    observationID: observationID
+                )
+            } catch {
+                appendLog("戒指触发音频写入失败：\(error.localizedDescription)")
+            }
+        }
+
+        let observation = ProbeAudioObservation(
+            id: observationID,
+            sessionID: sessionID,
+            trigger: "RING_MOTION_WINDOW",
+            triggerDecisionID: window.decisionID,
+            startedAt: window.startedAt,
+            endedAt: min(endedAt, window.endsAt),
+            durationMilliseconds: durationMilliseconds,
+            byteCount: window.data.count,
+            peakDBFS: window.peakDBFS,
+            codec: "PCM_S16LE_16KHZ",
+            channels: audioChannels,
+            localMediaReference: localReference,
+            analysisState: localReference == nil ? "NOT_QUEUED" : "PENDING_LOCAL",
+            applicationState: applicationState
+        )
+        audioSegmentCount += 1
+        lastAudioSummary = String(
+            format: "戒指触发音频：%d ms，%d 字节，峰值 %.1f dBFS",
+            durationMilliseconds,
+            window.data.count,
+            window.peakDBFS
+        )
+        mutateCurrentSession { session in
+            session.audioObservations.append(observation)
+            session.auditEvents.append(
+                ProbeAuditEvent(
+                    id: UUID(),
+                    occurredAt: observation.endedAt,
+                    type: "RING_TRIGGER_AUDIO_WINDOW_COMPLETED",
+                    detail: "decision=\(window.decisionID.uuidString.lowercased());bytes=\(window.data.count)"
+                )
+            )
+        }
+    }
+
+    private func ringJudgementSummary(
+        _ detection: RingRapidMovementDetection,
+        suffix: String
+    ) -> String {
+        String(
+            format: "快速移动（加速度变化 %.0f，陀螺仪幅度 %.0f）· %@",
+            detection.peakAccelerationDelta,
+            detection.peakGyroscopeMagnitude,
+            suffix
+        )
+    }
+
+    private func makeRingSensorSnapshot() -> ProbeRingSensorSnapshot? {
+        guard let configuration = ringSensorConfiguration else {
+            return nil
+        }
+        return ProbeRingSensorSnapshot(
+            deviceID: selectedRingDeviceID?.uuidString.lowercased() ?? "unknown",
+            deviceName: selectedRingDevice?.name ?? "Ring Sound",
+            sampleRateHz: configuration.sampleRateHz,
+            accelRangeG: configuration.accelRangeG,
+            gyroRangeDPS: configuration.gyroRangeDPS
+        )
+    }
+
     private func applyAuthState(_ state: RGCxrClientAuthState) {
         isAuthenticated = state.isAuthenticated
 
@@ -590,10 +1149,18 @@ final class GlassProbeModel: ObservableObject {
             let result = audioSegmenter.process(packet.data)
             audioLevelDBFS = result.levelDBFS
             isSpeechActive = audioSegmenter.isSpeechActive
+            appendToRingTriggeredAudioWindow(
+                packet.data,
+                levelDBFS: result.levelDBFS,
+                receivedAt: Date()
+            )
             if result.speechStarted {
                 appendLog("VAD 检测到语音开始")
             }
-            if let segment = result.completedSegment {
+            if
+                let segment = result.completedSegment,
+                audioCaptureMode?.triggerDecisionID == nil
+            {
                 recordAudioSegment(segment)
             }
         @unknown default:
@@ -603,6 +1170,7 @@ final class GlassProbeModel: ObservableObject {
 
     private func recordAudioSegment(_ segment: ProbeAudioSegment) {
         let observationID = UUID()
+        let triggerDecisionID = ringDecisionID(for: segment)
         audioSegmentCount += 1
         isSpeechActive = false
         lastAudioSummary = String(
@@ -635,7 +1203,8 @@ final class GlassProbeModel: ObservableObject {
         let observation = ProbeAudioObservation(
             id: observationID,
             sessionID: sessionID,
-            trigger: "SESSION_VAD",
+            trigger: triggerDecisionID == nil ? "SESSION_VAD" : "RING_MOTION",
+            triggerDecisionID: triggerDecisionID,
             startedAt: segment.startedAt,
             endedAt: segment.endedAt,
             durationMilliseconds: segment.durationMilliseconds,
@@ -661,9 +1230,23 @@ final class GlassProbeModel: ObservableObject {
         }
     }
 
+    private func ringDecisionID(for segment: ProbeAudioSegment) -> UUID? {
+        if let decisionID = audioCaptureMode?.triggerDecisionID {
+            return decisionID
+        }
+        guard let window = activeRingAudioWindow else {
+            return nil
+        }
+        let overlapsWindow =
+            segment.endedAt >= window.startedAt
+            && segment.startedAt <= window.endsAt
+        return overlapsWindow ? window.decisionID : nil
+    }
+
     private func requestPhoto(
         trigger: ProbeCaptureTrigger,
         sessionID: UUID?,
+        triggerDecisionID: UUID?,
         scheduledAt: Date = Date()
     ) {
         let observationID = UUID()
@@ -681,6 +1264,7 @@ final class GlassProbeModel: ObservableObject {
                     sessionID: sessionID,
                     scheduledAt: scheduledAt,
                     trigger: trigger,
+                    triggerDecisionID: triggerDecisionID,
                     outcome: .skipped,
                     reason: reason,
                     data: nil,
@@ -695,7 +1279,8 @@ final class GlassProbeModel: ObservableObject {
             id: observationID,
             sessionID: sessionID,
             scheduledAt: scheduledAt,
-            trigger: trigger
+            trigger: trigger,
+            triggerDecisionID: triggerDecisionID
         )
         pendingPhotoRequest = pendingRequest
         startPhotoTimeout(for: pendingRequest)
@@ -725,6 +1310,7 @@ final class GlassProbeModel: ObservableObject {
                             sessionID: sessionID,
                             scheduledAt: scheduledAt,
                             trigger: trigger,
+                            triggerDecisionID: triggerDecisionID,
                             outcome: .failed,
                             reason: "IMAGE_DECODE_FAILED",
                             data: data,
@@ -742,6 +1328,7 @@ final class GlassProbeModel: ObservableObject {
                         sessionID: sessionID,
                         scheduledAt: scheduledAt,
                         trigger: trigger,
+                        triggerDecisionID: triggerDecisionID,
                         outcome: .succeeded,
                         reason: nil,
                         data: data,
@@ -763,6 +1350,7 @@ final class GlassProbeModel: ObservableObject {
                     sessionID: sessionID,
                     scheduledAt: scheduledAt,
                     trigger: trigger,
+                    triggerDecisionID: triggerDecisionID,
                     outcome: .failed,
                     reason: String(describing: error),
                     data: nil,
@@ -812,6 +1400,7 @@ final class GlassProbeModel: ObservableObject {
                         sessionID: sessionID,
                         scheduledAt: scheduledAt,
                         trigger: .periodic,
+                        triggerDecisionID: nil,
                         outcome: .skipped,
                         reason: "SCHEDULER_DELAYED_\(delayMilliseconds)MS",
                         data: nil,
@@ -823,6 +1412,7 @@ final class GlassProbeModel: ObservableObject {
                 self.requestPhoto(
                     trigger: .periodic,
                     sessionID: sessionID,
+                    triggerDecisionID: nil,
                     scheduledAt: scheduledAt
                 )
             }
@@ -837,7 +1427,7 @@ final class GlassProbeModel: ObservableObject {
         captureLoopTask?.cancel()
         captureLoopTask = nil
         nextCaptureAt = nil
-        if audioCaptureMode == .sessionVAD {
+        if let audioCaptureMode, !audioCaptureMode.isManualTest {
             stopAudioCapture(reason: reason)
         }
         sessionState = .paused
@@ -864,7 +1454,7 @@ final class GlassProbeModel: ObservableObject {
         captureLoopTask = nil
         nextCaptureAt = nil
         cancelPendingPhoto(reason: "SESSION_ENDED")
-        if audioCaptureMode == .sessionVAD {
+        if let audioCaptureMode, !audioCaptureMode.isManualTest {
             stopAudioCapture(reason: reason)
         }
         sessionState = .ended
@@ -888,6 +1478,7 @@ final class GlassProbeModel: ObservableObject {
         sessionID: UUID,
         scheduledAt: Date,
         trigger: ProbeCaptureTrigger,
+        triggerDecisionID: UUID?,
         outcome: ProbeCaptureOutcome,
         reason: String?,
         data: Data?,
@@ -921,6 +1512,7 @@ final class GlassProbeModel: ObservableObject {
             scheduledAt: scheduledAt,
             completedAt: Date(),
             trigger: trigger,
+            triggerDecisionID: triggerDecisionID,
             outcome: outcome,
             reason: reason,
             byteCount: data?.count,
@@ -1035,6 +1627,7 @@ final class GlassProbeModel: ObservableObject {
                     sessionID: sessionID,
                     scheduledAt: request.scheduledAt,
                     trigger: request.trigger,
+                    triggerDecisionID: request.triggerDecisionID,
                     outcome: .failed,
                     reason: "CAPTURE_TIMEOUT",
                     data: nil,
@@ -1073,6 +1666,7 @@ final class GlassProbeModel: ObservableObject {
                 sessionID: sessionID,
                 scheduledAt: request.scheduledAt,
                 trigger: request.trigger,
+                triggerDecisionID: request.triggerDecisionID,
                 outcome: .failed,
                 reason: reason,
                 data: nil,
