@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-version="${1:-0.1.2-debug}"
+version="${1:-0.1.3-debug}"
 apk_path="${2:-$project_dir/app/build/outputs/apk/debug/app-debug.apk}"
 bundle_root="$project_dir/release-bundles"
 bundle_name="reality-memory-glasses-$version"
@@ -17,6 +17,7 @@ mkdir -p "$bundle_dir/scripts"
 cp "$apk_path" "$bundle_dir/reality-memory-glasses-debug.apk"
 cp "$project_dir/docs/RV101-TEST-PLAN-v0.1.md" "$bundle_dir/"
 cp "$project_dir/docs/RV101-LOCAL-BACKEND-LINK-v0.1.md" "$bundle_dir/"
+cp "$project_dir/docs/RV101-CAPTURE-STRATEGY-v0.1.md" "$bundle_dir/"
 cp "$project_dir/scripts/install-on-rv101.sh" "$bundle_dir/scripts/"
 cp "$project_dir/scripts/connect-local-backend.sh" "$bundle_dir/scripts/"
 cp "$project_dir/scripts/start-test-run.sh" "$bundle_dir/scripts/"

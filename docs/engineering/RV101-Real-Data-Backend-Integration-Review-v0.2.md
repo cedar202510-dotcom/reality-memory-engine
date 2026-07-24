@@ -40,9 +40,11 @@
 - 同时绑定 `ImageCapture + VideoCapture` 的用例组合不受支持；
 - 生命周期、权限或厂商相机占用导致绑定失败。
 
-联调版已增加相机清单和完整错误审计，并在图片与视频组合绑定失败时降级为只绑定
-图片。下一轮导出中应出现 `CAMERA_PREPARED`、`CAMERA_PREPARED_IMAGE_ONLY` 或
-`CAMERA_PREPARE_FAILED`。
+`android-glasses/0.1.3` 已按 Rokid 官方 Sample 改为互斥绑定：启动时只绑定
+`ImageCapture`；需要录像时解除图片绑定并只绑定 `VideoCapture`；录像结束后再恢复
+图片模式。下一轮导出中应出现 `CAMERA_PREPARED_IMAGE_ONLY`、
+`CAMERA_MODE_BOUND` 或 `CAMERA_PREPARE_FAILED`，其中审计同时保留相机清单、
+可用帧率范围、图片/视频输出尺寸和完整异常原因。
 
 ### 2.2 来源信封的时间范围不准确
 

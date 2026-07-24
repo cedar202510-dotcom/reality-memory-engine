@@ -21,7 +21,8 @@
 - 读取眼镜自身加速度计与陀螺仪。
 - 使用“稳定基线 -> 运动突变 -> 回稳”规则生成客观的头动采集意图。
 - 普通头动：无业务预览图片 + 10 秒短音频 + 触发前后 IMU。
-- 强头动：2.5 秒无业务预览短视频 + 10 秒短音频 + 触发前后 IMU。
+- 强头动：相机从图片模式切换到独占录像模式，采集 2.5 秒无业务预览短视频，
+  完成后恢复图片模式；同时保留 10 秒短音频和触发前后 IMU。
 - 活跃期间每 60 秒补一张基线图片和一个 IMU 窗口；后续由真机功耗和信息增量实验
   调整，不把该频率写成产品常量。
 - 告知界面单击取消本次感知；再次佩戴时重新开启，不保留跨佩戴暂停状态。
@@ -33,7 +34,7 @@
 - Debug APK 可通过 `adb reverse` 把受控明文测试副本自动上传到电脑后端，并带
   幂等重试状态；生产设备绑定、受限凭证、密钥封装、删除回执和云端下行尚未实现。
 
-当前 `0.1.2` 设备验证构建会在元数据中写入 24 小时 TTL，但尚未实现到期清理
+当前 `0.1.3` 设备验证构建会在元数据中写入 24 小时 TTL，但尚未实现到期清理
 任务。它只能用于显式测试，不能接入生产用户数据。正式联调前必须改为策略下发的
 短 TTL，并实现本地密文、暂存文件和密钥引用的删除及回执。当前构建也仍使用一个
 设备级 Keystore 别名直接加密，正式上传前需要补充每项 Evidence 的数据密钥封装
@@ -76,7 +77,7 @@ ADB 授权，不需要 Java、Gradle 或 Android Studio。安装命令和签名�
 每次交付 APK 时必须同时生成测试包：
 
 ```bash
-./scripts/build-test-bundle.sh 0.1.2-debug
+./scripts/build-test-bundle.sh 0.1.3-debug
 ```
 
 测试包包含 APK、SHA-256、[RV101 真机测试计划](docs/RV101-TEST-PLAN-v0.1.md)
@@ -135,7 +136,8 @@ adb exec-out run-as com.realitymemory.glasses \
 队友验证：
 
 1. 官方 Sample 可以通过 ADB 安装并运行。
-2. CameraX 能同时绑定无预览 `ImageCapture` 与 `VideoCapture`。
+2. CameraX 能在无预览条件下单独绑定 `ImageCapture`，并能按
+   `图片 -> 视频 -> 图片` 顺序互斥切换。
 3. 8 通道 AudioRecord 的实际通道数、文件大小和时长正确。
 4. IMU 的实际采样率、轴向和时间戳稳定性。
 5. 佩戴提示 Activity 是否允许从系统广播拉起；若固件阻止，则降级为 TTS + 通知。
@@ -149,6 +151,7 @@ adb exec-out run-as com.realitymemory.glasses \
 ## 相关文档
 
 - [眼镜端现有 UI 交互预览](docs/RV101-UI-PREVIEW.html)
+- [眼镜端采集策略与当前验证顺序](docs/RV101-CAPTURE-STRATEGY-v0.1.md)
 - [RV101 眼镜与电脑后端联调](docs/RV101-LOCAL-BACKEND-LINK-v0.1.md)
 - [数据采集架构](../../docs/architecture/01-Data-Capture-Architecture.md)
 - [设备与云端通信](../../docs/architecture/04-Device-Cloud-Communication.md)

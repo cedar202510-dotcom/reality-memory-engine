@@ -32,6 +32,7 @@ class RealityRuntimeService : LifecycleService() {
 
     private var state = SessionState.ARMED
     private var cameraReady = false
+    private var cameraPreparing = false
     private var disclosureGeneration = 0
     private var reminderGeneration = 0
 
@@ -71,17 +72,12 @@ class RealityRuntimeService : LifecycleService() {
             "等待佩戴",
             displayKind = RuntimeDisplayKind.NONE,
         )
-        camera.prepare { ready, error ->
-            cameraReady = ready
-            if (!ready && state == SessionState.ACTIVE) {
-                publish(SessionState.BLOCKED, "相机暂不可用：$error")
-            }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         ensureForeground()
+        ensureCameraPrepared()
         when (intent?.action) {
             ACTION_START_EXPLICIT -> startDisclosure("USER_EXPLICIT")
             ACTION_WEAR_CHANGED -> {
@@ -236,6 +232,12 @@ class RealityRuntimeService : LifecycleService() {
         motion: MotionTrigger? = null,
     ) {
         if (state != SessionState.ACTIVE) return
+        if (
+            !cameraReady &&
+            modalities.any { it == CaptureModality.IMAGE || it == CaptureModality.VIDEO }
+        ) {
+            ensureCameraPrepared()
+        }
         val window = repository.beginWindow(signalKind, modalities, motion)
         val remaining = AtomicInteger(modalities.size)
         val complete: (Boolean, String) -> Unit = { success, message ->
@@ -303,6 +305,24 @@ class RealityRuntimeService : LifecycleService() {
             PackageManager.PERMISSION_GRANTED &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
+
+    private fun ensureCameraPrepared() {
+        if (cameraReady || cameraPreparing) return
+        if (
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        cameraPreparing = true
+        camera.prepare { ready, error ->
+            cameraPreparing = false
+            cameraReady = ready
+            if (!ready && state == SessionState.ACTIVE) {
+                publish(state, "现实感知运行中，相机暂不可用：$error", RuntimeDisplayKind.NONE)
+            }
+        }
+    }
 
     private fun ensureForeground() {
         val manager = getSystemService(NotificationManager::class.java)
