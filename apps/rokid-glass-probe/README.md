@@ -141,4 +141,79 @@ reference/GlassesBareDevSample
 8. 摘下眼镜，确认出现 `WEAR_RECEIVER` 或 `LIVE_BROADCAST`。
 9. 点击 `Stop and Cleanup`。
 
-本 PoC 不上传图片，不接 AI 分析，不接记忆后端，也不接手机端 CXR 数据通道。
+默认配置下本 App 不上传图片，不接 AI 分析，不接手机端 CXR 数据通道，行为与
+旧探针一致。打开下面的采集配置后，它升级为乐奇眼镜的数据采集 Collector。
+
+## 数据采集与上报（Collector）
+
+`collector/` 包实现了 [04 设备接入 Connector 架构](../../docs/architecture/04-Device-Connector-Architecture.md)
+中的设备侧 Collector，全部基于官方裸机路线的标准 Android API：
+
+| 模态 | 实现 | 行为 |
+| --- | --- | --- |
+| image | CameraX（复用探针拍照） | 每张 JPEG 入本地 spool，异步上传后删除原图 |
+| audio | `AudioRecord` 16kHz/单声道/PCM16 | 每 20 秒切一段 WAV 入 spool |
+| sensor | `SensorManager` 加速度计+陀螺仪 | 每 10 秒聚合一个窗口，只上报 RMS/峰值摘要，原始波形不出设备 |
+
+上报走 `EnvelopeSpooler`（持久化队列）+ `EnvelopeUploader`（后台线程，
+multipart POST 到后端 `/internal/v1/envelopes`，幂等键重试安全，断网退避续传，
+4xx 拒收即丢弃并审计）。信封字段与
+`services/memory-platform/app/schemas.SourceEnvelopeIn` 一一对应：
+手动拍照 `trigger=explicit`，佩戴/周期采集 `trigger=auto`，
+`meta.device_kind=rokid_glasses`，`meta.device_adapter=rokid-glass-probe/0.2.0`。
+
+### 打开采集上报
+
+配置文件在设备上的 `files/collector.properties`，改配置不需要重新打包：
+
+```bash
+adb shell "run-as com.realitymemory.glassprobe sh -c 'cat > files/collector.properties'" <<'EOF'
+upload_enabled=true
+backend_base_url=http://<后端IP>:8000
+device_id=<devices 表注册的 UUID，可暂时省略>
+audio_enabled=true
+imu_enabled=true
+EOF
+```
+
+改完后重启采集服务（Stop and Cleanup 再 Start）。配置项与默认值见
+`collector/CollectorConfig.java`。
+
+### 观察采集链路
+
+本地日志新增事件：`CAPTURED_SPOOLED` / `AUDIO_CHUNK_SPOOLED` / `UPLOAD_OK` /
+`UPLOAD_FAILED` / `SPOOL_DROPPED` 等。后端侧可查 `audit_records`
+（action=ingest）确认信封到达。
+
+## 电脑实时预览（MJPEG）
+
+App 内置一个眼镜本机 MJPEG 服务器（`collector/PreviewStreamServer`），把相机
+实时帧推到浏览器，用于在电脑上直接看眼镜采集到的画面。链路：
+
+```text
+CameraX ImageAnalysis -> YUV→JPEG（≤10fps） -> HTTP multipart/x-mixed-replace
+```
+
+使用步骤：
+
+1. 眼镜上打开 App，点 `Start PC Preview (MJPEG :8090)`。
+2. 电脑上二选一：
+   - 开发线（推荐，不依赖 Wi-Fi）：`adb forward tcp:8090 tcp:8090`，
+     浏览器打开 `http://127.0.0.1:8090`；
+   - 同一局域网：浏览器直接打开 `http://<眼镜IP>:8090`。
+3. 页面内嵌 `/stream` 实时流；`/frame` 可单独取最近一帧（curl 调试用）。
+4. 看完点 `Stop PC Preview`，服务器关闭并解除相机的分析用例。
+
+说明：
+
+- 预览是旁路能力，与拍照/上传互不影响；没有浏览器在看时不做 JPEG 编码，
+  不额外耗电。
+- 无认证、明文 HTTP，仅调试使用；端口和帧率在 `collector.properties` 里配
+  （`preview_port` / `preview_max_fps` / `preview_jpeg_quality`）。
+- 日志事件：`PREVIEW_STARTED` / `PREVIEW_CLIENT_JOINED` / `PREVIEW_STOPPED`。
+
+### 已知限制（待真机验证）
+
+- Android 12 对后台启动的前台服务有 camera/mic while-in-use 限制，佩戴广播
+  拉起服务后能否访问相机麦克风，需要在 YodaOS-Sprite 真机上确认。
+- 眼镜网络稳定性、上传对温升耗电的影响，按开发指南第 6 节的验证顺序记录。

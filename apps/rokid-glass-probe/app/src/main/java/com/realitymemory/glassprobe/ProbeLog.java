@@ -12,13 +12,13 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 
-final class ProbeLog {
+public final class ProbeLog {
     private static final String LOG_FILE = "probe-log.jsonl";
 
     private ProbeLog() {
     }
 
-    static synchronized void append(Context context, String event, String detail) {
+    public static synchronized void append(Context context, String event, String detail) {
         try {
             JSONObject row = new JSONObject();
             row.put("ts_ms", System.currentTimeMillis());
@@ -35,7 +35,7 @@ final class ProbeLog {
         }
     }
 
-    static synchronized List<String> lastLines(Context context, int maxLines) {
+    public static synchronized List<String> lastLines(Context context, int maxLines) {
         ArrayDeque<String> lines = new ArrayDeque<>();
         File file = new File(context.getFilesDir(), LOG_FILE);
         if (!file.exists()) {
@@ -57,7 +57,7 @@ final class ProbeLog {
         return new ArrayList<>(lines);
     }
 
-    static File logFile(Context context) {
+    public static File logFile(Context context) {
         return new File(context.getFilesDir(), LOG_FILE);
     }
 }

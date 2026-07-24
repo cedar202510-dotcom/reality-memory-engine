@@ -24,7 +24,7 @@ import java.io.File;
 import java.util.List;
 
 public class MainActivity extends ComponentActivity {
-    private static final int REQUEST_CAMERA = 42;
+    private static final int REQUEST_CAPTURE_PERMISSIONS = 42;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView statusView;
@@ -91,6 +91,14 @@ public class MainActivity extends ComponentActivity {
         resume.setOnClickListener(v -> sendServiceAction(CaptureForegroundService.ACTION_RESUME));
         root.addView(resume, matchWrap());
 
+        Button startPreview = button("Start PC Preview (MJPEG :8090)");
+        startPreview.setOnClickListener(v -> sendServiceAction(CaptureForegroundService.ACTION_START_PREVIEW));
+        root.addView(startPreview, matchWrap());
+
+        Button stopPreview = button("Stop PC Preview");
+        stopPreview.setOnClickListener(v -> sendServiceAction(CaptureForegroundService.ACTION_STOP_PREVIEW));
+        root.addView(stopPreview, matchWrap());
+
         Button stop = button("Stop and Cleanup");
         stop.setOnClickListener(v -> sendServiceAction(CaptureForegroundService.ACTION_STOP));
         root.addView(stop, matchWrap());
@@ -135,9 +143,14 @@ public class MainActivity extends ComponentActivity {
     }
 
     private void requestCameraIfNeeded() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-                != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA);
+        List<String> missing = new java.util.ArrayList<>();
+        for (String permission : new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO}) {
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                missing.add(permission);
+            }
+        }
+        if (!missing.isEmpty()) {
+            requestPermissions(missing.toArray(new String[0]), REQUEST_CAPTURE_PERMISSIONS);
         }
     }
 
