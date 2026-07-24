@@ -56,6 +56,15 @@ public class MainActivity extends ComponentActivity {
         registerLiveReceiver();
         refreshLogs();
         handler.post(refreshLoop);
+        // 联调便利：打开 App 即自动开启 PC 预览（眼镜上难以精准点按钮，adb tap 会被输入
+        // 通道拦截）。延迟到相机权限回调之后；已授权时等价于直接启动。
+        handler.postDelayed(() -> {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+                    == PackageManager.PERMISSION_GRANTED) {
+                ProbeLog.append(this, "PREVIEW_AUTOSTART", "auto start on app open");
+                sendServiceAction(CaptureForegroundService.ACTION_START_PREVIEW);
+            }
+        }, 1200);
     }
 
     @Override
