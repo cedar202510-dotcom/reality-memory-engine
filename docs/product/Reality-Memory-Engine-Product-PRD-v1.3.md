@@ -18,7 +18,7 @@ Reality Memory Engine 是面向智能硬件与个人 Agent 的现实世界记忆
 
 首个可用产品以家庭为可信运行域，以“找物”为英雄场景，同时跑通耗材余量、口头偏好与任务、隐私暂停与遗忘。
 
-用户侧只有一个 Reality 手机 App。它承载账号、设备配对、授权策略、本地加密队列、上传、管理和提醒，并通过可插拔 Device Adapter 接入眼镜、戒指及未来硬件。当前阶段先在这个统一 App 内使用 CXR-L Adapter 验证 Rokid 真实图片与短音频链路；最终眼镜本机的 RV101 原生 Runtime 完成低打扰采集后，仍通过同一个手机网关进入用户账号与云端记忆平台。
+用户侧最多只有一个 Reality 手机 App，不按眼镜、戒指或模态拆分。它承载账号配置、设备配对、授权策略、管理、提醒和必要时的数据中继。当前阶段先在这个统一 App 内使用 CXR-L Adapter 验证 Rokid 真实图片与短音频链路；最终眼镜本机的 RV101 原生 Runtime 完成低打扰采集，并优先通过统一云端契约直传 Memory Platform，手机作为用户客户端和兼容中继，而不是永久必经节点。
 
 ---
 
@@ -58,12 +58,12 @@ Reality Memory Engine 是面向智能硬件与个人 Agent 的现实世界记忆
 - 让图片、短视频、音频、传感器和结构化事件都进入同一套观察与记忆形成流程。
 - 支持实体主线、候选分支、冲突、纠正和重算。
 - 支持 Query、Timeline、Signal、Privacy、Audit 五类中台能力。
-- 让所有需要蓝牙、Wi-Fi 或本地网络中继的硬件统一接入一个手机 App，不按设备或模态拆分用户应用。
+- 让所有硬件接入同一账号、策略、来源契约和云端入口；需要蓝牙、Wi-Fi 或本地网络中继时复用同一个手机 App，不按设备或模态拆分用户应用。
 
 ### 3.3 当前阶段目标
 
 1. 先在统一 Reality 手机 App 的 CXR-L Adapter 中取得真实眼镜图片和短音频，验证授权、连接、媒体质量、账号归属与统一来源契约。
-2. 获得裸机调试条件后，将设备侧采集逻辑迁入 RV101 原生 Glass Runtime，并验证佩戴/摘下、后台生命周期、无业务预览采集和本地 VAD；证据仍经手机网关进入用户账号与云端。
+2. 获得裸机调试条件后，将设备侧采集逻辑迁入 RV101 原生 Glass Runtime，并验证佩戴/摘下、后台生命周期、无业务预览采集、本地 VAD、戒指 BLE Central 和 HTTPS 直传；证据优先由眼镜进入云端，手机中继作为兼容路径。
 3. 用户收到一次“5 秒后开启现实记录”的轻提示，可在倒计时内关闭；会话中随时可以暂停、摘下或全局关闭。
 4. 会话激活后可按策略采集单图、前后帧、2-3 秒短视频和短音频片段。
 5. PoC 媒体只在显式测试授权下短暂保存；正式链路完成结构化后立即删除 Evidence。
@@ -91,7 +91,7 @@ Reality Memory Engine 是面向智能硬件与个人 Agent 的现实世界记忆
 
 ### 4.5 中台与设备适配解耦
 
-用户侧只发布一个 Reality 手机 App。图片、短视频、音频和传感器是该 App 内的模态能力，不是独立应用；Rokid、戒指及未来设备通过各自 Device Adapter 接入同一个账号、策略、加密队列与上传管道。Rokid 原生 Glass Runtime 只承担眼镜本机采集，不承载用户账号或记忆本体。CXR-L 仅是统一 App 内的过渡 Adapter，不作为最终后台感知方案。
+用户侧最多发布一个 Reality 手机 App。图片、短视频、音频和传感器是系统模态能力，不是独立用户应用；Rokid、戒指及未来设备通过各自 Device Adapter 接入同一个账号、策略、来源契约与云端入口。Rokid 原生 Glass Runtime 承担眼镜本机采集、短期加密队列和受限上传，不承载记忆本体。CXR-L 仅是统一 App 内的过渡 Adapter，不作为最终后台感知方案。
 
 ### 4.6 有界媒体，而非连续录像
 
@@ -165,9 +165,9 @@ Reality Memory Engine 是面向智能硬件与个人 Agent 的现实世界记忆
 | 眼镜端裸机开发 | RV101 眼镜本机 | 最终设备侧采集 Runtime |
 | CXR-L SDK | 统一 Android/iOS 手机 App | 开发线到位前的真实图片/短音频过渡 Adapter |
 | CXR-M SDK | Android 手机 | 获得商务能力后再评估 |
-| Reality 手机 App | 手机 | 首版唯一用户入口、默认数据网关、配对、策略、加密队列、上传、审计和提醒 |
+| Reality 手机 App | 手机 | 当前 CXR-L 阶段的数据网关；长期作为账号配置、设备管理、提醒和兼容中继 |
 
-最终产品不依赖 CXR-L CustomView 或其拍照回显；原生 Glass Runtime 直接调用 CameraX、AudioRecord 和 SensorManager，并把 Evidence 与设备事件交给统一手机网关。CXR-L 在第一阶段的价值是让我们提前验证媒体质量、授权链路、VAD、结构化解析和后端契约。
+最终产品不依赖 CXR-L CustomView 或其拍照回显；原生 Glass Runtime 直接调用 CameraX、AudioRecord 和 SensorManager，并在网络可用时把 Evidence 与设备事件直传统一云端入口，在能力或网络受限时交给手机中继。CXR-L 在第一阶段的价值是让我们提前验证媒体质量、授权链路、VAD、结构化解析和后端契约。
 
 ---
 
@@ -272,6 +272,10 @@ Agent 只在歧义判断、查询回答和个性化措辞确有收益时参与�
 
 产品读者主要看本文档。工程、算法和数据结构细节见：
 
+- `docs/architecture/README.md`：当前分层技术架构、部署路径和跨团队接口。
+- `docs/architecture/01-Data-Capture-Architecture.md`：戒指、眼镜、手机中继和采集证据。
+- `docs/architecture/02-Memory-Platform-Architecture.md`：云端解析、融合、事实和状态投影。
+- `docs/architecture/03-Agent-Access-Architecture.md`：账号授权、查询、订阅、纠正和 Demo。
 - `docs/engineering/Reality-Memory-Engine-Engineering-Architecture-v1.3.md`
 - `docs/visuals/reality-memory-engine-flow-v1.3.html`
 - `archive/cxrl-probe/README.md`：历史 CXR-L SDK 探针，仅作参考，不是第二个正式手机 App。

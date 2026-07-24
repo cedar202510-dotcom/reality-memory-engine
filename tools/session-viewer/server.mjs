@@ -80,6 +80,13 @@ function secondsBetween(base, value) {
   return Math.max(0, diff / 1000);
 }
 
+function percentile(values, fraction) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * fraction)));
+  return sorted[index];
+}
+
 function pickObservationType(observation) {
   const mediaType = observation.mediaType || observation.type || observation.modality || "";
   const localRef = observation.localRef || observation.localPath || observation.localMediaReference || "";
@@ -129,6 +136,10 @@ function getObservations(session) {
 
 async function readRingData(sessionId, session = null) {
   const currentSession = session || await readSession(sessionId);
+  const accelRangeG = Number(currentSession.ringSensor?.accelRangeG || 0);
+  const gyroRangeDPS = Number(currentSession.ringSensor?.gyroRangeDPS || 0);
+  const accelScale = accelRangeG > 0 ? accelRangeG / 32768 : null;
+  const gyroScale = gyroRangeDPS > 0 ? gyroRangeDPS / 32768 : null;
   const relativeRef = currentSession.ringDataReference;
   if (!relativeRef) {
     return {
@@ -157,8 +168,16 @@ async function readRingData(sessionId, session = null) {
   const batches = [];
   const samples = [];
   let previous = null;
-  for (const line of lines) {
-    const batch = JSON.parse(line);
+  for (const [lineIndex, line] of lines.entries()) {
+    let batch;
+    try {
+      batch = JSON.parse(line);
+    } catch (error) {
+      if (lineIndex === lines.length - 1) {
+        continue;
+      }
+      throw error;
+    }
     batches.push(batch);
     const batchSamples = Array.isArray(batch.samples) ? batch.samples : [];
     const lastDeviceTimestamp = batchSamples.at(-1)?.timestampMilliseconds;
@@ -192,6 +211,15 @@ async function readRingData(sessionId, session = null) {
         accelMagnitude,
         accelDelta,
         gyroMagnitude,
+        accelXG: accelScale === null ? null : Number(sample.accelX || 0) * accelScale,
+        accelYG: accelScale === null ? null : Number(sample.accelY || 0) * accelScale,
+        accelZG: accelScale === null ? null : Number(sample.accelZ || 0) * accelScale,
+        accelMagnitudeG: accelScale === null ? null : accelMagnitude * accelScale,
+        accelDeltaG: accelScale === null ? null : accelDelta * accelScale,
+        gyroXDPS: gyroScale === null ? null : Number(sample.gyroX || 0) * gyroScale,
+        gyroYDPS: gyroScale === null ? null : Number(sample.gyroY || 0) * gyroScale,
+        gyroZDPS: gyroScale === null ? null : Number(sample.gyroZ || 0) * gyroScale,
+        gyroMagnitudeDPS: gyroScale === null ? null : gyroMagnitude * gyroScale,
       };
       samples.push(normalized);
       previous = sample;
@@ -200,12 +228,27 @@ async function readRingData(sessionId, session = null) {
 
   const maxDisplaySamples = 5_000;
   const stride = Math.max(1, Math.ceil(samples.length / maxDisplaySamples));
+  const accelerationChanges = samples.map((sample) => Number(sample.accelDeltaG ?? sample.accelDelta ?? 0));
+  const rotationSpeeds = samples.map((sample) => Number(sample.gyroMagnitudeDPS ?? sample.gyroMagnitude ?? 0));
   return {
     available: true,
     reference: relativeRef,
     totalBatches: batches.length,
     totalSamples: samples.length,
     displayStride: stride,
+    physicalUnitsAvailable: accelScale !== null && gyroScale !== null,
+    statistics: {
+      accelerationChange: {
+        p50: percentile(accelerationChanges, 0.5),
+        p90: percentile(accelerationChanges, 0.9),
+        max: Math.max(0, ...accelerationChanges),
+      },
+      rotationSpeed: {
+        p50: percentile(rotationSpeeds, 0.5),
+        p90: percentile(rotationSpeeds, 0.9),
+        max: Math.max(0, ...rotationSpeeds),
+      },
+    },
     displaySamples: samples.filter((_, index) => index % stride === 0),
   };
 }
@@ -351,6 +394,9 @@ const page = String.raw`<!doctype html>
       --event: #4967a9;
       --ring: #8a3f67;
       --gyro: #287a91;
+      --axis-x: #c0392b;
+      --axis-y: #17864b;
+      --axis-z: #2868b2;
       --bad: #b42318;
       --ok: #1d7f43;
     }
@@ -515,6 +561,28 @@ const page = String.raw`<!doctype html>
       border-radius: 8px;
       padding: 8px;
     }
+    .chart-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 12px 0 8px;
+    }
+    .chart-modes {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .chart-modes button {
+      border: 0;
+      border-right: 1px solid var(--line);
+      border-radius: 0;
+    }
+    .chart-modes button:last-child { border-right: 0; }
+    .chart-modes button.selected { background: #172026; color: #fff; }
     #ringChart { width: 100%; height: 100%; display: block; }
     .legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0 12px; }
     .legend span::before {
@@ -527,6 +595,10 @@ const page = String.raw`<!doctype html>
       background: var(--ring);
     }
     .legend span.gyro::before { background: var(--gyro); }
+    .legend span.axis-x::before { background: var(--axis-x); }
+    .legend span.axis-y::before { background: var(--axis-y); }
+    .legend span.axis-z::before { background: var(--axis-z); }
+    .legend span.trigger::before { width: 3px; height: 12px; background: var(--ring); }
     .assessment-list {
       display: grid;
       gap: 8px;
@@ -628,7 +700,7 @@ const page = String.raw`<!doctype html>
     </section>
   </main>
   <script>
-    const state = { sessions: [], current: null, sampleRate: 16000, ringData: null };
+    const state = { sessions: [], current: null, sampleRate: 16000, ringData: null, ringChartMode: "intensity", currentSession: null };
     const $ = (id) => document.getElementById(id);
 
     function fmtTime(value) {
@@ -690,6 +762,7 @@ const page = String.raw`<!doctype html>
         api("/api/ring-data?id=" + encodeURIComponent(id)),
       ]);
       state.ringData = ringData;
+      state.currentSession = session;
       renderSession(session, ringData);
     }
 
@@ -710,7 +783,8 @@ const page = String.raw`<!doctype html>
         });
       });
       if (ringData.available && ringData.displaySamples.length) {
-        drawRingChart(ringData.displaySamples);
+        bindRingChartControls();
+        drawRingChart(ringData.displaySamples, state.ringChartMode, session);
       }
     }
 
@@ -766,8 +840,24 @@ const page = String.raw`<!doctype html>
       const configuration = session.ringSensor
         ? session.ringSensor.sampleRateHz + ' Hz · ±' + session.ringSensor.accelRangeG + ' g · ±' + session.ringSensor.gyroRangeDPS + ' dps'
         : "未记录";
+      const units = ringData.physicalUnitsAvailable ? "物理单位" : "传感器原始数值";
+      const accelUnit = ringData.physicalUnitsAvailable ? "g" : "raw";
+      const gyroUnit = ringData.physicalUnitsAvailable ? "°/s" : "raw";
+      const statistics = ringData.statistics
+        ? '<div class="meta">' +
+          '<span class="pill">加速度变化 P90 ' + esc(Number(ringData.statistics.accelerationChange.p90 || 0).toFixed(3)) + ' ' + accelUnit + '</span>' +
+          '<span class="pill">加速度变化峰值 ' + esc(Number(ringData.statistics.accelerationChange.max || 0).toFixed(3)) + ' ' + accelUnit + '</span>' +
+          '<span class="pill">转动速度 P90 ' + esc(Number(ringData.statistics.rotationSpeed.p90 || 0).toFixed(1)) + ' ' + gyroUnit + '</span>' +
+          '<span class="pill">转动速度峰值 ' + esc(Number(ringData.statistics.rotationSpeed.max || 0).toFixed(1)) + ' ' + gyroUnit + '</span>' +
+        '</div>'
+        : "";
       const chart = ringData.available && ringData.displaySamples.length
-        ? '<div class="legend"><span>加速度变化量</span><span class="gyro">陀螺仪幅度</span></div><div class="ring-chart-wrap"><canvas id="ringChart"></canvas></div>'
+        ? '<div class="chart-toolbar"><div class="chart-modes">' +
+          '<button type="button" data-chart-mode="intensity">动作强度</button>' +
+          '<button type="button" data-chart-mode="acceleration">三轴加速度</button>' +
+          '<button type="button" data-chart-mode="rotation">三轴角速度</button>' +
+          '</div><span class="small">' + units + '</span></div>' +
+          '<div class="legend" id="ringLegend"></div><div class="ring-chart-wrap"><canvas id="ringChart"></canvas></div>'
         : '<div class="small">' + esc(ringData.error || "本次会话没有保留戒指原始数据；手机端需开启“保留本地样本”。") + '</div>';
       const assessmentItems = assessments.map((item) => {
         const linked = session.viewer.observations.filter((observation) => observation.triggerDecisionId === item.id);
@@ -787,6 +877,7 @@ const page = String.raw`<!doctype html>
         '<div class="small">传感器参数：' + esc(configuration) + ' · 原始批次 ' + esc(ringData.totalBatches || 0) +
         ' · 原始样本 ' + esc(ringData.totalSamples || 0) + ' · 序号异常 ' + esc(session.ringSequenceGapCount || 0) +
         (ringData.displayStride > 1 ? ' · 曲线每 ' + esc(ringData.displayStride) + ' 点显示 1 点' : '') + '</div>' +
+        statistics +
         chart +
         '<div class="assessment-list">' + (assessmentItems || '<div class="small">尚未形成“快速移动”判断。</div>') + '</div>' +
       '</section>';
@@ -798,7 +889,20 @@ const page = String.raw`<!doctype html>
       return Number.isFinite(diff) ? Math.max(0, diff / 1000) : null;
     }
 
-    function drawRingChart(samples) {
+    function bindRingChartControls() {
+      document.querySelectorAll("[data-chart-mode]").forEach((button) => {
+        button.classList.toggle("selected", button.dataset.chartMode === state.ringChartMode);
+        button.addEventListener("click", () => {
+          state.ringChartMode = button.dataset.chartMode;
+          document.querySelectorAll("[data-chart-mode]").forEach((item) => {
+            item.classList.toggle("selected", item.dataset.chartMode === state.ringChartMode);
+          });
+          drawRingChart(state.ringData.displaySamples, state.ringChartMode, state.currentSession);
+        });
+      });
+    }
+
+    function drawRingChart(samples, mode, session) {
       const canvas = $("ringChart");
       if (!canvas || !samples.length) return;
       const ratio = window.devicePixelRatio || 1;
@@ -814,8 +918,34 @@ const page = String.raw`<!doctype html>
       const plotHeight = Math.max(1, height - pad.top - pad.bottom);
       const minTime = Math.min(...samples.map((item) => Number(item.offsetSeconds || 0)));
       const maxTime = Math.max(minTime + 0.001, ...samples.map((item) => Number(item.offsetSeconds || 0)));
-      const maxAccel = Math.max(1, ...samples.map((item) => Number(item.accelDelta || 0)));
-      const maxGyro = Math.max(1, ...samples.map((item) => Number(item.gyroMagnitude || 0)));
+      const physical = Boolean(state.ringData?.physicalUnitsAvailable);
+      const modes = {
+        intensity: [
+          { field: physical ? "accelDeltaG" : "accelDelta", label: "加速度变化", color: "#8a3f67", className: "" },
+          { field: physical ? "gyroMagnitudeDPS" : "gyroMagnitude", label: "转动速度", color: "#287a91", className: "gyro" },
+        ],
+        acceleration: [
+          { field: physical ? "accelXG" : "accelX", label: "X 轴", color: "#c0392b", className: "axis-x" },
+          { field: physical ? "accelYG" : "accelY", label: "Y 轴", color: "#17864b", className: "axis-y" },
+          { field: physical ? "accelZG" : "accelZ", label: "Z 轴", color: "#2868b2", className: "axis-z" },
+        ],
+        rotation: [
+          { field: physical ? "gyroXDPS" : "gyroX", label: "X 轴", color: "#c0392b", className: "axis-x" },
+          { field: physical ? "gyroYDPS" : "gyroY", label: "Y 轴", color: "#17864b", className: "axis-y" },
+          { field: physical ? "gyroZDPS" : "gyroZ", label: "Z 轴", color: "#2868b2", className: "axis-z" },
+        ],
+      };
+      const series = (modes[mode] || modes.intensity).map((item) => ({
+        ...item,
+        maximum: Math.max(0.0001, ...samples.map((sample) => Math.abs(Number(sample[item.field] || 0)))),
+      }));
+      const values = series.flatMap((item) => samples.map((sample) => Number(sample[item.field] || 0)));
+      const signed = mode !== "intensity";
+      const maxAbsolute = Math.max(0.0001, ...values.map(Math.abs));
+      const unit = mode === "acceleration" && physical ? "g" : mode === "rotation" && physical ? "°/s" : physical ? "物理值" : "raw";
+      $("ringLegend").innerHTML = series.map((item) =>
+        '<span class="' + item.className + '">' + esc(item.label) + '</span>'
+      ).join("") + '<span class="trigger">触发判断</span>';
 
       ctx.strokeStyle = "#e1e6e9";
       ctx.lineWidth = 1;
@@ -827,30 +957,61 @@ const page = String.raw`<!doctype html>
         ctx.stroke();
       }
 
-      function line(field, maximum, color) {
-        ctx.strokeStyle = color;
+      const markerOffsets = Array.isArray(session?.ringMotionAssessments)
+        ? session.ringMotionAssessments.map((item) => secondsBetweenClient(session.startedAt, item.detectedAt)).filter((item) => item !== null)
+        : [];
+      markerOffsets.forEach((offset) => {
+        if (offset < minTime || offset > maxTime) return;
+        const x = pad.left + ((offset - minTime) / (maxTime - minTime)) * plotWidth;
+        ctx.strokeStyle = "#8a3f67";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, pad.top);
+        ctx.lineTo(x, pad.top + plotHeight);
+        ctx.stroke();
+      });
+
+      if (signed) {
+        const zeroY = pad.top + plotHeight / 2;
+        ctx.strokeStyle = "#9da8af";
+        ctx.beginPath();
+        ctx.moveTo(pad.left, zeroY);
+        ctx.lineTo(width - pad.right, zeroY);
+        ctx.stroke();
+      }
+
+      function line(seriesItem) {
+        ctx.strokeStyle = seriesItem.color;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        samples.forEach((item, index) => {
-          const x = pad.left + ((Number(item.offsetSeconds || 0) - minTime) / (maxTime - minTime)) * plotWidth;
-          const y = pad.top + plotHeight - Math.min(1, Number(item[field] || 0) / maximum) * plotHeight;
+        samples.forEach((sample, index) => {
+          const x = pad.left + ((Number(sample.offsetSeconds || 0) - minTime) / (maxTime - minTime)) * plotWidth;
+          const value = Number(sample[seriesItem.field] || 0);
+          const maximum = signed ? maxAbsolute : seriesItem.maximum;
+          const normalized = signed
+            ? 0.5 - Math.max(-1, Math.min(1, value / maximum)) * 0.5
+            : 1 - Math.max(0, Math.min(1, value / maximum));
+          const y = pad.top + normalized * plotHeight;
           if (index === 0) ctx.moveTo(x, y);
           else ctx.lineTo(x, y);
         });
         ctx.stroke();
       }
-      line("accelDelta", maxAccel, "#8a3f67");
-      line("gyroMagnitude", maxGyro, "#287a91");
+      series.forEach(line);
 
       ctx.fillStyle = "#66727c";
       ctx.font = "11px system-ui";
-      ctx.fillText("0", 12, pad.top + plotHeight + 4);
+      ctx.fillText(signed ? ("±" + maxAbsolute.toFixed(mode === "acceleration" ? 2 : 0)) : "0", 8, pad.top + plotHeight + 4);
       ctx.fillText("+" + minTime.toFixed(1) + "s", pad.left, height - 5);
       const endLabel = "+" + maxTime.toFixed(1) + "s";
       ctx.fillText(endLabel, width - pad.right - ctx.measureText(endLabel).width, height - 5);
-      ctx.fillText("加差峰值 " + maxAccel.toFixed(0), pad.left, 11);
-      const gyroLabel = "陀螺峰值 " + maxGyro.toFixed(0);
-      ctx.fillText(gyroLabel, width - pad.right - ctx.measureText(gyroLabel).width, 11);
+      ctx.fillText(
+        signed
+          ? "上下限 " + maxAbsolute.toFixed(mode === "acceleration" ? 3 : 1) + " " + unit
+          : "两条强度曲线分别按自身峰值缩放",
+        pad.left,
+        11,
+      );
     }
 
     function mediaSrc(sessionId, ref) {

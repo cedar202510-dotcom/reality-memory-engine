@@ -5,6 +5,22 @@ struct RingDiscoveredDevice: Identifiable, Equatable {
     let id: UUID
     let name: String
     let rssi: Int
+    let advertisesRingService: Bool
+    let isKnownRing: Bool
+
+    var shortIdentifier: String {
+        String(id.uuidString.suffix(4))
+    }
+
+    var displayName: String {
+        if isKnownRing {
+            return "我的戒指"
+        }
+        if advertisesRingService {
+            return name == "未命名蓝牙设备" ? "疑似戒指" : "\(name)（疑似戒指）"
+        }
+        return name
+    }
 }
 
 enum RingAdapterState: Equatable {
@@ -13,6 +29,7 @@ enum RingAdapterState: Equatable {
     case scanning
     case connecting
     case discoveringServices
+    case verifyingIdentity
     case connected
     case preparingSensor
     case sensorReporting
@@ -31,6 +48,8 @@ enum RingAdapterState: Equatable {
             "连接中"
         case .discoveringServices:
             "读取服务中"
+        case .verifyingIdentity:
+            "正在验证戒指身份"
         case .connected:
             "已连接"
         case .preparingSensor:
@@ -46,7 +65,7 @@ enum RingAdapterState: Equatable {
 
     var isConnected: Bool {
         switch self {
-        case .connected, .preparingSensor, .sensorReporting:
+        case .verifyingIdentity, .connected, .preparingSensor, .sensorReporting:
             true
         default:
             false
@@ -68,6 +87,7 @@ struct RingHardwareEvent {
 final class RingDeviceAdapter: NSObject {
     var onStateChanged: ((RingAdapterState) -> Void)?
     var onDevicesChanged: (([RingDiscoveredDevice]) -> Void)?
+    var onSystemInfo: ((RingSystemInfo) -> Void)?
     var onSensorConfiguration: ((RingSensorConfiguration) -> Void)?
     var onIMUBatch: ((RingIMUBatch, Date) -> Void)?
     var onHardwareEvent: ((RingHardwareEvent) -> Void)?
@@ -77,6 +97,7 @@ final class RingDeviceAdapter: NSObject {
     private let notifyUUID = CBUUID(string: RingProtocolCodec.notifyCharacteristicUUID)
     private let writeUUID = CBUUID(string: RingProtocolCodec.writeCharacteristicUUID)
     private let streamParser = RingPacketStreamParser()
+    private let knownRingIdentifierKey = "rme.ring.known-peripheral-identifier"
 
     private lazy var central = CBCentralManager(delegate: self, queue: .main)
     private var peripherals: [UUID: CBPeripheral] = [:]
@@ -85,7 +106,19 @@ final class RingDeviceAdapter: NSObject {
     private var notifyCharacteristic: CBCharacteristic?
     private var writeCharacteristic: CBCharacteristic?
     private var scanStopTask: Task<Void, Never>?
+    private var connectionTimeoutTask: Task<Void, Never>?
     private var responseTimeoutTask: Task<Void, Never>?
+    private var identityTimeoutTask: Task<Void, Never>?
+    private var hasAttemptedAutomaticReconnect = false
+    private var knownRingIdentifier: UUID? {
+        guard
+            let value = UserDefaults.standard.string(forKey: knownRingIdentifierKey),
+            let identifier = UUID(uuidString: value)
+        else {
+            return nil
+        }
+        return identifier
+    }
     private(set) var state: RingAdapterState = .idle {
         didSet {
             onStateChanged?(state)
@@ -107,11 +140,11 @@ final class RingDeviceAdapter: NSObject {
         onDevicesChanged?([])
         central.stopScan()
         central.scanForPeripherals(
-            withServices: nil,
+            withServices: [serviceUUID],
             options: [CBCentralManagerScanOptionAllowDuplicatesKey: true]
         )
         state = .scanning
-        onLog?("开始扫描附近蓝牙设备；iOS 使用设备 UUID，不提供 MAC 地址")
+        onLog?("开始扫描广播戒指 NUS 服务的设备；不会展示其他未知蓝牙设备")
 
         scanStopTask?.cancel()
         scanStopTask = Task { [weak self] in
@@ -144,6 +177,15 @@ final class RingDeviceAdapter: NSObject {
         streamParser.reset()
         state = .connecting
         central.connect(peripheral, options: nil)
+        connectionTimeoutTask?.cancel()
+        connectionTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard !Task.isCancelled, let self, self.state == .connecting else {
+                return
+            }
+            self.state = .failed("连接戒指超时，请确认戒指有电且靠近手机")
+            self.central.cancelPeripheralConnection(peripheral)
+        }
     }
 
     func disconnect() {
@@ -179,8 +221,22 @@ final class RingDeviceAdapter: NSObject {
             return
         }
         let packet = RingProtocolCodec.encode(command: command)
-        let writeType: CBCharacteristicWriteType =
-            writeCharacteristic.properties.contains(.write) ? .withResponse : .withoutResponse
+        let writeType: CBCharacteristicWriteType
+        if writeCharacteristic.properties.contains(.writeWithoutResponse) {
+            writeType = .withoutResponse
+        } else if writeCharacteristic.properties.contains(.write) {
+            writeType = .withResponse
+        } else {
+            state = .failed("戒指 NUS 写入通道不支持写入")
+            return
+        }
+        onLog?(
+            String(
+                format: "正在发送戒指命令 0x%04X（%@）",
+                command,
+                writeType == .withoutResponse ? "无响应写入" : "有响应写入"
+            )
+        )
         connectedPeripheral.writeValue(packet, for: writeCharacteristic, type: writeType)
     }
 
@@ -199,6 +255,17 @@ final class RingDeviceAdapter: NSObject {
     private func handle(_ packet: RingProtocolPacket, receivedAt: Date) {
         do {
             switch packet.command {
+            case RingProtocolCodec.systemInfoResponse:
+                identityTimeoutTask?.cancel()
+                let systemInfo = try RingProtocolCodec.parseSystemInfo(packet.body)
+                rememberConnectedRing()
+                state = .connected
+                onSystemInfo?(systemInfo)
+                onLog?(
+                    "戒指身份验证成功：\(systemInfo.displayName)，"
+                        + "序列号尾号 \(systemInfo.serialNumberSuffix)，"
+                        + "电量 \(systemInfo.batteryPercent)%"
+                )
             case RingProtocolCodec.startSensorReportResponse:
                 responseTimeoutTask?.cancel()
                 let configuration = try RingProtocolCodec.parseSensorStart(packet.body)
@@ -236,6 +303,13 @@ final class RingDeviceAdapter: NSObject {
                 break
             }
         } catch {
+            if packet.command == RingProtocolCodec.systemInfoResponse {
+                identityTimeoutTask?.cancel()
+                state = .failed("设备未通过戒指协议验证")
+                if let connectedPeripheral {
+                    central.cancelPeripheralConnection(connectedPeripheral)
+                }
+            }
             if packet.command == RingProtocolCodec.startSensorReportResponse {
                 responseTimeoutTask?.cancel()
                 state = .connected
@@ -255,6 +329,45 @@ final class RingDeviceAdapter: NSObject {
         )
     }
 
+    private func rememberConnectedRing() {
+        guard let connectedPeripheral else {
+            return
+        }
+        let identifier = connectedPeripheral.identifier
+        guard knownRingIdentifier != identifier else {
+            return
+        }
+        UserDefaults.standard.set(identifier.uuidString, forKey: knownRingIdentifierKey)
+        if let current = discovered[identifier] {
+            discovered[identifier] = RingDiscoveredDevice(
+                id: current.id,
+                name: current.name,
+                rssi: current.rssi,
+                advertisesRingService: current.advertisesRingService,
+                isKnownRing: true
+            )
+            publishDiscoveredDevices()
+        }
+        onLog?("已通过戒指专用数据包确认设备，今后显示为“我的戒指”")
+    }
+
+    private func publishDiscoveredDevices() {
+        onDevicesChanged?(
+            discovered.values.sorted {
+                if $0.isKnownRing != $1.isKnownRing {
+                    return $0.isKnownRing
+                }
+                if $0.advertisesRingService != $1.advertisesRingService {
+                    return $0.advertisesRingService
+                }
+                if $0.rssi != $1.rssi {
+                    return $0.rssi > $1.rssi
+                }
+                return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+        )
+    }
+
     private func disconnectCurrentIfNeeded() {
         if let connectedPeripheral {
             central.cancelPeripheralConnection(connectedPeripheral)
@@ -263,6 +376,51 @@ final class RingDeviceAdapter: NSObject {
         notifyCharacteristic = nil
         writeCharacteristic = nil
         responseTimeoutTask?.cancel()
+        identityTimeoutTask?.cancel()
+        connectionTimeoutTask?.cancel()
+    }
+
+    private func verifyConnectedDeviceIdentity() {
+        state = .verifyingIdentity
+        onLog?("NUS 通道已就绪，正在读取戒指型号、序列号和电量")
+        write(command: RingProtocolCodec.systemInfoCommand)
+        identityTimeoutTask?.cancel()
+        identityTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard !Task.isCancelled, let self else {
+                return
+            }
+            self.state = .failed("设备未返回戒指系统信息")
+            self.onLog?("身份验证超时：该设备虽然提供 NUS 服务，但未通过戒指协议验证")
+            if let peripheral = self.connectedPeripheral {
+                self.central.cancelPeripheralConnection(peripheral)
+            }
+        }
+    }
+
+    private func reconnectKnownRingIfPossible() {
+        guard !hasAttemptedAutomaticReconnect, let knownRingIdentifier else {
+            return
+        }
+        hasAttemptedAutomaticReconnect = true
+        guard let peripheral = central.retrievePeripherals(
+            withIdentifiers: [knownRingIdentifier]
+        ).first else {
+            onLog?("未能从 iOS 蓝牙缓存恢复已绑定戒指，请执行一次定向扫描")
+            return
+        }
+        let device = RingDiscoveredDevice(
+            id: peripheral.identifier,
+            name: peripheral.name ?? "已绑定戒指",
+            rssi: 0,
+            advertisesRingService: true,
+            isKnownRing: true
+        )
+        peripherals[device.id] = peripheral
+        discovered[device.id] = device
+        publishDiscoveredDevices()
+        onLog?("正在自动连接已验证的戒指")
+        connect(deviceID: device.id)
     }
 
     private func updateBluetoothState() {
@@ -290,6 +448,9 @@ final class RingDeviceAdapter: NSObject {
 extension RingDeviceAdapter: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         updateBluetoothState()
+        if central.state == .poweredOn {
+            reconnectKnownRingIfPossible()
+        }
     }
 
     func centralManager(
@@ -300,24 +461,23 @@ extension RingDeviceAdapter: CBCentralManagerDelegate {
     ) {
         let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
         let name = advertisedName ?? peripheral.name ?? "未命名蓝牙设备"
+        let advertisedServices =
+            (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? [])
+            + (advertisementData[CBAdvertisementDataOverflowServiceUUIDsKey] as? [CBUUID] ?? [])
         let device = RingDiscoveredDevice(
             id: peripheral.identifier,
             name: name,
-            rssi: RSSI.intValue
+            rssi: RSSI.intValue,
+            advertisesRingService: advertisedServices.contains(serviceUUID),
+            isKnownRing: peripheral.identifier == knownRingIdentifier
         )
         peripherals[device.id] = peripheral
         discovered[device.id] = device
-        onDevicesChanged?(
-            discovered.values.sorted {
-                if $0.rssi == $1.rssi {
-                    return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-                }
-                return $0.rssi > $1.rssi
-            }
-        )
+        publishDiscoveredDevices()
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        connectionTimeoutTask?.cancel()
         state = .discoveringServices
         peripheral.discoverServices([serviceUUID])
     }
@@ -327,6 +487,7 @@ extension RingDeviceAdapter: CBCentralManagerDelegate {
         didFailToConnect peripheral: CBPeripheral,
         error: Error?
     ) {
+        connectionTimeoutTask?.cancel()
         connectedPeripheral = nil
         state = .failed(error?.localizedDescription ?? "连接戒指失败")
     }
@@ -340,7 +501,12 @@ extension RingDeviceAdapter: CBCentralManagerDelegate {
         notifyCharacteristic = nil
         writeCharacteristic = nil
         responseTimeoutTask?.cancel()
+        identityTimeoutTask?.cancel()
+        connectionTimeoutTask?.cancel()
         streamParser.reset()
+        if case .failed = state {
+            return
+        }
         state = error == nil ? .idle : .failed("戒指蓝牙断开：\(error!.localizedDescription)")
     }
 }
@@ -389,8 +555,7 @@ extension RingDeviceAdapter: CBPeripheralDelegate {
         guard characteristic.uuid == notifyUUID, characteristic.isNotifying else {
             return
         }
-        state = .connected
-        onLog?("戒指已连接，NUS v4 数据通道已就绪")
+        verifyConnectedDeviceIdentity()
     }
 
     func peripheral(
@@ -412,6 +577,21 @@ extension RingDeviceAdapter: CBPeripheralDelegate {
             }
         } catch {
             onLog?(error.localizedDescription)
+        }
+    }
+
+    func peripheral(
+        _ peripheral: CBPeripheral,
+        didWriteValueFor characteristic: CBCharacteristic,
+        error: Error?
+    ) {
+        guard characteristic.uuid == writeUUID else {
+            return
+        }
+        if let error {
+            onLog?("戒指命令写入失败：\(error.localizedDescription)")
+        } else {
+            onLog?("戒指命令已由蓝牙通道确认写入")
         }
     }
 }

@@ -181,7 +181,7 @@ struct ContentView: View {
             }
 
             if model.ringDevices.isEmpty {
-                LabeledContent("附近设备", value: "尚未扫描")
+                LabeledContent("戒指候选", value: "尚未扫描或未发现")
             } else {
                 Picker(
                     "选择设备",
@@ -191,7 +191,9 @@ struct ContentView: View {
                     )
                 ) {
                     ForEach(model.ringDevices) { device in
-                        Text("\(device.name) · \(device.rssi) dBm")
+                        Text(
+                            "\(device.displayName) · \(device.rssi) dBm · …\(device.shortIdentifier)"
+                        )
                             .tag(Optional(device.id))
                     }
                 }
@@ -222,19 +224,26 @@ struct ContentView: View {
                 }
             }
 
-            ActionButton(
-                title: model.isRingSensorReporting ? "停止传感器" : "开启传感器",
-                symbol: model.isRingSensorReporting ? "stop.circle" : "waveform.path.ecg",
-                prominent: model.isRingSensorReporting,
-                disabled: !model.isRingConnected
-            ) {
-                if model.isRingSensorReporting {
-                    model.stopRingSensorReport()
-                } else {
+            Toggle(
+                "连接后自动接收六轴数据",
+                isOn: Binding(
+                    get: { model.ringSensorAutoStartEnabled },
+                    set: { model.setRingSensorAutoStartEnabled($0) }
+                )
+            )
+
+            if model.isRingConnected, !model.isRingSensorReporting {
+                ActionButton(
+                    title: "重新请求六轴数据",
+                    symbol: "arrow.clockwise",
+                    prominent: false,
+                    disabled: false
+                ) {
                     model.startRingSensorReport()
                 }
             }
 
+            LabeledContent("戒指身份", value: model.ringIdentityStatus)
             LabeledContent("传感器状态", value: model.ringConnectionStatus)
             if let configuration = model.ringSensorConfiguration {
                 LabeledContent(
@@ -254,6 +263,7 @@ struct ContentView: View {
                     model.ringGyroscopeMagnitude ?? 0
                 )
             )
+            LabeledContent("最近事件", value: model.lastRingEvent)
             Text(model.lastRingJudgement)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
@@ -290,7 +300,7 @@ struct ContentView: View {
             )
             .disabled(model.sessionState == .active || !model.ringRapidMovementTriggerEnabled)
 
-            Text("戒指需处于手势模式；若提示设备忙，请单击戒指切换模式后重新开启传感器。")
+            Text("若状态提示戒指忙碌，单击一次戒指实体按键；App 收到模式切换事件后会自动重试。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

@@ -6,6 +6,31 @@ struct RingSensorConfiguration: Codable, Equatable {
     let gyroRangeDPS: Int
 }
 
+struct RingSystemInfo: Equatable {
+    let firmwareVersion: String
+    let systemTime: UInt32
+    let audioStorageTotal: UInt32
+    let audioStorageAvailable: UInt32
+    let batteryPercent: UInt16
+    let batteryCharging: Bool
+    let serialNumber: String
+    let cpuID: String
+    let model: String
+
+    var displayName: String {
+        let normalizedModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalizedModel.isEmpty ? "Ring Sound 戒指" : normalizedModel
+    }
+
+    var serialNumberSuffix: String {
+        let normalizedSerialNumber = serialNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSerialNumber.isEmpty else {
+            return "未知"
+        }
+        return String(normalizedSerialNumber.suffix(4))
+    }
+}
+
 struct RingIMUSample: Codable, Equatable {
     let timestampMilliseconds: UInt32
     let accelX: Int16
@@ -60,6 +85,8 @@ enum RingProtocolCodec {
     static let notifyCharacteristicUUID = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
     static let writeCharacteristicUUID = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 
+    static let systemInfoCommand: UInt16 = 0x0101
+    static let systemInfoResponse: UInt16 = 0x0102
     static let startSensorReportCommand: UInt16 = 0x0601
     static let startSensorReportResponse: UInt16 = 0x0602
     static let stopSensorReportCommand: UInt16 = 0x0603
@@ -124,6 +151,22 @@ enum RingProtocolCodec {
             sampleRateHz: Int(body.uint16BE(at: 2)),
             accelRangeG: Int(body.uint16BE(at: 4)),
             gyroRangeDPS: Int(body.uint16BE(at: 6))
+        )
+    }
+
+    static func parseSystemInfo(_ body: Data) throws -> RingSystemInfo {
+        try ensureSuccess(body)
+        var reader = RingDataReader(data: body, offset: 2)
+        return RingSystemInfo(
+            firmwareVersion: try reader.readString(),
+            systemTime: try reader.readUInt32(),
+            audioStorageTotal: try reader.readUInt32(),
+            audioStorageAvailable: try reader.readUInt32(),
+            batteryPercent: try reader.readUInt16(),
+            batteryCharging: try reader.readUInt8() != 0,
+            serialNumber: try reader.readString(),
+            cpuID: try reader.readString(),
+            model: try reader.readString()
         )
     }
 
@@ -225,6 +268,46 @@ enum RingProtocolCodec {
             crc ^= ((crc & 0x00FF) << 4) << 1
         }
         return crc
+    }
+}
+
+private struct RingDataReader {
+    let data: Data
+    var offset: Int
+
+    mutating func readUInt8() throws -> UInt8 {
+        try require(1)
+        defer { offset += 1 }
+        return data.byte(at: offset)
+    }
+
+    mutating func readUInt16() throws -> UInt16 {
+        try require(2)
+        defer { offset += 2 }
+        return data.uint16BE(at: offset)
+    }
+
+    mutating func readUInt32() throws -> UInt32 {
+        try require(4)
+        defer { offset += 4 }
+        return data.uint32BE(at: offset)
+    }
+
+    mutating func readString() throws -> String {
+        let length = Int(try readUInt16())
+        try require(length)
+        let bytes = data.subdata(in: offset..<(offset + length))
+        offset += length
+        guard let value = String(data: bytes, encoding: .utf8) else {
+            throw RingProtocolCodecError.malformedBody("系统信息包含无效 UTF-8 字符串")
+        }
+        return value
+    }
+
+    private func require(_ length: Int) throws {
+        guard length >= 0, offset + length <= data.count else {
+            throw RingProtocolCodecError.malformedBody("系统信息字段长度超出包体")
+        }
     }
 }
 

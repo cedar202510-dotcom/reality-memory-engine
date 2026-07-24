@@ -99,6 +99,7 @@ final class GlassProbeModel: ObservableObject {
     @Published private(set) var selectedRingDeviceID: UUID?
     @Published private(set) var isRingConnected = false
     @Published private(set) var isRingSensorReporting = false
+    @Published private(set) var ringIdentityStatus = "尚未验证戒指身份"
     @Published private(set) var ringSensorConfiguration: RingSensorConfiguration?
     @Published private(set) var ringBatchCount = 0
     @Published private(set) var ringSampleCount = 0
@@ -107,6 +108,8 @@ final class GlassProbeModel: ObservableObject {
     @Published private(set) var ringGyroscopeMagnitude: Double?
     @Published private(set) var ringAccelerationDelta: Double?
     @Published private(set) var lastRingJudgement = "尚未收到戒指动作数据"
+    @Published private(set) var lastRingEvent = "尚未收到戒指事件"
+    @Published private(set) var ringSensorAutoStartEnabled = true
     @Published private(set) var ringRapidMovementTriggerEnabled = true
     @Published private(set) var ringTriggeredAudioEnabled = true
     @Published private(set) var ringSensitivity: ProbeRingSensitivity = .medium
@@ -301,13 +304,24 @@ final class GlassProbeModel: ObservableObject {
             appendLog("请先连接戒指")
             return
         }
+        ringSensorAutoStartEnabled = true
         ringMotionDetector.reset()
         nextExpectedRingSequence = nil
         ringAdapter.startSensorReport()
     }
 
     func stopRingSensorReport() {
+        ringSensorAutoStartEnabled = false
         ringAdapter.stopSensorReport()
+    }
+
+    func setRingSensorAutoStartEnabled(_ enabled: Bool) {
+        ringSensorAutoStartEnabled = enabled
+        if enabled, isRingConnected, !isRingSensorReporting {
+            startRingSensorReport()
+        } else if !enabled, isRingSensorReporting {
+            ringAdapter.stopSensorReport()
+        }
     }
 
     func setRingRapidMovementTriggerEnabled(_ enabled: Bool) {
@@ -720,6 +734,7 @@ final class GlassProbeModel: ObservableObject {
                 self.ringConnectionStatus = state.displayName
                 self.isRingConnected = state.isConnected
                 self.isRingSensorReporting = state.isSensorReporting
+                self.appendLog("戒指状态：\(state.displayName)")
                 switch state {
                 case .bluetoothUnavailable(let reason):
                     self.ringBluetoothStatus = reason
@@ -752,6 +767,24 @@ final class GlassProbeModel: ObservableObject {
                         || !devices.contains(where: { $0.id == self.selectedRingDeviceID })
                 {
                     self.selectedRingDeviceID = devices.first?.id
+                }
+            }
+        }
+
+        ringAdapter.onSystemInfo = { [weak self] systemInfo in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                self.ringIdentityStatus =
+                    "\(systemInfo.displayName) · SN 尾号 \(systemInfo.serialNumberSuffix) · "
+                    + "\(systemInfo.batteryPercent)%"
+                if self.ringSensorAutoStartEnabled {
+                    try? await Task.sleep(nanoseconds: 350_000_000)
+                    guard self.isRingConnected, !self.isRingSensorReporting else {
+                        return
+                    }
+                    self.startRingSensorReport()
                 }
             }
         }
@@ -789,7 +822,29 @@ final class GlassProbeModel: ObservableObject {
                 guard let self else {
                     return
                 }
-                self.appendLog("戒指事件：\(event.detail ?? event.type)")
+                let eventName = event.detail ?? event.type
+                self.lastRingEvent = eventName
+                self.appendLog("戒指事件：\(eventName)")
+                if
+                    event.type == "RING_KEY_SINGLE_PRESS",
+                    self.ringSensorAutoStartEnabled,
+                    self.isRingConnected,
+                    !self.isRingSensorReporting
+                {
+                    Task { @MainActor [weak self] in
+                        try? await Task.sleep(nanoseconds: 700_000_000)
+                        guard
+                            let self,
+                            self.ringSensorAutoStartEnabled,
+                            self.isRingConnected,
+                            !self.isRingSensorReporting
+                        else {
+                            return
+                        }
+                        self.appendLog("检测到模式切换按键，自动重试开启六轴数据")
+                        self.startRingSensorReport()
+                    }
+                }
                 guard self.sessionState == .active, self.currentSession != nil else {
                     return
                 }
