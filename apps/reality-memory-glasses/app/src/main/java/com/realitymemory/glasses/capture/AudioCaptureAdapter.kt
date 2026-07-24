@@ -6,6 +6,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import com.realitymemory.glasses.evidence.EvidenceRepository
 import com.realitymemory.glasses.runtime.CaptureModality
 import com.realitymemory.glasses.runtime.CaptureWindowContext
@@ -50,6 +51,8 @@ class AudioCaptureAdapter(private val repository: EvidenceRepository) {
                 val configuration = buildRecorder()
                 recorder = configuration.recorder
                 recorder.startRecording()
+                val capturedAt = Instant.now()
+                val capturedMonotonicStartNs = SystemClock.elapsedRealtimeNanos()
                 val buffer = ByteArray(configuration.bufferSize)
                 val deadline = System.nanoTime() + requestedDurationMs * 1_000_000L
                 var bytesWritten = 0L
@@ -70,12 +73,13 @@ class AudioCaptureAdapter(private val repository: EvidenceRepository) {
                 } else {
                     requestedDurationMs
                 }
+                val capturedMonotonicEndNs = SystemClock.elapsedRealtimeNanos()
                 val evidenceId = repository.finalizeEvidence(
                     window = window,
                     modality = CaptureModality.AUDIO,
                     sourceFile = file,
                     mimeType = "audio/L16",
-                    capturedAt = requestedAt,
+                    capturedAt = capturedAt,
                     durationMs = actualDurationMs,
                     media = JSONObject()
                         .put("container", "RAW_PCM")
@@ -86,6 +90,8 @@ class AudioCaptureAdapter(private val repository: EvidenceRepository) {
                         .put("channel_layout", configuration.channelLayout)
                         .put("audio_source", "MIC")
                         .put("capture_mode", configuration.captureMode),
+                    monotonicStartNs = capturedMonotonicStartNs,
+                    monotonicEndNs = capturedMonotonicEndNs,
                 )
                 repository.recordAttempt(
                     window,

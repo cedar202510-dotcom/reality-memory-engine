@@ -191,13 +191,16 @@ class GlassSensorAdapter(
                         ).append('\n')
                     }
                 }
+                val firstSample = pending.samples.first()
+                val lastSample = pending.samples.last()
+                val durationMs = pending.samples.durationMs()
                 val evidenceId = repository.finalizeEvidence(
                     window = pending.window,
                     modality = CaptureModality.SENSOR,
                     sourceFile = file,
                     mimeType = "application/x-ndjson",
-                    capturedAt = pending.requestedAt,
-                    durationMs = pending.samples.durationMs(),
+                    capturedAt = Instant.ofEpochMilli(firstSample.wallClockEpochMs),
+                    durationMs = durationMs,
                     media = JSONObject()
                         .put("format", "NDJSON")
                         .put("sensor_types", JSONArray(listOf("ACCELEROMETER", "GYROSCOPE")))
@@ -218,7 +221,17 @@ class GlassSensorAdapter(
                         )
                         .put("requested_sampling_mode", "SENSOR_DELAY_GAME")
                         .put("actual_sample_count", pending.samples.size)
+                        .put(
+                            "actual_sample_rate_hz",
+                            if (durationMs > 0) {
+                                (pending.samples.size - 1) * 1_000.0 / durationMs
+                            } else {
+                                JSONObject.NULL
+                            },
+                        )
                         .put("calibration_profile", "rv101-axis/unknown"),
+                    monotonicStartNs = firstSample.monotonicNs,
+                    monotonicEndNs = lastSample.monotonicNs,
                 )
                 repository.recordAttempt(
                     pending.window,

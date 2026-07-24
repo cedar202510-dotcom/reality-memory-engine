@@ -30,10 +30,10 @@
 - 原始媒体使用 Android Keystore 中的 AES-256-GCM 密钥加密后进入本地 Outbox。
 - 为每次采集生成 `CaptureSession`、`CaptureIntent`、`CaptureWindow`、
   `CaptureAttempt`、`SourceEnvelope` 和 `EvidenceItem`。
-- Manifest 已声明网络权限，但设备绑定、受限凭证、Evidence 上传、删除回执和
-  云端下行尚未实现。
+- Debug APK 可通过 `adb reverse` 把受控明文测试副本自动上传到电脑后端，并带
+  幂等重试状态；生产设备绑定、受限凭证、密钥封装、删除回执和云端下行尚未实现。
 
-当前 `0.1.0` 设备验证构建会在元数据中写入 24 小时 TTL，但尚未实现到期清理
+当前 `0.1.2` 设备验证构建会在元数据中写入 24 小时 TTL，但尚未实现到期清理
 任务。它只能用于显式测试，不能接入生产用户数据。正式联调前必须改为策略下发的
 短 TTL，并实现本地密文、暂存文件和密钥引用的删除及回执。当前构建也仍使用一个
 设备级 Keystore 别名直接加密，正式上传前需要补充每项 Evidence 的数据密钥封装
@@ -76,7 +76,7 @@ ADB 授权，不需要 Java、Gradle 或 Android Studio。安装命令和签名�
 每次交付 APK 时必须同时生成测试包：
 
 ```bash
-./scripts/build-test-bundle.sh 0.1.1-debug
+./scripts/build-test-bundle.sh 0.1.2-debug
 ```
 
 测试包包含 APK、SHA-256、[RV101 真机测试计划](docs/RV101-TEST-PLAN-v0.1.md)
@@ -107,6 +107,9 @@ adb shell run-as com.realitymemory.glasses \
 adb exec-out run-as com.realitymemory.glasses \
   tar -C files -cf - reality-memory > reality-memory-device-export.tar
 ```
+
+电脑后端联调方式见
+[RV101 眼镜与电脑后端联调](docs/RV101-LOCAL-BACKEND-LINK-v0.1.md)。
 
 真机队友应使用配套脚本完成一轮测试：
 
@@ -146,6 +149,7 @@ adb exec-out run-as com.realitymemory.glasses \
 ## 相关文档
 
 - [眼镜端现有 UI 交互预览](docs/RV101-UI-PREVIEW.html)
+- [RV101 眼镜与电脑后端联调](docs/RV101-LOCAL-BACKEND-LINK-v0.1.md)
 - [数据采集架构](../../docs/architecture/01-Data-Capture-Architecture.md)
 - [设备与云端通信](../../docs/architecture/04-Device-Cloud-Communication.md)
 - [多模态数据契约 v1.0](../../docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md)

@@ -1,9 +1,12 @@
 package com.realitymemory.glasses.capture
 
 import android.graphics.BitmapFactory
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.media.MediaMetadataRetriever
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -39,6 +42,7 @@ class CameraCaptureAdapter(
     private var provider: ProcessCameraProvider? = null
     private var imageCapture: ImageCapture? = null
     private var videoCapture: VideoCapture<Recorder>? = null
+    private var cameraFacing = "UNKNOWN"
     @Volatile private var activeRecording: Recording? = null
 
     fun prepare(onReady: (Boolean, String?) -> Unit) {
@@ -46,6 +50,7 @@ class CameraCaptureAdapter(
         future.addListener({
             runCatching {
                 val cameraProvider = future.get()
+                val selector = selectAvailableCamera(cameraProvider)
                 val image = ImageCapture.Builder()
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                     .setJpegQuality(92)
@@ -59,18 +64,34 @@ class CameraCaptureAdapter(
                     )
                     .build()
                 val video = VideoCapture.withOutput(recorder)
-                cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(
-                    service,
-                    CameraSelector.DEFAULT_BACK_CAMERA,
-                    image,
-                    video,
-                )
+                val combinedFailure = runCatching {
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(service, selector, image, video)
+                }.exceptionOrNull()
+                if (combinedFailure != null) {
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(service, selector, image)
+                    videoCapture = null
+                    repository.appendRuntimeAudit(
+                        "CAMERA_PREPARED_IMAGE_ONLY",
+                        cameraDiagnostic()
+                            .put("combined_bind_error", describe(combinedFailure)),
+                    )
+                } else {
+                    videoCapture = video
+                    repository.appendRuntimeAudit("CAMERA_PREPARED", cameraDiagnostic())
+                }
                 provider = cameraProvider
                 imageCapture = image
-                videoCapture = video
-                onReady(true, null)
+                onReady(
+                    true,
+                    if (combinedFailure == null) null else "视频用例组合不受支持，已降级为拍照",
+                )
             }.onFailure { error ->
+                repository.appendRuntimeAudit(
+                    "CAMERA_PREPARE_FAILED",
+                    cameraDiagnostic().put("error", describe(error)),
+                )
                 onReady(false, "${error.javaClass.simpleName}: ${error.message}")
             }
         }, ContextCompat.getMainExecutor(service))
@@ -89,6 +110,7 @@ class CameraCaptureAdapter(
 
         val requestedAt = Instant.now()
         val startedNs = System.nanoTime()
+        val capturedMonotonicStartNs = SystemClock.elapsedRealtimeNanos()
         val file = repository.newTemporaryFile("jpg")
         val options = ImageCapture.OutputFileOptions.Builder(file).build()
         capture.takePicture(
@@ -114,9 +136,11 @@ class CameraCaptureAdapter(
                                 .put("width_px", dimensions.outWidth)
                                 .put("height_px", dimensions.outHeight)
                                 .put("orientation_deg", 0)
-                                .put("camera_facing", "WORLD")
+                                .put("camera_facing", cameraFacing)
                                 .put("capture_mode", "CAMERAX_IMAGE_CAPTURE_NO_PREVIEW")
                                 .put("jpeg_quality", 92),
+                            monotonicStartNs = capturedMonotonicStartNs,
+                            monotonicEndNs = SystemClock.elapsedRealtimeNanos(),
                         )
                     }.getOrElse { error ->
                         file.delete()
@@ -179,6 +203,7 @@ class CameraCaptureAdapter(
 
         val requestedAt = Instant.now()
         val startedNs = System.nanoTime()
+        val capturedMonotonicStartNs = SystemClock.elapsedRealtimeNanos()
         val file = repository.newTemporaryFile("mp4")
         val recording = capture.output
             .prepareRecording(service, FileOutputOptions.Builder(file).build())
@@ -218,6 +243,8 @@ class CameraCaptureAdapter(
                                 .put("has_audio_track", false)
                                 .put("capture_mode", "CAMERAX_VIDEO_CAPTURE_NO_PREVIEW")
                                 .put("finalize_status", "SUCCESS"),
+                            monotonicStartNs = capturedMonotonicStartNs,
+                            monotonicEndNs = SystemClock.elapsedRealtimeNanos(),
                         )
                     }.getOrElse { error ->
                         file.delete()
@@ -259,6 +286,50 @@ class CameraCaptureAdapter(
         provider?.unbindAll()
         executor.shutdown()
     }
+
+    private fun selectAvailableCamera(cameraProvider: ProcessCameraProvider): CameraSelector {
+        return when {
+            cameraProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) -> {
+                cameraFacing = "WORLD_BACK"
+                CameraSelector.DEFAULT_BACK_CAMERA
+            }
+            cameraProvider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) -> {
+                cameraFacing = "WORLD_FRONT_DECLARED"
+                CameraSelector.DEFAULT_FRONT_CAMERA
+            }
+            else -> error("CameraX did not expose a back or front camera")
+        }
+    }
+
+    private fun cameraDiagnostic(): JSONObject {
+        val result = JSONObject().put("camera_facing", cameraFacing)
+        val manager = service.getSystemService(CameraManager::class.java) ?: return result
+        val cameras = org.json.JSONArray()
+        runCatching {
+            manager.cameraIdList.forEach { cameraId ->
+                val characteristics = manager.getCameraCharacteristics(cameraId)
+                cameras.put(
+                    JSONObject()
+                        .put("camera_id", cameraId)
+                        .put(
+                            "lens_facing",
+                            characteristics.get(CameraCharacteristics.LENS_FACING)
+                                ?: JSONObject.NULL,
+                        )
+                        .put(
+                            "hardware_level",
+                            characteristics.get(
+                                CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL,
+                            ) ?: JSONObject.NULL,
+                        ),
+                )
+            }
+        }.onFailure { result.put("inventory_error", describe(it)) }
+        return result.put("camera_inventory", cameras)
+    }
+
+    private fun describe(error: Throwable): String =
+        "${error.javaClass.simpleName}: ${error.message}"
 
     private fun recordFailure(
         window: CaptureWindowContext,

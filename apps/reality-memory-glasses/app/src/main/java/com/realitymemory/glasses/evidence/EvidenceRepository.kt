@@ -10,7 +10,9 @@ import com.realitymemory.glasses.runtime.SessionState
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
@@ -23,6 +25,7 @@ class EvidenceRepository(private val context: Context) {
     private val auditFile = File(root, "audit.ndjson")
     private val debugManifestFile = File(debugExport, "manifest.ndjson")
     private val preferences = context.getSharedPreferences("reality_device", Context.MODE_PRIVATE)
+    private var evidenceReadyListener: (() -> Unit)? = null
 
     val deviceId: String = preferences.getString("device_id", null)
         ?: id("glass").also { preferences.edit().putString("device_id", it).apply() }
@@ -32,6 +35,10 @@ class EvidenceRepository(private val context: Context) {
 
     init {
         outbox.mkdirs()
+    }
+
+    fun setEvidenceReadyListener(listener: (() -> Unit)?) {
+        evidenceReadyListener = listener
     }
 
     @Synchronized
@@ -159,6 +166,7 @@ class EvidenceRepository(private val context: Context) {
             .put("monotonic_end_ns", SystemClock.elapsedRealtimeNanos())
             .put("state", state)
         writeObject(windowDir(window), "capture-window.json", json)
+        evidenceReadyListener?.invoke()
     }
 
     @Synchronized
@@ -170,9 +178,13 @@ class EvidenceRepository(private val context: Context) {
         capturedAt: Instant,
         durationMs: Long,
         media: JSONObject,
+        monotonicStartNs: Long = window.monotonicStartNs,
+        monotonicEndNs: Long = SystemClock.elapsedRealtimeNanos(),
     ): String {
         val evidenceId = id("evd")
         val sourceId = id("src")
+        val plaintextByteCount = sourceFile.length()
+        val plaintextSha256 = sha256(sourceFile)
         if (BuildConfig.DEBUG_PLAINTEXT_FIXTURE_EXPORT) {
             saveDebugFixture(
                 sourceFile = sourceFile,
@@ -199,8 +211,8 @@ class EvidenceRepository(private val context: Context) {
             .put("mime_type", mimeType)
             .put("captured_at", capturedAt.toString())
             .put("duration_ms", durationMs.coerceAtLeast(0))
-            .put("byte_count", encrypted.byteCount)
-            .put("sha256", encrypted.sha256)
+            .put("byte_count", plaintextByteCount)
+            .put("sha256", plaintextSha256)
             .put(
                 "encryption",
                 JSONObject()
@@ -219,7 +231,10 @@ class EvidenceRepository(private val context: Context) {
             .put("sensitivity_labels", JSONArray())
             .put(
                 "extensions",
-                JSONObject().put("local_ciphertext_name", encrypted.file.name),
+                JSONObject()
+                    .put("local_ciphertext_name", encrypted.file.name)
+                    .put("ciphertext_byte_count", encrypted.byteCount)
+                    .put("ciphertext_sha256", encrypted.sha256),
             )
         writeObject(windowDir(window), "$evidenceId.evidence.json", evidence)
 
@@ -234,8 +249,8 @@ class EvidenceRepository(private val context: Context) {
             .put("capture_intent_id", window.captureIntentId)
             .put("occurred_at", capturedAt.toString())
             .put("observed_at", Instant.now().toString())
-            .put("monotonic_start_ns", window.monotonicStartNs)
-            .put("monotonic_end_ns", SystemClock.elapsedRealtimeNanos())
+            .put("monotonic_start_ns", monotonicStartNs)
+            .put("monotonic_end_ns", monotonicEndNs)
             .put("clock_domain", "ANDROID_ELAPSED_REALTIME_NANOS")
             .put("clock_sync_method", "ANDROID_SYSTEM_CLOCK_ANCHOR")
             .put("time_uncertainty_ms", 50)
@@ -288,6 +303,14 @@ class EvidenceRepository(private val context: Context) {
     }
 
     fun outboxPath(): String = outbox.absolutePath
+
+    internal fun outboxDirectory(): File = outbox
+
+    internal fun debugExportDirectory(): File = debugExport
+
+    internal fun appendRuntimeAudit(event: String, detail: JSONObject) {
+        appendAudit(event, detail)
+    }
 
     private fun sessionDir(sessionId: String) = File(outbox, sessionId).apply { mkdirs() }
 
@@ -370,6 +393,19 @@ class EvidenceRepository(private val context: Context) {
             total -= oldest.length()
             oldest.delete()
         }
+    }
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun id(prefix: String) = "${prefix}_${UUID.randomUUID()}"

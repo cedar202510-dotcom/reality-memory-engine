@@ -31,8 +31,10 @@ fi
 
 echo "正在安装：$apk_path"
 "$adb_bin" install -r "$apk_path"
+"$adb_bin" reverse tcp:8765 tcp:8765
 echo "安装完成。正在启动 Reality Memory..."
 "$adb_bin" shell am force-stop com.realitymemory.glasses
 "$adb_bin" shell monkey -p com.realitymemory.glasses 1 >/dev/null
 echo "已启动。实时日志命令："
 echo "  $adb_bin logcat --pid=\$($adb_bin shell pidof -s com.realitymemory.glasses)"
+echo "已建立电脑后端端口映射：眼镜 127.0.0.1:8765 -> 电脑 127.0.0.1:8765"

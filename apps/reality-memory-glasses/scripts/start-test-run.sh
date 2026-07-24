@@ -16,7 +16,9 @@ fi
 
 mkdir -p "$result_dir"
 "$adb_bin" get-state >/dev/null
+"$adb_bin" reverse tcp:8765 tcp:8765
 "$adb_bin" devices -l > "$result_dir/adb-devices-before.txt"
+"$adb_bin" reverse --list > "$result_dir/adb-reverse-before.txt"
 "$adb_bin" shell getprop > "$result_dir/device-getprop.txt"
 "$adb_bin" shell dumpsys sensorservice > "$result_dir/sensorservice-before.txt"
 "$adb_bin" shell dumpsys battery > "$result_dir/battery-before.txt"

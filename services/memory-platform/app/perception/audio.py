@@ -32,6 +32,7 @@ from .stages import (
     AudioExtractInput,
     build_audio_extractor,
 )
+from .audio_media import prepare_audio_for_asr
 
 
 async def process_audio_item(
@@ -66,7 +67,8 @@ async def process_audio_item(
 
     # ---- 阶段 1：ASR 转写 ----
     data = Path(item.storage_ref).read_bytes()
-    segments = await transcriber.transcribe(data, media_kind=item.media_kind)
+    asr_data, asr_media_kind = prepare_audio_for_asr(data, envelope.meta)
+    segments = await transcriber.transcribe(asr_data, media_kind=asr_media_kind)
     if segments is None:
         await _skip("asr_unavailable")  # 未配置/转写失败：降级不阻塞
         return None

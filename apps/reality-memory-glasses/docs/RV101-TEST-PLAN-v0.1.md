@@ -9,13 +9,14 @@
   -> 默认开启本次感知，用户可单击取消
   -> 眼镜 IMU 识别相对稳定后的头动变化
   -> 图片 / 短视频 / 短音频 / IMU 进入同一采集窗口
+  -> Debug 证据通过开发线上传到电脑后端
   -> 原始证据和契约数据可导出
   -> 摘下或取消本次后停止新采集
   -> 文字和语音提醒可以触达用户
 ```
 
-当前不验收图片或音频的语义解析，也不把头动解释为具体行为。测试结果用于校准
-设备能力、时间、阈值、功耗和数据契约。
+首轮只验收上传入库，不把后端模型输出正确率作为设备测试通过条件，也不把头动解释
+为具体行为。测试结果用于校准设备能力、时间、阈值、功耗和数据契约。
 
 ## 2. 测试前准备
 
@@ -23,6 +24,8 @@
 - 手机 Rokid AI App 已连接眼镜，并打开“眼镜 ADB 调试”。
 - 电脑已安装 Android Platform-Tools，`adb devices` 只出现一台状态为 `device` 的设备。
 - 使用随 APK 一起提供的 `scripts/install-on-rv101.sh` 安装。
+- 按 `RV101-LOCAL-BACKEND-LINK-v0.1.md` 启动电脑后端；安装脚本会自动执行
+  `adb reverse tcp:8765 tcp:8765`。
 - 场景中不要出现无关人脸、身份证件、聊天页面、地址或未获同意的第三方对话。
 - 准备一张桌子、一个无隐私文字的水杯和一段 10 米左右的行走路线。
 
@@ -77,6 +80,7 @@ shasum -a 256 -c SHA256SUMS
 | T12 | 再次摘下并戴上 | 1 次 | 创建新会话并重新显示佩戴告知，不继承上次取消状态 |
 | T13 | App 已进入空白感知状态后，用 ADB 发送测试提醒 | 2 次 | 显示绿色提醒并播报 TTS；单击后只关闭提醒，不结束采集 |
 | T14 | 空白感知状态下单击，再继续移动 | 30 秒 | 会话为 `ENDED`；不再开始新采集 |
+| T15 | 断开开发线后触发一次采集，再接回并重建端口映射 | 1 次 | 先记录 `RETRY_PENDING`，恢复后变为 `UPLOADED`；后端不重复入库 |
 
 T13 命令：
 
@@ -107,12 +111,13 @@ T13 命令：
 - `run-info.txt`：测试编号、版本和起止时间。
 - `device-getprop.txt`：型号、固件、Android 版本和构建指纹。
 - `adb-devices-before.txt`：ADB 序列号和连接状态。
+- `adb-reverse-before.txt`：眼镜到电脑后端的端口映射。
 - `sensorservice-before/after.txt`：传感器清单和运行状态。
 - `battery-before/after.txt`：电量与温度。
 - `package-before/after.txt`：权限、版本和安装状态。
 - `logcat.txt`：本次测试完整系统日志。
 - `reality-memory-app-data.tar`：App 审计、契约 JSON、加密 Outbox，以及 Debug
-  APK 限额保留的原始图片、短视频、PCM 和 IMU。
+  APK 限额保留的原始图片、短视频、PCM、IMU 和 `*.upload.json` 上传状态。
 
 Debug APK 的明文原始样本上限为 64 MB，TTL 标记为 24 小时；它们只用于受控测试。
 Release APK 不生成明文副本。上传 GitHub 前由测试者确认样本不含无关个人信息。

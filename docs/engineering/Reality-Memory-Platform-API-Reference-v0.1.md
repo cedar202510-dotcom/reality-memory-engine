@@ -32,6 +32,7 @@ Memory Platform 是 Reality Memory Engine 的后端沉淀服务，负责接收�
 | --- | --- | --- | --- | --- |
 | 1 | GET | `/healthz` | main | 健康检查 |
 | 2 | POST | `/internal/v1/envelopes` | gateway | 幂等接收来源信封 + 证据落盘 + 去重 + outbox |
+| 2a | POST | `/internal/v1/device-evidence` | gateway | RV101 正式 v1 契约 Debug 联调入口 |
 | 3 | GET | `/v1/memory/objects/where-is` | query | "东西在哪"双通道查询 |
 | 4 | POST | `/v1/memory/scene-search` | query | 文本 / 图片跨模态场景检索 |
 | 5 | GET | `/v1/memory/frames/{frame_asset_id}/evidence` | query | 读取帧的原始证据媒体 |
@@ -165,6 +166,24 @@ form 字段 `files`：0..n 个文件。空文件（0 字节）会被跳过。
 - 422（`detail` 为字符串）：`envelope` 字段不是合法 JSON 或不满足 schema，例如
   `{"detail": "envelope 校验失败: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"}`；
 - 422（`detail` 为数组）：multipart 缺少 `envelope` 字段等 FastAPI 层校验失败。
+
+### 4.2 POST /internal/v1/device-evidence
+
+RV101 Debug APK 的正式契约联调入口。请求为 multipart：
+
+- `source_envelope`：完整 `rme.source-envelope.v1` JSON；
+- `evidence_item`：完整 `rme.evidence-item.v1` JSON；
+- `capture_intent`：可选的 `rme.capture-intent.v1` JSON；
+- `capture_window`：可选的 `rme.capture-window.v1` JSON；
+- `file`：受控 Debug 测试明文证据。
+
+入口校验各对象的来源编号、证据编号、窗口编号和模态关联，再映射到后端内部模型。
+图片与音频进入现有解析队列；视频与传感器目前只可靠保存，不会被误当图片处理。
+响应中的 `validation_warnings` 会指出旧 APK 把密文字节数或密文摘要写入证据元数据
+造成的不一致。
+
+此端点没有生产鉴权，只允许通过 `adb reverse` 或受控本地网络测试。Release APK
+不会调用它；生产上传需要独立的设备认证和服务端可解封装密钥。
 
 ---
 

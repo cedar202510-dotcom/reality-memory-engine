@@ -11,20 +11,30 @@ android {
         applicationId = "com.realitymemory.glasses"
         minSdk = 31
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "RUNTIME_VERSION", "\"android-glasses/0.1.1\"")
+        buildConfigField("String", "RUNTIME_VERSION", "\"android-glasses/0.1.2\"")
+        manifestPlaceholders["usesCleartextTraffic"] = "false"
     }
 
     buildTypes {
         debug {
             buildConfigField("boolean", "DEBUG_PLAINTEXT_FIXTURE_EXPORT", "true")
+            buildConfigField("boolean", "DEBUG_DEVICE_UPLOAD_ENABLED", "true")
+            buildConfigField(
+                "String",
+                "DEBUG_BACKEND_BASE_URL",
+                "\"http://127.0.0.1:8765\"",
+            )
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
         }
         release {
             isMinifyEnabled = false
             buildConfigField("boolean", "DEBUG_PLAINTEXT_FIXTURE_EXPORT", "false")
+            buildConfigField("boolean", "DEBUG_DEVICE_UPLOAD_ENABLED", "false")
+            buildConfigField("String", "DEBUG_BACKEND_BASE_URL", "\"\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

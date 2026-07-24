@@ -14,6 +14,7 @@ import androidx.lifecycle.LifecycleService
 import com.realitymemory.glasses.MainActivity
 import com.realitymemory.glasses.capture.AudioCaptureAdapter
 import com.realitymemory.glasses.capture.CameraCaptureAdapter
+import com.realitymemory.glasses.evidence.DebugBackendUploader
 import com.realitymemory.glasses.evidence.EvidenceRepository
 import com.realitymemory.glasses.interaction.ReminderPresenter
 import com.realitymemory.glasses.sensor.GlassSensorAdapter
@@ -27,6 +28,7 @@ class RealityRuntimeService : LifecycleService() {
     private lateinit var audio: AudioCaptureAdapter
     private lateinit var sensors: GlassSensorAdapter
     private lateinit var presenter: ReminderPresenter
+    private lateinit var uploader: DebugBackendUploader
 
     private var state = SessionState.ARMED
     private var cameraReady = false
@@ -48,6 +50,9 @@ class RealityRuntimeService : LifecycleService() {
     override fun onCreate() {
         super.onCreate()
         repository = EvidenceRepository(this)
+        uploader = DebugBackendUploader(repository)
+        repository.setEvidenceReadyListener { uploader.enqueue() }
+        uploader.start()
         camera = CameraCaptureAdapter(this, repository)
         audio = AudioCaptureAdapter(repository)
         presenter = ReminderPresenter(this)
@@ -105,6 +110,8 @@ class RealityRuntimeService : LifecycleService() {
         camera.shutdown()
         audio.shutdown()
         presenter.shutdown()
+        repository.setEvidenceReadyListener(null)
+        uploader.shutdown()
         super.onDestroy()
     }
 
