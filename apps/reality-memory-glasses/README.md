@@ -8,7 +8,7 @@
   和短期证据交付。
 
 它不是只面向研发的数据采集器。对用户而言，它首先是 Reality Memory 在眼镜上的
-体验入口：明确告知何时开始、允许随时暂停或结束、支持用户主动“记一下”，并能显示
+体验入口：明确告知何时开始、允许取消本次感知、支持用户主动“记一下”，并能显示
 或播报后端 Agent 产生的提醒。当前阶段优先实现可靠采集，AI 判断和事实沉淀仍在
 云端完成。当前“测试提醒”只验证本地文字和 TTS 呈现，真实云端下行通道与提醒
 业务载荷尚未完成 review 和实现。
@@ -16,15 +16,17 @@
 ## 当前首版能力
 
 - 接收 RV101 佩戴、摘下和镜腿折叠广播。
-- 佩戴后显示并播报提示，5 秒后进入本次采集会话。
+- 佩戴后以单绿界面告知“RealGit 已开启现实感知”，约 5 秒后恢复空白并进入本次
+  采集会话。
 - 读取眼镜自身加速度计与陀螺仪。
 - 使用“稳定基线 -> 运动突变 -> 回稳”规则生成客观的头动采集意图。
 - 普通头动：无业务预览图片 + 10 秒短音频 + 触发前后 IMU。
 - 强头动：2.5 秒无业务预览短视频 + 10 秒短音频 + 触发前后 IMU。
 - 活跃期间每 60 秒补一张基线图片和一个 IMU 窗口；后续由真机功耗和信息增量实验
   调整，不把该频率写成产品常量。
-- 单击暂停/继续，长按“记一下”，双击结束本次会话。
-- 提供本地测试提醒入口，验证眼镜文字和 TTS 播报链路。
+- 告知界面单击取消本次感知；再次佩戴时重新开启，不保留跨佩戴暂停状态。
+- 保留眼镜 AI 键主动“记一下”，但采集过程不显示“已记下”或其它后台采集状态。
+- Debug APK 可通过 ADB 拉起测试提醒，验证眼镜文字和 TTS 播报链路。
 - 原始媒体使用 Android Keystore 中的 AES-256-GCM 密钥加密后进入本地 Outbox。
 - 为每次采集生成 `CaptureSession`、`CaptureIntent`、`CaptureWindow`、
   `CaptureAttempt`、`SourceEnvelope` 和 `EvidenceItem`。
@@ -66,10 +68,15 @@ APK 输出：
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
+已构建好的 APK 可以直接交给另一台电脑安装到眼镜，不需要在测试电脑重新构建。
+测试电脑只需要 Android Platform-Tools 中的 `adb`、Rokid 开发线和眼镜端 ADB
+授权；不需要 Java、Gradle 或 Android Studio。安装命令和签名注意事项见
+[RV101 真机测试计划](docs/RV101-TEST-PLAN-v0.1.md)。
+
 每次交付 APK 时必须同时生成测试包：
 
 ```bash
-./scripts/build-test-bundle.sh 0.1.0-debug
+./scripts/build-test-bundle.sh 0.1.1-debug
 ```
 
 测试包包含 APK、SHA-256、[RV101 真机测试计划](docs/RV101-TEST-PLAN-v0.1.md)
@@ -108,6 +115,12 @@ adb exec-out run-as com.realitymemory.glasses \
 ./scripts/start-test-run.sh <run-id>
 # 按测试计划完成动作
 ./scripts/collect-test-results.sh <start-test-run 输出的结果目录>
+```
+
+运行中的 Debug APK 可用下面的命令模拟一条云端 Agent 提醒：
+
+```bash
+./scripts/send-test-reminder.sh "记得把资料给小王"
 ```
 
 导出的 `.bin.enc` 不能脱离该眼镜 Android Keystore 解密。需要交给后端的正式上传

@@ -19,6 +19,7 @@ cp "$project_dir/docs/RV101-TEST-PLAN-v0.1.md" "$bundle_dir/"
 cp "$project_dir/scripts/install-on-rv101.sh" "$bundle_dir/scripts/"
 cp "$project_dir/scripts/start-test-run.sh" "$bundle_dir/scripts/"
 cp "$project_dir/scripts/collect-test-results.sh" "$bundle_dir/scripts/"
+cp "$project_dir/scripts/send-test-reminder.sh" "$bundle_dir/scripts/"
 
 (
   cd "$bundle_dir"

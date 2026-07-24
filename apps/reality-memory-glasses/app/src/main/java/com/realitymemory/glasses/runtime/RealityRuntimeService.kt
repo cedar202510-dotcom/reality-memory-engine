@@ -31,6 +31,7 @@ class RealityRuntimeService : LifecycleService() {
     private var state = SessionState.ARMED
     private var cameraReady = false
     private var disclosureGeneration = 0
+    private var reminderGeneration = 0
 
     private val baselineCapture = object : Runnable {
         override fun run() {
@@ -59,7 +60,12 @@ class RealityRuntimeService : LifecycleService() {
             }
             capture("HEAD_MOTION_TRANSITION", modalities, motion)
         }
-        RuntimeStatusStore.publish(this, SessionState.ARMED, "等待佩戴")
+        RuntimeStatusStore.publish(
+            this,
+            SessionState.ARMED,
+            "等待佩戴",
+            displayKind = RuntimeDisplayKind.NONE,
+        )
         camera.prepare { ready, error ->
             cameraReady = ready
             if (!ready && state == SessionState.ACTIVE) {
@@ -75,15 +81,20 @@ class RealityRuntimeService : LifecycleService() {
             ACTION_START_EXPLICIT -> startDisclosure("USER_EXPLICIT")
             ACTION_WEAR_CHANGED -> {
                 val worn = intent.getBooleanExtra(EXTRA_WORN, false)
-                if (worn) startDisclosure("WEAR_CONFIRMED") else endSession("NOT_WORN")
+                if (worn) {
+                    startDisclosure("WEAR_CONFIRMED")
+                } else {
+                    endSession("NOT_WORN", announce = false)
+                }
             }
-            ACTION_TOGGLE_PAUSE -> togglePause()
+            ACTION_TOGGLE_PAUSE -> endSession("LEGACY_TOGGLE_CANCELLED", announce = true)
             ACTION_REMEMBER_NOW -> rememberNow()
-            ACTION_END_SESSION -> endSession("USER_CLOSED_THIS_SESSION")
+            ACTION_END_SESSION -> endSession("USER_CLOSED_THIS_SESSION", announce = true)
             ACTION_TEST_REMINDER -> showReminder(
                 intent.getStringExtra(EXTRA_REMINDER_TEXT)
                     ?: "提醒：你刚才记录的事情已经整理好了。",
             )
+            ACTION_DISMISS_REMINDER -> dismissReminder()
         }
         return START_STICKY
     }
@@ -110,8 +121,12 @@ class RealityRuntimeService : LifecycleService() {
         repository.updateSessionState(state)
         disclosureGeneration += 1
         val generation = disclosureGeneration
-        publish(state, "5 秒后开始感知本次现实片段")
-        presenter.speak("Reality Memory 已准备好，五秒后开始感知。你可以随时暂停。")
+        publish(
+            state,
+            "RealGit 已开启现实感知",
+            RuntimeDisplayKind.DISCLOSURE,
+        )
+        presenter.speak("RealGit 已开启现实感知。")
         handler.postDelayed({
             if (state == SessionState.DISCLOSURE && generation == disclosureGeneration) {
                 activate(startReason)
@@ -131,7 +146,8 @@ class RealityRuntimeService : LifecycleService() {
         val sensorReady = sensors.start()
         publish(
             state,
-            if (sensorReady) "正在帮你留意重要变化" else "正在记录，IMU 暂不可用",
+            if (sensorReady) "现实感知运行中" else "现实感知运行中，IMU 暂不可用",
+            RuntimeDisplayKind.NONE,
         )
         handler.removeCallbacks(baselineCapture)
         handler.postDelayed(baselineCapture, BASELINE_CAPTURE_INTERVAL_MS)
@@ -141,36 +157,8 @@ class RealityRuntimeService : LifecycleService() {
         )
     }
 
-    private fun togglePause() {
-        when (state) {
-            SessionState.ACTIVE -> {
-                state = SessionState.PAUSED
-                handler.removeCallbacks(baselineCapture)
-                sensors.stop()
-                audio.stop()
-                camera.stopActiveRecording()
-                repository.updateSessionState(state)
-                publish(state, "本次感知已暂停")
-                presenter.speak("已暂停。")
-            }
-            SessionState.PAUSED -> {
-                state = SessionState.ACTIVE
-                repository.updateSessionState(state)
-                sensors.start()
-                handler.postDelayed(baselineCapture, BASELINE_CAPTURE_INTERVAL_MS)
-                publish(state, "已经继续")
-                presenter.speak("已继续。")
-            }
-            SessionState.DISCLOSURE -> endSession("USER_CLOSED_DURING_DISCLOSURE")
-            else -> startDisclosure("USER_EXPLICIT")
-        }
-    }
-
     private fun rememberNow() {
-        if (state != SessionState.ACTIVE) {
-            publish(state, "请先继续本次感知")
-            return
-        }
+        if (state != SessionState.ACTIVE) return
         capture(
             signalKind = "USER_EXPLICIT",
             modalities = setOf(
@@ -179,25 +167,60 @@ class RealityRuntimeService : LifecycleService() {
                 CaptureModality.SENSOR,
             ),
         )
-        publish(state, "正在记下这一刻")
-        presenter.speak("好，我记一下。")
     }
 
     private fun showReminder(text: String) {
-        publish(state, text)
+        if (state != SessionState.ACTIVE) return
+        reminderGeneration += 1
+        val generation = reminderGeneration
+        publish(state, text, RuntimeDisplayKind.REMINDER)
         presenter.speak(text)
+        handler.postDelayed(
+            {
+                if (state == SessionState.ACTIVE && generation == reminderGeneration) {
+                    publish(state, "现实感知运行中", RuntimeDisplayKind.NONE)
+                }
+            },
+            REMINDER_DISPLAY_MS,
+        )
     }
 
-    private fun endSession(reason: String) {
+    private fun dismissReminder() {
+        reminderGeneration += 1
+        if (state == SessionState.ACTIVE) {
+            publish(state, "现实感知运行中", RuntimeDisplayKind.NONE)
+        }
+    }
+
+    private fun endSession(reason: String, announce: Boolean) {
         disclosureGeneration += 1
+        val endGeneration = disclosureGeneration
+        reminderGeneration += 1
         handler.removeCallbacks(baselineCapture)
         sensors.stop()
         audio.stop()
         camera.stopActiveRecording()
         repository.updateSessionState(SessionState.ENDED, reason)
         state = SessionState.ENDED
-        publish(state, "本次已经结束")
-        presenter.speak("本次已经结束。")
+        if (announce) {
+            publish(
+                state,
+                "本次现实感知已取消",
+                RuntimeDisplayKind.CANCELLED,
+            )
+            presenter.speak("本次现实感知已取消。")
+        } else {
+            publish(state, "本次结束", RuntimeDisplayKind.NONE)
+        }
+        handler.postDelayed(
+            {
+                if (state == SessionState.ENDED && disclosureGeneration == endGeneration) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+            },
+            if (announce) CANCELLED_DISPLAY_MS else 0L,
+        )
     }
 
     private fun capture(
@@ -210,7 +233,7 @@ class RealityRuntimeService : LifecycleService() {
         val remaining = AtomicInteger(modalities.size)
         val complete: (Boolean, String) -> Unit = { success, message ->
             if (success) {
-                RuntimeStatusStore.publish(this, state, message, window.captureWindowId)
+                RuntimeStatusStore.updateLastEvidence(this, window.captureWindowId)
             }
             if (remaining.decrementAndGet() == 0) repository.finalizeWindow(window)
         }
@@ -248,9 +271,23 @@ class RealityRuntimeService : LifecycleService() {
         complete(false, "$modality 暂不可用")
     }
 
-    private fun publish(newState: SessionState, message: String) {
+    private fun publish(
+        newState: SessionState,
+        message: String,
+        displayKind: RuntimeDisplayKind =
+            if (newState == SessionState.BLOCKED) {
+                RuntimeDisplayKind.BLOCKED
+            } else {
+                RuntimeDisplayKind.NONE
+            },
+    ) {
         state = newState
-        RuntimeStatusStore.publish(this, newState, message)
+        RuntimeStatusStore.publish(
+            this,
+            newState,
+            message,
+            displayKind = displayKind,
+        )
         updateNotification(message)
     }
 
@@ -265,7 +302,7 @@ class RealityRuntimeService : LifecycleService() {
         manager.createNotificationChannel(
             NotificationChannel(
                 NOTIFICATION_CHANNEL,
-                "Reality Memory",
+                "RealGit",
                 NotificationManager.IMPORTANCE_LOW,
             ),
         )
@@ -285,7 +322,7 @@ class RealityRuntimeService : LifecycleService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         return Notification.Builder(this, NOTIFICATION_CHANNEL)
-            .setContentTitle("Reality Memory")
+            .setContentTitle("RealGit")
             .setContentText(message)
             .setSmallIcon(android.R.drawable.presence_video_online)
             .setContentIntent(openIntent)
@@ -300,6 +337,7 @@ class RealityRuntimeService : LifecycleService() {
         const val ACTION_REMEMBER_NOW = "com.realitymemory.glasses.REMEMBER_NOW"
         const val ACTION_END_SESSION = "com.realitymemory.glasses.END_SESSION"
         const val ACTION_TEST_REMINDER = "com.realitymemory.glasses.TEST_REMINDER"
+        const val ACTION_DISMISS_REMINDER = "com.realitymemory.glasses.DISMISS_REMINDER"
         const val EXTRA_WORN = "worn"
         const val EXTRA_WEAR_SOURCE = "wear_source"
         const val EXTRA_REMINDER_TEXT = "reminder_text"
@@ -307,6 +345,8 @@ class RealityRuntimeService : LifecycleService() {
         private const val NOTIFICATION_CHANNEL = "reality_memory_runtime"
         private const val NOTIFICATION_ID = 501
         private const val DISCLOSURE_DELAY_MS = 5_000L
+        private const val CANCELLED_DISPLAY_MS = 3_000L
         private const val BASELINE_CAPTURE_INTERVAL_MS = 60_000L
+        private const val REMINDER_DISPLAY_MS = 8_000L
     }
 }
