@@ -11,10 +11,15 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from datetime import timedelta
+
+from ..auth import GrantContext, actor_of, grant_or_owner
+from ..config import get_settings
 from ..db import get_session
 from ..llm.base import LLMClient
 from ..memory.events import append_event, latest_valid_event, record_audit
 from ..memory.projections import recompute_projection
+from ..memory.seed import get_default_household_id
 from ..models import Entity, EvidenceItem, FrameAsset, MemoryEvent, StateProjection, utcnow
 from ..schemas import (
     AudioSearchHit,
@@ -22,6 +27,8 @@ from ..schemas import (
     CorrectResponse,
     EntityRef,
     FindObjectResponse,
+    PreferenceHit,
+    PreferenceResponse,
     SceneSearchHit,
     SceneSearchRequest,
     SceneSearchResponse,
@@ -30,9 +37,16 @@ from ..schemas import (
 )
 from ..vision.base import VisionEncoder
 from .visual import visual_search_frames
-from .where_is import _retrieve_transcripts, translate_query_for_clip, where_is
+from .where_is import _match_entity, _retrieve_transcripts, translate_query_for_clip, where_is
 
 router = APIRouter(prefix="/v1/memory", tags=["query"])
+
+
+async def _household_of(session: AsyncSession, ctx: GrantContext | None):
+    """请求的家庭范围：agent 从 grant 取（鉴权层隔离），owner 直通用默认家庭。"""
+    if ctx is not None:
+        return ctx.household_id()
+    return await get_default_household_id(session)
 
 
 def get_llm(request: Request) -> LLMClient:
@@ -64,14 +78,23 @@ async def where_is_endpoint(
     session: AsyncSession = Depends(get_session),
     llm: LLMClient = Depends(get_llm),
     vision: VisionEncoder = Depends(get_vision),
+    ctx: GrantContext | None = Depends(grant_or_owner("memory.query.objects")),
 ) -> FindObjectResponse:
-    resp = await where_is(session, name=name, deep=deep, llm=llm, vision=vision)
+    household_id = await _household_of(session, ctx)
+    resp = await where_is(
+        session, name=name, deep=deep, llm=llm, vision=vision, household_id=household_id
+    )
     await record_audit(
         session,
-        actor="user:owner",
+        actor=actor_of(ctx),
         action="query",
         target=f"where-is:{name}",
-        detail={"channel": resp.channel, "confidence": resp.confidence, "deep": deep},
+        detail={
+            "channel": resp.channel,
+            "confidence": resp.confidence,
+            "deep": deep,
+            **({"grant_id": str(ctx.grant_id)} if ctx else {}),
+        },
     )
     await session.commit()
     return resp
@@ -83,6 +106,7 @@ async def scene_search_endpoint(
     session: AsyncSession = Depends(get_session),
     llm: LLMClient = Depends(get_llm),
     vision: VisionEncoder = Depends(get_vision),
+    ctx: GrantContext | None = Depends(grant_or_owner("memory.query.objects")),
 ) -> SceneSearchResponse:
     """通用场景物件查找：文本/图片跨模态检索 frame_assets 的 CLIP 视觉向量；
     文本 query 同时检索 audio_assets 的语音转写（audio_hits）。"""
@@ -115,7 +139,10 @@ async def scene_search_endpoint(
                 scene_tags=frame.scene_tags or [],
                 score=round(score, 6),
                 evidence_available=alive,
-                evidence_url=f"/v1/memory/frames/{frame.id}/evidence" if alive else None,
+                # 原始媒体默认不暴露给 Agent（§5）：agent 调用不给 evidence_url
+                evidence_url=(
+                    f"/v1/memory/frames/{frame.id}/evidence" if alive and ctx is None else None
+                ),
             )
         )
 
@@ -138,7 +165,7 @@ async def scene_search_endpoint(
 
     await record_audit(
         session,
-        actor="user:owner",
+        actor=actor_of(ctx),
         action="query",
         target=f"scene-search:{req.query_text or '<image>'}",
         detail={
@@ -146,6 +173,7 @@ async def scene_search_endpoint(
             "top_k": req.top_k,
             "n_hits": len(items),
             "n_audio_hits": len(audio_items),
+            **({"grant_id": str(ctx.grant_id)} if ctx else {}),
         },
     )
     await session.commit()
@@ -159,9 +187,16 @@ async def scene_search_endpoint(
 
 @router.get("/frames/{frame_asset_id}/evidence")
 async def frame_evidence_endpoint(
-    frame_asset_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+    frame_asset_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    ctx: GrantContext | None = Depends(grant_or_owner()),
 ) -> Response:
-    """读取帧的原始证据媒体（TTL 删除后 404；长期表示 caption/向量不受影响）。"""
+    """读取帧的原始证据媒体（TTL 删除后 404；长期表示 caption/向量不受影响）。
+
+    原始 Evidence 默认不暴露给 Agent（§5）：调试查看需单独短期授权，不复用 Agent token。
+    """
+    if ctx is not None:
+        raise HTTPException(status_code=403, detail="原始证据媒体默认不暴露给 Agent（§5）")
     frame = await session.get(FrameAsset, frame_asset_id)
     if frame is None:
         raise HTTPException(status_code=404, detail="frame 不存在")
@@ -173,11 +208,15 @@ async def frame_evidence_endpoint(
 
 @router.get("/objects/{entity_id}/timeline", response_model=TimelineResponse)
 async def timeline_endpoint(
-    entity_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+    entity_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    ctx: GrantContext | None = Depends(grant_or_owner("memory.timeline.read")),
 ) -> TimelineResponse:
     entity = await session.get(Entity, entity_id)
     if entity is None:
         raise HTTPException(status_code=404, detail="entity 不存在")
+    if ctx is not None:
+        ctx.require_household(entity.household_id)  # 跨家庭在鉴权层拒绝（404 不泄露存在性）
     events = list(
         (
             await session.scalars(
@@ -215,12 +254,16 @@ async def timeline_endpoint(
 
 @router.post("/correct", response_model=CorrectResponse)
 async def correct_endpoint(
-    req: CorrectRequest, session: AsyncSession = Depends(get_session)
+    req: CorrectRequest,
+    session: AsyncSession = Depends(get_session),
+    ctx: GrantContext | None = Depends(grant_or_owner("memory.correction.submit")),
 ) -> CorrectResponse:
     """纠正不改历史：写 USER_CORRECTION 事件（supersedes 旧事件）→ 重算投影。"""
     entity = await session.get(Entity, req.entity_id)
     if entity is None:
         raise HTTPException(status_code=404, detail="entity 不存在")
+    if ctx is not None:
+        ctx.require_household(entity.household_id)
 
     old = await latest_valid_event(session, entity_id=req.entity_id)
     event = await append_event(
@@ -236,7 +279,7 @@ async def correct_endpoint(
     )
     await record_audit(
         session,
-        actor="user:owner",
+        actor=actor_of(ctx),
         action="correct",
         target=f"entity:{req.entity_id}",
         detail={
@@ -244,6 +287,7 @@ async def correct_endpoint(
             "value": req.value,
             "reason": req.reason,
             "supersedes_event_id": str(old.id) if old else None,
+            **({"grant_id": str(ctx.grant_id)} if ctx else {}),
         },
     )
     await session.commit()
@@ -252,4 +296,65 @@ async def correct_endpoint(
         event_id=event.id,
         superseded_event_id=old.id if old else None,
         projection=proj.state,
+    )
+
+
+@router.get("/preferences", response_model=PreferenceResponse)
+async def preferences_endpoint(
+    subject: str = Query(min_length=1),
+    session: AsyncSession = Depends(get_session),
+    ctx: GrantContext | None = Depends(grant_or_owner("memory.query.preferences")),
+) -> PreferenceResponse:
+    """偏好查询：subject 匹配实体 → 该实体的 PREFERENCE_STATED 事件（含被纠正标记）。
+
+    没有订单等外部数据源时，归因范围只到"当前实体/类别"（§8.2）——
+    limitations 里明确说明，Agent 不得把类别偏好说成对具体商家的偏好。
+    """
+    settings = get_settings()
+    household_id = await _household_of(session, ctx)
+    entity = await _match_entity(session, household_id=household_id, name=subject)
+    hits: list[PreferenceHit] = []
+    limitations: list[str] = []
+    if entity is not None:
+        events = list(
+            (
+                await session.scalars(
+                    select(MemoryEvent)
+                    .where(
+                        MemoryEvent.entity_id == entity.id,
+                        MemoryEvent.event_type == "PREFERENCE_STATED",
+                    )
+                    .order_by(MemoryEvent.event_time_from.desc())
+                )
+            ).all()
+        )
+        ref = EntityRef(id=entity.id, canonical_name=entity.canonical_name, aliases=entity.aliases)
+        hits = [
+            PreferenceHit(
+                entity=ref,
+                event_id=e.id,
+                payload=e.payload,
+                stated_at=e.event_time_from,
+                confidence=float((e.confidence or {}).get("aggregate", 0.5)),
+                superseded=e.valid_to is not None,
+            )
+            for e in events
+        ]
+    if not hits:
+        limitations.append(f"没有关于「{subject}」的偏好记忆。")
+    else:
+        limitations.append("偏好归因范围仅到该物品/类别本身，无法区分具体商家或品牌（无订单数据源）。")
+    await record_audit(
+        session,
+        actor=actor_of(ctx),
+        action="query",
+        target=f"preferences:{subject}",
+        detail={"n_hits": len(hits), **({"grant_id": str(ctx.grant_id)} if ctx else {})},
+    )
+    await session.commit()
+    return PreferenceResponse(
+        subject=subject,
+        hits=hits,
+        limitations=limitations,
+        cache_until=utcnow() + timedelta(seconds=settings.query_cache_ttl_seconds),
     )

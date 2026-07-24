@@ -35,7 +35,7 @@ JOB_SUBSYSTEMS = ("evidence", "frame", "audio", "observation", "candidate", "eve
 
 
 async def execute_forget_recent(
-    session: AsyncSession, *, minutes: int, scope: list[str]
+    session: AsyncSession, *, minutes: int, scope: list[str], actor: str = "user:owner"
 ) -> tuple[DeletionRequest, list[DeletionJob], DeletionTombstone]:
     since = utcnow() - timedelta(minutes=minutes)
     request = DeletionRequest(
@@ -207,7 +207,7 @@ async def execute_forget_recent(
     await session.flush()
     await record_audit(
         session,
-        actor="user:owner",
+        actor=actor,
         action="forget",
         target=f"deletion_request:{request.id}",
         detail={"minutes": minutes, "summary": summary, "audit_hash": audit_hash},

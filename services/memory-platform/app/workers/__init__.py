@@ -29,6 +29,7 @@ from ..models import AuditRecord, OutboxEvent, utcnow
 from ..perception import process_evidence_item
 from ..perception.audio import process_audio_item
 from ..privacy.ttl import sweep_expired_evidence
+from ..signals.rules import evaluate_signals_for_entity
 from ..vision.base import VisionEncoder
 
 _HEAVY_TOPICS = {"frame.process", "audio.process"}  # 感知任务：VLM/ASR 调用，可并发
@@ -53,7 +54,10 @@ async def _dispatch(
                 transcriber=asr,
             )
     elif row.topic == "projection.recompute":
-        await recompute_projection(session, entity_id=uuid.UUID(str(row.payload["entity_id"])))
+        entity_id = uuid.UUID(str(row.payload["entity_id"]))
+        await recompute_projection(session, entity_id=entity_id)
+        # 投影更新后走确定性规则派生信号（§7：Projection → Signal Rule → MemorySignal）
+        await evaluate_signals_for_entity(session, entity_id=entity_id)
 
 
 async def _handle_one(

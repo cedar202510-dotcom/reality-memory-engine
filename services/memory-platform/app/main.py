@@ -11,6 +11,8 @@ from fastapi import FastAPI
 from .asr import build_transcriber
 from .asr.base import Transcriber
 from .asr.fake import FakeTranscriber
+from .auth.router import router as grants_router
+from .auth.seed import ensure_dev_agent_grant
 from .config import get_settings
 from .db import SessionLocal, ensure_extensions
 from .gateway import router as gateway_router
@@ -20,6 +22,7 @@ from .llm.fake import FakeLLMClient
 from .memory.seed import ensure_seed
 from .privacy import router as privacy_router
 from .query import router as query_router
+from .signals import router as signals_router
 from .vision import build_vision_encoder
 from .vision.base import VisionEncoder
 from .vision.fake import FakeVisionEncoder
@@ -40,6 +43,10 @@ def create_app(
         await ensure_extensions()
         async with SessionLocal() as session:
             await ensure_seed(session)
+            if get_settings().seed_dev_agent_grant:
+                token = await ensure_dev_agent_grant(session)
+                if token:
+                    print(f"[dev] Agent grant token（仅本次打印）：{token}")  # noqa: T201
         stop = None
         tasks = []
         if with_workers:
@@ -59,6 +66,8 @@ def create_app(
     app.include_router(gateway_router)
     app.include_router(query_router)
     app.include_router(privacy_router)
+    app.include_router(grants_router)
+    app.include_router(signals_router)
 
     @app.get("/healthz")
     async def healthz() -> dict:

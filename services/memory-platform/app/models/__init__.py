@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -317,6 +318,113 @@ class StateProjection(Base, UUIDPK):
     state: Mapped[dict] = mapped_column(JSONB, default=dict, comment="投影状态，如 {location, last_seen_time}")
     conflicts: Mapped[list] = mapped_column(JSONB, default=list, comment="未决冲突")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+# ---------------------------------------------------------------- Agent 授权（Agent Access）
+
+
+class AgentGrant(Base):
+    """Agent 授权：用户授予某个 Agent Client 的受限访问权限（设计文档 §2）。
+
+    原始 token 永不落库：只存 sha256(token)，原始 token 仅在创建时返回一次。
+    过期/撤销在鉴权层拒绝；跨家庭访问靠 household_ids 在鉴权层隔离。
+    """
+
+    __tablename__ = "agent_grants"
+    grant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, comment="授权 id"
+    )
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), comment="授权用户（对应 actors.id，弱引用）"
+    )
+    agent_client_id: Mapped[str] = mapped_column(
+        String(128), comment="Agent Client 标识，如 proactive-agent-demo"
+    )
+    scopes: Mapped[list] = mapped_column(JSONB, default=list, comment="授权 scope 列表（§10）")
+    household_ids: Mapped[list] = mapped_column(
+        JSONB, default=list, comment="可访问家庭 id 列表（uuid 字符串）"
+    )
+    allowed_entity_types: Mapped[list | None] = mapped_column(
+        JSONB, nullable=True, comment="允许的实体类型（可空=不限制）"
+    )
+    purpose: Mapped[str] = mapped_column(String(256), default="", comment="用途说明")
+    token_hash: Mapped[str] = mapped_column(
+        String(64), unique=True, comment="opaque bearer token 的 sha256（绝不存原文）"
+    )
+    issued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, comment="签发时间"
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="过期时间")
+    revocable: Mapped[bool] = mapped_column(Boolean, default=True, comment="是否可撤销")
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="撤销时间（未撤销为空）"
+    )
+
+
+# ---------------------------------------------------------------- Signal（主动式）
+
+
+class MemorySignal(Base, UUIDPK):
+    """信号：从事实/投影按确定性规则派生的可过期通知候选（§3.3）。
+
+    不是 MemoryEvent：信号可过期、可抑制、可忽略，不进事实流。
+    生成走规则引擎（signals/rules.py），措辞归 Agent；平台绝不用 LLM 生成信号。
+    """
+
+    __tablename__ = "memory_signals"
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("households.id"), comment="所属家庭（投递按家庭隔离）"
+    )
+    signal_type: Mapped[str] = mapped_column(
+        String(64), comment="LOW_CONSUMABLE / STALE_LOCATION"
+    )
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("entities.id"), nullable=True, comment="关联实体"
+    )
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict, comment="信号内容（结构化，供 Agent 措辞）")
+    confidence: Mapped[float] = mapped_column(Float, default=0.5, comment="信号置信度")
+    status: Mapped[str] = mapped_column(
+        String(32), default="PENDING", comment="PENDING/DELIVERED/ACKED/EXPIRED"
+    )
+    cooldown_key: Mapped[str] = mapped_column(
+        String(256), comment="去重键（signal_type:entity_id）：冷却窗口内不重复生成"
+    )
+    delivered_subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, comment="投递到的订阅（每日上限按订阅统计）"
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), comment="过期时间：过期信号不投递（§13）"
+    )
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+Index("ix_signals_status", MemorySignal.status)
+Index("ix_signals_cooldown", MemorySignal.cooldown_key, MemorySignal.created_at)
+
+
+class SignalSubscription(Base, UUIDPK):
+    """信号订阅：Agent（经 grant）或 owner 声明要接收哪些信号及投递约束（§4.2）。"""
+
+    __tablename__ = "signal_subscriptions"
+    grant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, comment="所属 AgentGrant（owner 直订为空）"
+    )
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("households.id"), comment="订阅的家庭范围"
+    )
+    signal_types: Mapped[list] = mapped_column(JSONB, default=list, comment="允许的信号类型")
+    min_confidence: Mapped[float] = mapped_column(Float, default=0.0, comment="最低置信度")
+    cooldown_seconds: Mapped[int] = mapped_column(
+        Integer, default=3600, comment="同一 cooldown_key 两次投递的最小间隔"
+    )
+    daily_cap: Mapped[int] = mapped_column(Integer, default=10, comment="每日投递上限")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), comment="订阅过期时间")
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="撤销时间（grant 撤销时一并停投）"
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 # ---------------------------------------------------------------- 遗忘与审计

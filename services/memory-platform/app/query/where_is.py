@@ -30,10 +30,30 @@ from ..models import (
     StateProjection,
     utcnow,
 )
-from ..schemas import EntityRef, FindObjectResponse, LocationAlternative
+from ..schemas import EntityRef, FindObjectResponse, LocationAlternative, ProvenanceSummary
 from ..vision.base import VisionEncoder
 from .answerer import AnswerInput, build_answerer
 from .visual import fuse_rankings, visual_search_frames
+
+
+def _cache_until() -> datetime:
+    """Agent 侧缓存上限（§12）；纠正/遗忘后以平台重新查询为准。"""
+    from datetime import timedelta
+
+    return utcnow() + timedelta(seconds=get_settings().query_cache_ttl_seconds)
+
+
+def _staleness_limitations(last_seen: datetime | None, confidence: float) -> list[str]:
+    """规则生成的不确定性声明（§4.1 limitations），不经 LLM。"""
+    notes = ["这是最后一次可靠观察，不保证物品仍在原处。"]
+    if last_seen is not None:
+        ls = last_seen if last_seen.tzinfo else last_seen.replace(tzinfo=timezone.utc)
+        age_hours = (utcnow() - ls).total_seconds() / 3600
+        if age_hours >= 24:
+            notes.append(f"该位置信息已超过 {int(age_hours // 24)} 天未更新，期间可能被移动过。")
+    if confidence < 0.6:
+        notes.append("本次判断置信度较低，建议向用户确认。")
+    return notes
 
 
 def freshness_text(last_seen: datetime | None) -> str | None:
@@ -133,6 +153,19 @@ async def _channel_projection(
         if len(alternatives) >= 3:
             break
 
+    # 来源摘要：支撑当前位置的有效事件 + 最近一次纠正时间（§4.1）
+    supporting = [
+        ev.id
+        for ev in events
+        if ev.valid_to is None and (ev.payload or {}).get("location") == location
+    ]
+    corrections = [ev.accepted_at for ev in events if ev.event_type == "USER_CORRECTION"]
+    provenance = ProvenanceSummary(
+        supporting_event_ids=supporting[:10],
+        support_count=len(supporting),
+        last_corrected_at=max(corrections) if corrections else None,
+    )
+
     ref = EntityRef(id=entity.id, canonical_name=entity.canonical_name, aliases=entity.aliases)
     fresh = freshness_text(last_seen)
     if location is None:
@@ -143,6 +176,9 @@ async def _channel_projection(
             confidence=confidence,
             answer_text=f"认识「{entity.canonical_name}」，但当前没有有效的位置记忆（可能刚被遗忘）。",
             timeline_url=f"/v1/memory/objects/{entity.id}/timeline",
+            provenance_summary=provenance,
+            limitations=["当前没有有效的位置记忆，可能刚被纠正或遗忘。"],
+            cache_until=_cache_until(),
         )
     return FindObjectResponse(
         query=name,
@@ -155,6 +191,9 @@ async def _channel_projection(
         answer_text=f"{entity.canonical_name}{fresh or ''}，在{location}。",
         alternatives=alternatives,
         timeline_url=f"/v1/memory/objects/{entity.id}/timeline",
+        provenance_summary=provenance,
+        limitations=_staleness_limitations(last_seen, confidence),
+        cache_until=_cache_until(),
     )
 
 
@@ -349,6 +388,8 @@ async def _channel_deep_retrieval(
             channel="not_found",
             confidence=0.0,
             answer_text=f"没有任何场景或语音记录，暂时无法回答「{name}」在哪里。",
+            limitations=["没有可靠记忆，不作猜测。"],
+            cache_until=_cache_until(),
         )
 
     # 语音转写少且廉价：作为上下文附在每一批验证里
@@ -366,11 +407,13 @@ async def _channel_deep_retrieval(
     ans = None
     chosen_frame: FrameAsset | None = None
     found_ok = False
+    evidence_alive_by_frame: dict[uuid.UUID, bool] = {}
     for batch in batches:
         lines: list[str] = []
         images: list[str] = []
         for i, f in enumerate(batch):
             data_url = await _frame_data_url(session, f)
+            evidence_alive_by_frame[f.id] = data_url is not None
             lines.append(
                 f"{i}. [{f.captured_at.isoformat()}] {f.caption}"
                 f"（tags: {'、'.join(f.scene_tags or [])}）" + ("【附图】" if data_url else "")
@@ -398,6 +441,8 @@ async def _channel_deep_retrieval(
             channel="deep_retrieval",
             confidence=0.0,
             answer_text="精判阶段输出不合契约，本次无法给出答案。",
+            limitations=["模型输出未通过契约校验，结果被拒绝而非猜测。"],
+            cache_until=_cache_until(),
         )
 
     # 目击时间取 Answerer 选中的那一帧（修复：不再用召回集合最大时间冒充目击时间）
@@ -449,7 +494,26 @@ async def _channel_deep_retrieval(
             channel="not_found",
             confidence=ans.confidence,
             answer_text=ans.answer_text or f"没有在用过的场景里找到「{name}」。",
+            limitations=["召回的场景片段中未确认目标，不作猜测。"],
+            cache_until=_cache_until(),
         )
+
+    # 来源摘要：候选门若已升级为事件，用该事件；否则以候选 id 记录（未成为事实）
+    accepted_event = await session.scalar(
+        select(MemoryEvent).where(
+            MemoryEvent.source_candidate_ids.contains([str(candidate.id)])
+        )
+    )
+    provenance = ProvenanceSummary(
+        supporting_event_ids=[accepted_event.id] if accepted_event else [],
+        support_count=1 if accepted_event else 0,
+        last_corrected_at=None,
+    )
+    limitations = _staleness_limitations(seen_time, ans.confidence)
+    if chosen_frame is not None and not evidence_alive_by_frame.get(chosen_frame.id, False):
+        limitations.append("原始画面已按 TTL 删除，判断基于长期文字与向量表示。")
+    if accepted_event is None:
+        limitations.append("该结论尚未通过候选门成为事实事件，属于检索推断。")
 
     entity_ref = None
     if candidate.entity_id:
@@ -469,6 +533,9 @@ async def _channel_deep_retrieval(
         timeline_url=(
             f"/v1/memory/objects/{candidate.entity_id}/timeline" if candidate.entity_id else None
         ),
+        provenance_summary=provenance,
+        limitations=limitations,
+        cache_until=_cache_until(),
     )
 
 
@@ -479,8 +546,11 @@ async def where_is(
     deep: bool,
     llm: LLMClient,
     vision: VisionEncoder | None = None,
+    household_id: uuid.UUID | None = None,
 ) -> FindObjectResponse:
-    household_id = await get_default_household_id(session)
+    """household_id：agent 调用时来自 grant（鉴权层隔离）；owner 直通为 None → 默认家庭。"""
+    if household_id is None:
+        household_id = await get_default_household_id(session)
     if not deep:
         resp = await _channel_projection(session, household_id=household_id, name=name)
         if resp is not None and resp.location is not None:

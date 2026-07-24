@@ -92,6 +92,21 @@ class Settings(BaseSettings):
     outbox_retry_backoff_seconds: float = 20.0  # 每次失败后的重试退避（× attempts）
     ttl_sweep_interval_seconds: float = 60.0
 
+    # --- Agent Access（Phase 1） ---
+    # True 时启动 seed 一个开发用 Agent grant（全量首版 scope）并打印原始 token；
+    # 默认 False，测试/生产不会静默获得后门 grant。
+    seed_dev_agent_grant: bool = False
+    # grants 管理端点（签发/撤销/列出）的 owner 凭证；为空时管理端点返回 503
+    admin_token: str = ""
+    # 查询响应 cache_until = now + 该秒数（Agent 侧缓存上限；纠正/遗忘后以平台为准）
+    query_cache_ttl_seconds: int = 300
+
+    # --- Signal（主动式，M4） ---
+    signal_ttl_hours: int = 24              # 信号过期时间（过期不投递）
+    signal_cooldown_seconds: int = 6 * 3600  # 同一 cooldown_key 再次生成的最小间隔
+    signal_stale_location_hours: int = 72   # 位置超过该小时数未更新 → STALE_LOCATION 信号
+    signal_low_consumable_level: float = 0.2  # 数值型余量低于该值 → LOW_CONSUMABLE 信号
+
     # --- 演示/测试用 Fake 行为由调用方注入，不在配置里 ---
 
 

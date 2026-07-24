@@ -122,8 +122,19 @@ iOS App 每次采集会话导出 `session.json`（采集清单）。上云时**�
 | GET | `/v1/memory/objects/{entity_id}/timeline` | 实体事件时间线（含 supersedes 链） |
 | POST | `/v1/memory/correct` | 用户纠正 `{entity_id, field, value, reason}` → USER_CORRECTION 事件 + 投影重算 |
 | POST | `/v1/memory/forget-recent` | 近窗遗忘 `{minutes, scope[]}` → deletion_request/jobs → tombstone + audit |
-| GET | `/v1/memory/audit?limit=` | 审计记录 |
+| GET | `/v1/memory/preferences?subject=` | 偏好查询（PREFERENCE_STATED 事件，含归因范围 limitations） |
+| GET | `/v1/memory/audit?limit=` | 审计记录（agent 调用只能看自己的） |
+| POST/GET/DELETE | `/v1/agent/grants[/{id}]` | AgentGrant 签发/列出/撤销（需 `ADMIN_TOKEN`；token 只在签发时返回一次） |
+| POST/DELETE | `/v1/signal-subscriptions[/{id}]` | 信号订阅（类型/最低置信度/冷却/每日上限） |
+| GET | `/v1/signals` | 拉取待投递信号（过期不投递，抑制计数返回） |
+| POST | `/v1/signals/{id}/ack` | 信号回执 |
 | GET | `/healthz` | 健康检查 |
+
+**Agent 鉴权（Agent Access Phase 1）**：带 `Authorization: Bearer <grant token>` 的请求走
+scope 鉴权（401/403），审计 actor 记 `agent:<client_id>`，原始 Evidence 对 agent 一律 403；
+不带 Authorization 头的本机调用视为 owner 直通（单租户简化）。查询响应含
+`provenance_summary` / `limitations` / `cache_until`。Agent 客户端参考
+[services/agent-gateway](../agent-gateway/README.md)。
 
 冻结契约（`SourceEnvelope` / `AtomicObservation` / `MemoryCandidate` / `FindObjectResponse`）的 JSON Schema 由 `python -m app.contracts.export` 导出到 `app/contracts/generated/`。
 
@@ -141,9 +152,11 @@ app/
   perception/        # Captioner/Extractor 阶段 + 帧处理器
   llm/               # LLMClient 协议 / OpenAICompatibleClient / FakeLLMClient / StageAgent
   memory/            # 候选门、实体解析器、事件写入器、投影引擎、seed
-  query/             # where-is 双通道、Answerer 阶段、timeline、correct
+  query/             # where-is 双通道、Answerer 阶段、timeline、correct、preferences
   privacy/           # TTL 清理、forget-recent 删除流水线、审计 API
-  workers/           # outbox 轮询 + TTL 循环
+  auth/              # AgentGrant：token 签发/解析、grant_or_owner 依赖、grants 管理端点
+  signals/           # Signal 规则引擎（确定性）+ 订阅/投递/ack API
+  workers/           # outbox 轮询 + TTL 循环（投影重算后触发信号评估）
 scripts/smoke_demo.py
 tests/               # pytest（FakeLLM + 真实 PG，库名 rme_test）
 ```

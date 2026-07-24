@@ -151,6 +151,14 @@ class LocationAlternative(BaseModel):
     confidence: float
 
 
+class ProvenanceSummary(BaseModel):
+    """来源摘要（§4.1）：答案由哪些事件支撑、是否被纠正过。不含原始媒体。"""
+
+    supporting_event_ids: list[uuid.UUID] = Field(default_factory=list)
+    support_count: int = 0
+    last_corrected_at: datetime | None = None
+
+
 class FindObjectResponse(BaseModel):
     """where-is 统一响应。永远带置信度与新鲜度表述。"""
 
@@ -164,6 +172,11 @@ class FindObjectResponse(BaseModel):
     answer_text: str = ""
     alternatives: list[LocationAlternative] = Field(default_factory=list)
     timeline_url: str | None = None
+    provenance_summary: ProvenanceSummary = Field(default_factory=ProvenanceSummary)
+    # 平台对自身不确定性的机器可读声明（规则生成，不经 LLM）；Agent 必须转达给用户
+    limitations: list[str] = Field(default_factory=list)
+    # Agent 侧缓存上限；纠正/遗忘后不得继续使用缓存副本（§12）
+    cache_until: datetime | None = None
 
 
 class TimelineEntry(BaseModel):
@@ -265,3 +278,110 @@ class AuditRecordOut(BaseModel):
     target: str
     detail: dict[str, Any]
     created_at: datetime
+
+
+# ---------------------------------------------------------------- 偏好查询（Agent Access）
+
+
+class PreferenceHit(BaseModel):
+    """一条偏好陈述：来自 PREFERENCE_STATED 事件（语音/观察沉淀）。"""
+
+    entity: EntityRef
+    event_id: uuid.UUID
+    payload: dict[str, Any]                # 如 {preference: "不喜欢这家胡辣汤"}
+    stated_at: datetime
+    confidence: float
+    superseded: bool = False               # 已被纠正取代
+
+
+class PreferenceResponse(BaseModel):
+    subject: str
+    hits: list[PreferenceHit] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    cache_until: datetime | None = None
+
+
+# ---------------------------------------------------------------- Agent 授权（grants 管理契约）
+
+
+class AgentGrantCreateRequest(BaseModel):
+    agent_client_id: str = Field(min_length=1, max_length=128)
+    scopes: list[str] = Field(min_length=1)
+    purpose: str = ""
+    ttl_days: int = Field(default=30, ge=1, le=365)
+    allowed_entity_types: list[str] | None = None
+
+
+class AgentGrantOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    grant_id: uuid.UUID
+    owner_id: uuid.UUID
+    agent_client_id: str
+    scopes: list[Any]
+    household_ids: list[Any]
+    allowed_entity_types: list[Any] | None
+    purpose: str
+    issued_at: datetime
+    expires_at: datetime
+    revocable: bool
+    revoked_at: datetime | None
+
+
+class AgentGrantCreateResponse(BaseModel):
+    grant: AgentGrantOut
+    token: str                              # 原始 token 只在此返回一次，库中仅存哈希
+
+
+# ---------------------------------------------------------------- Signal（主动式）
+
+
+SIGNAL_TYPES = ("LOW_CONSUMABLE", "STALE_LOCATION")
+
+
+class SignalSubscriptionCreateRequest(BaseModel):
+    signal_types: list[str] = Field(min_length=1)
+    min_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    cooldown_seconds: int = Field(default=3600, ge=0)
+    daily_cap: int = Field(default=10, ge=1, le=100)
+    ttl_days: int = Field(default=30, ge=1, le=365)
+
+    @model_validator(mode="after")
+    def _known_types(self) -> SignalSubscriptionCreateRequest:
+        unknown = [t for t in self.signal_types if t not in SIGNAL_TYPES]
+        if unknown:
+            raise ValueError(f"未知信号类型：{unknown}（可用：{list(SIGNAL_TYPES)}）")
+        return self
+
+
+class SignalSubscriptionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    grant_id: uuid.UUID | None
+    signal_types: list[Any]
+    min_confidence: float
+    cooldown_seconds: int
+    daily_cap: int
+    expires_at: datetime
+    revoked_at: datetime | None
+    created_at: datetime
+
+
+class SignalOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    signal_type: str
+    entity_id: uuid.UUID | None
+    payload: dict[str, Any]
+    confidence: float
+    status: str
+    created_at: datetime
+    expires_at: datetime
+
+
+class SignalListResponse(BaseModel):
+    signals: list[SignalOut] = Field(default_factory=list)
+    # 因冷却/每日上限/过期被抑制的数量（可观测性：抑制不是丢失）
+    suppressed: int = 0

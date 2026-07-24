@@ -1,9 +1,28 @@
 # Agent 数据调用技术架构
 
-> 文档版本：v0.2  
+> 文档版本：v0.3  
 > 负责范围：账号授权、记忆查询、信号订阅、纠正、删除和 Agent Demo  
 > 上游接口：[云端记忆平台架构](02-Memory-Platform-Architecture.md)  
 > 总体边界：[分层技术架构](README.md)
+
+## v0.3 实现决定（相对 v0.2 的偏差）
+
+首版实现（memory-platform Agent Access + services/agent-gateway）落地时的两个决定：
+
+1. **统一入口 `POST /v1/memory/query`（§4.1 intent 化请求）暂缓**。自然语言意图
+   解析放在 agent-gateway 的 harness 层（它有对话上下文），平台保持结构化端点
+   （where-is / preferences / timeline / correct）作为契约，正好对应 §14 工具表。
+   §6 中"Query Service 负责自然语言意图解析"相应转移给 Agent 侧。等出现第二个
+   agent 客户端且工具集发散时再评估统一入口。
+2. **owner 直通**：Phase 1 单租户下，不带 Authorization 头的本机调用视为 owner
+   （App/脚本与平台同信任域，边界靠部署网络隔离）；带了 token 就必须完整鉴权，
+   无效 token 一律 401，绝不静默降级——否则撤销失去意义。
+
+已实现：AgentGrant 签发/撤销（ADMIN_TOKEN 保护）、scope 鉴权与审计
+（actor=agent:<client_id>）、查询响应 provenance_summary / limitations /
+cache_until、偏好查询、Signal 规则引擎（LOW_CONSUMABLE / STALE_LOCATION）与
+订阅/投递/ack（冷却、每日上限、过期不投递）、Evidence 对 Agent 默认 403、
+agent-gateway harness（有界 tool-use 循环 + 主动式措辞）。
 
 ## 1. 目标
 

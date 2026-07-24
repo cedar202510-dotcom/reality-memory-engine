@@ -13,6 +13,7 @@ from pathlib import Path
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://rme:rme@localhost:5432/rme_test"
 os.environ["EVIDENCE_DIR"] = tempfile.mkdtemp(prefix="rme-test-evidence-")
 os.environ["LLM_PROVIDER"] = "fake"
+os.environ["ADMIN_TOKEN"] = "test-admin-token"  # grants 管理端点（tests/test_agent_access.py）
 
 import pytest
 import pytest_asyncio
@@ -70,7 +71,8 @@ async def db_session():
                 "TRUNCATE households, actors, devices, source_envelopes, evidence_items,"
                 " frame_assets, audio_assets, atomic_observations, entities, memory_candidates,"
                 " memory_events, state_projections, deletion_requests, deletion_jobs,"
-                " deletion_tombstones, audit_records, outbox_events CASCADE"
+                " deletion_tombstones, audit_records, outbox_events, agent_grants,"
+                " memory_signals, signal_subscriptions CASCADE"
             )
         )
         await session.commit()
