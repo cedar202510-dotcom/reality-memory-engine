@@ -26,11 +26,11 @@
 - 场景中不要出现无关人脸、身份证件、聊天页面、地址或未获同意的第三方对话。
 - 准备一张桌子、一个无隐私文字的水杯和一段 10 米左右的行走路线。
 
-### 2.1 另一台电脑是否需要重新构建
+### 2.1 测试电脑直接安装，不参与构建
 
-不需要。测试包里的 `reality-memory-glasses-debug.apk` 已经是可安装产物，另一台
-电脑不需要 Android Studio、Java 或 Gradle，也不应在真机测试前自行重新构建。
-测试电脑只需：
+测试包里的 `reality-memory-glasses-debug.apk` 已经是最终可安装产物。测试电脑
+只负责安装和真机测试，不需要 Android Studio、Java 或 Gradle，也不要重新构建
+APK。测试电脑只需：
 
 1. 解压完整测试包，不要只接收 APK。
 2. 安装与电脑系统匹配的 Android Platform-Tools。

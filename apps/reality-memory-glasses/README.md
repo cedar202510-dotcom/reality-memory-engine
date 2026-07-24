@@ -68,9 +68,9 @@ APK 输出：
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-已构建好的 APK 可以直接交给另一台电脑安装到眼镜，不需要在测试电脑重新构建。
-测试电脑只需要 Android Platform-Tools 中的 `adb`、Rokid 开发线和眼镜端 ADB
-授权；不需要 Java、Gradle 或 Android Studio。安装命令和签名注意事项见
+已构建好的 APK 直接交给测试电脑安装。测试电脑只负责安装和真机测试，不参与
+APK 构建；它只需要 Android Platform-Tools 中的 `adb`、Rokid 开发线和眼镜端
+ADB 授权，不需要 Java、Gradle 或 Android Studio。安装命令和签名注意事项见
 [RV101 真机测试计划](docs/RV101-TEST-PLAN-v0.1.md)。
 
 每次交付 APK 时必须同时生成测试包：
