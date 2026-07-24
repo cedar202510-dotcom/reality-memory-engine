@@ -132,6 +132,7 @@ adb exec-out run-as com.realitymemory.glasses \
 
 ## 相关文档
 
+- [眼镜端现有 UI 交互预览](docs/RV101-UI-PREVIEW.html)
 - [数据采集架构](../../docs/architecture/01-Data-Capture-Architecture.md)
 - [设备与云端通信](../../docs/architecture/04-Device-Cloud-Communication.md)
 - [多模态数据契约 v1.0](../../docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md)

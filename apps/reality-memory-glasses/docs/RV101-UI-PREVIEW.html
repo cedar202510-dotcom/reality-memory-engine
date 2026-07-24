@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reality Memory RV101 UI Preview</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --accent: #6cf5b2;
+      --notice: #ffd25f;
+      --warning: #ff8070;
+      --muted: #bec6c4;
+      --surface: #1b1f1f;
+      --border: #4b5452;
+      --black: #000;
+      --white: #fff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: #0b0d0d;
+      color: var(--white);
+      font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+      letter-spacing: 0;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .preview {
+      display: grid;
+      grid-template-columns: minmax(250px, 320px) minmax(320px, 480px);
+      align-items: center;
+      gap: 36px;
+      width: min(100%, 920px);
+    }
+
+    .controls {
+      align-self: stretch;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+    }
+
+    .controls h1 {
+      margin: 0;
+      color: var(--accent);
+      font-size: 24px;
+      line-height: 1.2;
+    }
+
+    .controls p {
+      margin: 12px 0 22px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .state-picker {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .state-picker button {
+      min-height: 42px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--white);
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    .state-picker button:hover,
+    .state-picker button:focus-visible {
+      border-color: var(--accent);
+      outline: none;
+    }
+
+    .state-picker button[aria-pressed="true"] {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--black);
+      font-weight: 700;
+    }
+
+    .spec {
+      margin-top: 20px;
+      color: #87918f;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .device {
+      position: relative;
+      width: min(100%, 480px);
+      aspect-ratio: 3 / 4;
+      container-type: inline-size;
+      overflow: hidden;
+      border: 1px solid #262c2b;
+      border-radius: 6px;
+      background: var(--black);
+      box-shadow: 0 24px 70px rgb(0 0 0 / 45%);
+    }
+
+    .safe-area {
+      position: absolute;
+      top: 12.5%;
+      right: 0;
+      bottom: 12.5%;
+      left: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      padding:
+        clamp(14px, 4.6cqw, 22px)
+        clamp(20px, 5.8cqw, 28px)
+        clamp(12px, 3.75cqw, 18px);
+    }
+
+    .brand {
+      margin: 0;
+      color: var(--muted);
+      font-size: clamp(10px, 2.7cqw, 13px);
+      font-weight: 700;
+      line-height: 1.2;
+      text-transform: uppercase;
+    }
+
+    .status {
+      margin: 0;
+      padding:
+        clamp(16px, 5.8cqw, 28px)
+        0
+        clamp(8px, 2.5cqw, 12px);
+      color: var(--accent);
+      font-size: clamp(24px, 7cqw, 34px);
+      font-weight: 700;
+      line-height: 1.2;
+      text-align: center;
+    }
+
+    .message {
+      flex: 1;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      margin: 0;
+      color: var(--muted);
+      font-size: clamp(13px, 3.5cqw, 17px);
+      line-height: 1.55;
+      text-align: center;
+      white-space: pre-line;
+    }
+
+    .glass-button {
+      width: 100%;
+      min-height: clamp(34px, 10cqw, 48px);
+      border: 0;
+      border-radius: 6px;
+      background: var(--accent);
+      color: var(--black);
+      font-family: inherit;
+      font-size: clamp(13px, 3.3cqw, 16px);
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .glass-button.secondary {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--white);
+    }
+
+    .action-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: clamp(8px, 2.5cqw, 12px);
+      margin-top: clamp(5px, 1.7cqw, 8px);
+    }
+
+    .test-reminder {
+      margin-top: clamp(5px, 1.7cqw, 8px);
+    }
+
+    .safe-guide {
+      position: absolute;
+      top: 12.5%;
+      right: 8px;
+      bottom: 12.5%;
+      width: 1px;
+      background: transparent;
+      pointer-events: none;
+    }
+
+    @media (max-width: 760px) {
+      body {
+        display: block;
+        padding: 16px;
+      }
+
+      .preview {
+        grid-template-columns: 1fr;
+        gap: 22px;
+        max-width: 480px;
+        margin: 0 auto;
+      }
+
+      .controls {
+        order: 2;
+      }
+
+      .device {
+        order: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="preview">
+    <section class="controls" aria-labelledby="preview-title">
+      <h1 id="preview-title">现有眼镜端 UI</h1>
+      <p>选择状态查看正式工程当前已经实现的界面。默认展示“正在留意”，眼镜端实际画面为 480 × 640。</p>
+      <div class="state-picker" aria-label="界面状态">
+        <button type="button" data-state="disclosure" aria-pressed="false">启动提示</button>
+        <button type="button" data-state="active" aria-pressed="true">正在留意</button>
+        <button type="button" data-state="remembering" aria-pressed="false">正在记下</button>
+        <button type="button" data-state="paused" aria-pressed="false">已暂停</button>
+        <button type="button" data-state="reminder" aria-pressed="false">提醒</button>
+        <button type="button" data-state="ended" aria-pressed="false">本次结束</button>
+        <button type="button" data-state="blocked" aria-pressed="false">权限阻塞</button>
+      </div>
+      <div class="spec">
+        当前色值：主绿色 #6CF5B2 · 提示黄色 #FFD25F · 警告红色 #FF8070<br>
+        当前字体：系统无衬线体 · 按钮圆角 6px
+      </div>
+    </section>
+
+    <section class="device" aria-label="RV101 眼镜画面预览">
+      <div class="safe-area">
+        <p class="brand">REALITY MEMORY</p>
+        <h2 class="status" id="status">正在留意</h2>
+        <p class="message" id="message">正在帮你留意重要变化</p>
+        <button class="glass-button" id="primary" type="button">暂停</button>
+        <div class="action-row">
+          <button class="glass-button secondary" type="button">记一下</button>
+          <button class="glass-button secondary" type="button">本次关闭</button>
+        </div>
+        <button class="glass-button secondary test-reminder" type="button">测试提醒</button>
+      </div>
+      <div class="safe-guide" aria-hidden="true"></div>
+    </section>
+  </main>
+
+  <script>
+    const states = {
+      disclosure: {
+        title: "准备开始",
+        message: "5 秒后开始感知本次现实片段",
+        color: "#ffd25f",
+        primary: "本次关闭"
+      },
+      active: {
+        title: "正在留意",
+        message: "正在帮你留意重要变化",
+        color: "#6cf5b2",
+        primary: "暂停"
+      },
+      remembering: {
+        title: "正在留意",
+        message: "正在记下这一刻\n调试窗口：7C2F9A14E6B1",
+        color: "#6cf5b2",
+        primary: "暂停"
+      },
+      paused: {
+        title: "已暂停",
+        message: "本次感知已暂停",
+        color: "#ff8070",
+        primary: "继续"
+      },
+      reminder: {
+        title: "正在留意",
+        message: "提醒：出门前别忘了带上刚才放在桌边的钥匙。",
+        color: "#6cf5b2",
+        primary: "暂停"
+      },
+      ended: {
+        title: "本次结束",
+        message: "本次已经结束",
+        color: "#ffffff",
+        primary: "开始本次"
+      },
+      blocked: {
+        title: "暂未开始",
+        message: "需要相机和麦克风权限",
+        color: "#ff8070",
+        primary: "开始本次"
+      }
+    };
+
+    const status = document.querySelector("#status");
+    const message = document.querySelector("#message");
+    const primary = document.querySelector("#primary");
+    const stateButtons = document.querySelectorAll("[data-state]");
+
+    function showState(name) {
+      const state = states[name];
+      status.textContent = state.title;
+      status.style.color = state.color;
+      message.textContent = state.message;
+      primary.textContent = state.primary;
+      stateButtons.forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.state === name));
+      });
+    }
+
+    stateButtons.forEach((button) => {
+      button.addEventListener("click", () => showState(button.dataset.state));
+    });
+  </script>
+</body>
+</html>
