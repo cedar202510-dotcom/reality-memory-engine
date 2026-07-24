@@ -16,5 +16,31 @@ services:
       timeout: 3s
       retries: 12
 
+  asr-sidecar:
+    # faster-whisper 语音转写 sidecar；memory-platform 本地运行时通过
+    # ASR_PROVIDER=http ASR_BASE_URL=http://localhost:8100 对接（见 services/asr-sidecar/README.md）
+    build:
+      context: ../services/asr-sidecar
+      args:
+        ASR_MODEL_SIZE: ${ASR_MODEL_SIZE:-small}
+    container_name: rme-asr-sidecar
+    environment:
+      ASR_MODEL_SIZE: ${ASR_MODEL_SIZE:-small}
+      ASR_DEVICE: ${ASR_DEVICE:-cpu}
+      ASR_COMPUTE_TYPE: ${ASR_COMPUTE_TYPE:-int8}
+      ASR_API_KEY: ${ASR_API_KEY:-}
+      ASR_MODEL_DIR: /models
+    ports:
+      - "8100:8100"
+    volumes:
+      - rme-asr-models:/models
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8100/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+
 volumes:
   rme-pgdata:
+  rme-asr-models:

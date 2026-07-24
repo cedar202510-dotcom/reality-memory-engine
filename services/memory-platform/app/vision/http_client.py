@@ -48,7 +48,8 @@ class HTTPVisionEncoder:
     async def _post_embeddings(self, path: str, payload: dict) -> list[list[float]] | None:
         """统一请求/校验；任何异常或契约不符都返回 None。"""
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            # trust_env=False：sidecar 是内网/本机地址，不经系统/环境代理（否则代理会错误接管 localhost 请求）
+            async with httpx.AsyncClient(timeout=self._timeout, trust_env=False) as client:
                 resp = await client.post(
                     f"{self._base_url}{path}", json=payload, headers=self._headers()
                 )
