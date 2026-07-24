@@ -58,3 +58,6 @@ feishu-auth-qr*.png
 *.keystore
 *.jks
 .gstack/
+
+# Data
+data/

@@ -1,0 +1,91 @@
+{
+  "properties": {
+    "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+    },
+    "frame_asset_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Frame Asset Id"
+    },
+    "audio_asset_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Audio Asset Id"
+    },
+    "predicate": {
+      "title": "Predicate",
+      "type": "string"
+    },
+    "subject_text": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Subject Text"
+    },
+    "object_text": {
+      "title": "Object Text",
+      "type": "string"
+    },
+    "value": {
+      "additionalProperties": true,
+      "title": "Value",
+      "type": "object"
+    },
+    "phenomenon_time": {
+      "format": "date-time",
+      "title": "Phenomenon Time",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "confidence": {
+      "additionalProperties": true,
+      "title": "Confidence",
+      "type": "object"
+    },
+    "parser_version": {
+      "title": "Parser Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "predicate",
+    "subject_text",
+    "object_text",
+    "value",
+    "phenomenon_time",
+    "observed_at",
+    "confidence",
+    "parser_version"
+  ],
+  "title": "AtomicObservationOut",
+  "type": "object"
+}

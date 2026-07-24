@@ -1,0 +1,78 @@
+{
+  "$defs": {
+    "ConfidenceParts": {
+      "description": "五维置信度分量。",
+      "properties": {
+        "model": {
+          "default": 0.5,
+          "title": "Model",
+          "type": "number"
+        },
+        "identity": {
+          "default": 0.5,
+          "title": "Identity",
+          "type": "number"
+        },
+        "spatial": {
+          "default": 0.5,
+          "title": "Spatial",
+          "type": "number"
+        },
+        "temporal": {
+          "default": 0.5,
+          "title": "Temporal",
+          "type": "number"
+        },
+        "policy": {
+          "default": 1.0,
+          "title": "Policy",
+          "type": "number"
+        },
+        "aggregate": {
+          "default": 0.5,
+          "title": "Aggregate",
+          "type": "number"
+        }
+      },
+      "title": "ConfidenceParts",
+      "type": "object"
+    }
+  },
+  "description": "VLM 结构化抽取输出（schema 外字段由解析层直接丢弃）。",
+  "properties": {
+    "predicate": {
+      "title": "Predicate",
+      "type": "string"
+    },
+    "object_text": {
+      "title": "Object Text",
+      "type": "string"
+    },
+    "subject_text": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Subject Text"
+    },
+    "value": {
+      "additionalProperties": true,
+      "title": "Value",
+      "type": "object"
+    },
+    "confidence": {
+      "$ref": "#/$defs/ConfidenceParts"
+    }
+  },
+  "required": [
+    "predicate",
+    "object_text"
+  ],
+  "title": "AtomicObservationIn",
+  "type": "object"
+}

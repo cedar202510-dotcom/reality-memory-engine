@@ -1,0 +1,36 @@
+{
+  "description": "单条语音命中：语音资产 + 相似度分数 + 证据可用性（媒体 TTL 删除后为 false）。",
+  "properties": {
+    "audio_asset_id": {
+      "format": "uuid",
+      "title": "Audio Asset Id",
+      "type": "string"
+    },
+    "captured_at": {
+      "format": "date-time",
+      "title": "Captured At",
+      "type": "string"
+    },
+    "transcript": {
+      "title": "Transcript",
+      "type": "string"
+    },
+    "score": {
+      "title": "Score",
+      "type": "number"
+    },
+    "evidence_available": {
+      "title": "Evidence Available",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "audio_asset_id",
+    "captured_at",
+    "transcript",
+    "score",
+    "evidence_available"
+  ],
+  "title": "AudioSearchHit",
+  "type": "object"
+}

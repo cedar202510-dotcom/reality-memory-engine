@@ -1,0 +1,128 @@
+{
+  "$defs": {
+    "AudioSearchHit": {
+      "description": "单条语音命中：语音资产 + 相似度分数 + 证据可用性（媒体 TTL 删除后为 false）。",
+      "properties": {
+        "audio_asset_id": {
+          "format": "uuid",
+          "title": "Audio Asset Id",
+          "type": "string"
+        },
+        "captured_at": {
+          "format": "date-time",
+          "title": "Captured At",
+          "type": "string"
+        },
+        "transcript": {
+          "title": "Transcript",
+          "type": "string"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        },
+        "evidence_available": {
+          "title": "Evidence Available",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "audio_asset_id",
+        "captured_at",
+        "transcript",
+        "score",
+        "evidence_available"
+      ],
+      "title": "AudioSearchHit",
+      "type": "object"
+    },
+    "SceneSearchHit": {
+      "description": "单条命中：帧 + 相似度分数 + 证据可用性（媒体 TTL 删除后 evidence_url 为 null）。",
+      "properties": {
+        "frame_asset_id": {
+          "format": "uuid",
+          "title": "Frame Asset Id",
+          "type": "string"
+        },
+        "captured_at": {
+          "format": "date-time",
+          "title": "Captured At",
+          "type": "string"
+        },
+        "caption": {
+          "title": "Caption",
+          "type": "string"
+        },
+        "scene_tags": {
+          "items": {},
+          "title": "Scene Tags",
+          "type": "array"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        },
+        "evidence_available": {
+          "title": "Evidence Available",
+          "type": "boolean"
+        },
+        "evidence_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Url"
+        }
+      },
+      "required": [
+        "frame_asset_id",
+        "captured_at",
+        "caption",
+        "score",
+        "evidence_available"
+      ],
+      "title": "SceneSearchHit",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "query_text": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Query Text"
+    },
+    "has_image_query": {
+      "default": false,
+      "title": "Has Image Query",
+      "type": "boolean"
+    },
+    "hits": {
+      "items": {
+        "$ref": "#/$defs/SceneSearchHit"
+      },
+      "title": "Hits",
+      "type": "array"
+    },
+    "audio_hits": {
+      "items": {
+        "$ref": "#/$defs/AudioSearchHit"
+      },
+      "title": "Audio Hits",
+      "type": "array"
+    }
+  },
+  "title": "SceneSearchResponse",
+  "type": "object"
+}

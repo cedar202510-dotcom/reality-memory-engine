@@ -1,0 +1,40 @@
+{
+  "description": "通用场景物件查找：文本/图片至少给一个（图片为 base64 编码）。",
+  "properties": {
+    "query_text": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Query Text"
+    },
+    "query_image_base64": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Query Image Base64"
+    },
+    "top_k": {
+      "default": 8,
+      "maximum": 50,
+      "minimum": 1,
+      "title": "Top K",
+      "type": "integer"
+    }
+  },
+  "title": "SceneSearchRequest",
+  "type": "object"
+}

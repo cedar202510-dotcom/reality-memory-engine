@@ -1,0 +1,79 @@
+{
+  "description": "采集端上报的信封（对应 iOS 探针 session.json 的映射结果）。",
+  "properties": {
+    "device_id": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Device Id"
+    },
+    "source_session_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Session Id"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "idempotency_key": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "trigger": {
+      "default": "auto",
+      "enum": [
+        "explicit",
+        "auto",
+        "ring_motion"
+      ],
+      "title": "Trigger",
+      "type": "string"
+    },
+    "modality": {
+      "default": "image",
+      "enum": [
+        "image",
+        "video",
+        "audio",
+        "sensor"
+      ],
+      "title": "Modality",
+      "type": "string"
+    },
+    "meta": {
+      "additionalProperties": true,
+      "title": "Meta",
+      "type": "object"
+    }
+  },
+  "required": [
+    "occurred_at",
+    "observed_at",
+    "idempotency_key"
+  ],
+  "title": "SourceEnvelopeIn",
+  "type": "object"
+}
