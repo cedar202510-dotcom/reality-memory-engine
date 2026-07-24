@@ -22,6 +22,15 @@ final class GlassProbeModel: ObservableObject {
         var peakDBFS: Double
     }
 
+    private struct RingPhotoBurstPlan {
+        let tier: String
+        let displayName: String
+        let imageCount: Int
+        let intensityRatio: Double
+        let acceleratedIntervalSeconds: Int
+        let acceleratedWindowSeconds: TimeInterval
+    }
+
     private enum AudioCaptureMode: Equatable {
         case manualTest
         case sessionVAD
@@ -61,6 +70,10 @@ final class GlassProbeModel: ObservableObject {
     private static let photoTimeoutSeconds: TimeInterval = 12
     private static let audioTestSeconds: TimeInterval = 30
     private static let ringTriggeredAudioWindowSeconds: TimeInterval = 8
+    private static let ringPhotoBurstPolicyVersion = "relative-motion-adaptive-capture.v2"
+    private static let acceleratedCaptureIntervalSeconds = 8
+    private static let normalAttentionWindowSeconds: TimeInterval = 20
+    private static let strongAttentionWindowSeconds: TimeInterval = 30
 
     @Published private(set) var rokidAppInstalled = false
     @Published private(set) var authStatus = "未授权"
@@ -93,6 +106,7 @@ final class GlassProbeModel: ObservableObject {
     @Published private(set) var isSpeechActive = false
     @Published private(set) var audioSegmentCount = 0
     @Published private(set) var lastAudioSummary = "尚未测试"
+    @Published private(set) var desktopDebugStatus = "正在寻找电脑调试台"
     @Published private(set) var ringBluetoothStatus = "正在读取蓝牙状态"
     @Published private(set) var ringConnectionStatus = "未连接"
     @Published private(set) var ringDevices: [RingDiscoveredDevice] = []
@@ -107,16 +121,28 @@ final class GlassProbeModel: ObservableObject {
     @Published private(set) var ringAccelerationMagnitude: Double?
     @Published private(set) var ringGyroscopeMagnitude: Double?
     @Published private(set) var ringAccelerationDelta: Double?
+    @Published private(set) var ringAccelerationBaseline: Double?
+    @Published private(set) var ringGyroscopeBaseline: Double?
+    @Published private(set) var ringAccelerationDynamicThreshold: Double?
+    @Published private(set) var ringGyroscopeDynamicThreshold: Double?
+    @Published private(set) var ringRelativeChangeScore: Double?
+    @Published private(set) var ringMotionContextState = "CALIBRATING"
+    @Published private(set) var ringRotationExcursionDegrees: Double?
+    @Published private(set) var ringGravityTiltDegrees: Double?
+    @Published private(set) var ringEndingGyroscopeDPS: Double?
     @Published private(set) var lastRingJudgement = "尚未收到戒指动作数据"
+    @Published private(set) var lastRingJudgementAt: Date?
     @Published private(set) var lastRingEvent = "尚未收到戒指事件"
     @Published private(set) var ringSensorAutoStartEnabled = true
     @Published private(set) var ringRapidMovementTriggerEnabled = true
     @Published private(set) var ringTriggeredAudioEnabled = true
     @Published private(set) var ringSensitivity: ProbeRingSensitivity = .medium
+    @Published private(set) var ringMountPosition: ProbeRingMountPosition = .glassesMounted
 
     private let client: any RGCxrClient
     private let artifactStore = ProbeArtifactStore()
     private let ringAdapter = RingDeviceAdapter()
+    private let debugBridge = PhoneDebugBridge()
     private var cancellables = Set<AnyCancellable>()
     private var captureLoopTask: Task<Void, Never>?
     private var photoTimeoutTask: Task<Void, Never>?
@@ -129,6 +155,11 @@ final class GlassProbeModel: ObservableObject {
     private var audioChannels: UInt32 = 1
     private var ringMotionDetector = RingRapidMovementDetector()
     private var nextExpectedRingSequence: UInt32?
+    private var ringSystemInfo: RingSystemInfo?
+    private var debugSnapshotTask: Task<Void, Never>?
+    private var acceleratedCaptureUntil: Date?
+    private var acceleratedCaptureRearmRequired = false
+    private var stableBatchesAfterAcceleration = 0
 
     var canAuthorize: Bool {
         rokidAppInstalled && !isAuthenticating
@@ -144,6 +175,35 @@ final class GlassProbeModel: ObservableObject {
 
     var canStartSession: Bool {
         isConnected && isCustomViewRunning && !isPhotoPending && sessionState != .active && !isAudioTestRunning
+    }
+
+    var canStartRingLinkedCapture: Bool {
+        canStartSession && isRingConnected && isRingSensorReporting
+    }
+
+    var ringLinkedCaptureReadiness: String {
+        if sessionState == .active {
+            return "联动采集中"
+        }
+        if !isRingConnected {
+            return "等待戒指连接"
+        }
+        if !isRingSensorReporting {
+            return "等待戒指六轴数据"
+        }
+        if !isConnected {
+            return "等待眼镜连接"
+        }
+        if !isCustomViewRunning {
+            return "等待打开眼镜采集界面"
+        }
+        if isPhotoPending {
+            return "等待当前拍照完成"
+        }
+        if isAudioTestRunning {
+            return "请先结束独立音频测试"
+        }
+        return "已就绪：快速移动将触发图片和 8 秒短音频"
     }
 
     var canToggleAudioTest: Bool {
@@ -198,8 +258,10 @@ final class GlassProbeModel: ObservableObject {
         )
         client = CxrClient.shared
 
+        bindDebugBridge()
         bindEvents()
         bindRingAdapter()
+        debugBridge.start()
         applyAuthState(client.auth.currentState)
         refreshEnvironment()
         appendLog("CXR-L SDK 已初始化为 CUSTOMVIEW")
@@ -562,19 +624,47 @@ final class GlassProbeModel: ObservableObject {
                 rawAudioPersistedOnlyWhenRetainLocalSamples: true
             ),
             ringPolicy: ProbeRingPolicySnapshot(
+                mountPosition: ringMountPosition,
                 sensorCollectionEnabled: isRingSensorReporting,
                 rapidMovementTriggerEnabled: ringRapidMovementTriggerEnabled,
                 triggeredAudioEnabled: ringTriggeredAudioEnabled,
                 sensitivity: ringSensitivity,
-                accelerationDeltaThresholdRaw: ringSensitivity.accelerationDeltaThreshold,
-                gyroscopeMagnitudeThresholdRaw: ringSensitivity.gyroscopeMagnitudeThreshold,
+                accelerationDeltaThresholdRaw: ringSensitivity.accelerationNoiseFloor,
+                gyroscopeMagnitudeThresholdRaw: ringSensitivity.gyroscopeNoiseFloor,
                 triggerCooldownMilliseconds: Int(
-                    RingRapidMovementDetector.triggerCooldownSeconds * 1_000
+                    (
+                        ringMountPosition == .glassesMounted
+                            ? RingRapidMovementDetector.headTriggerCooldownSeconds
+                            : RingRapidMovementDetector.triggerCooldownSeconds
+                    ) * 1_000
                 ),
                 triggeredAudioWindowMilliseconds: Int(
                     Self.ringTriggeredAudioWindowSeconds * 1_000
                 ),
-                detectorRuleVersion: RingRapidMovementDetector.ruleVersion
+                detectorRuleVersion: RingRapidMovementDetector.ruleVersion,
+                baselineWindowBatchCount: RingRapidMovementDetector.baselineWindowBatchCount,
+                relativeChangeThreshold: ringSensitivity.relativeChangeThreshold,
+                strongRelativeChangeThreshold: ringSensitivity.strongRelativeChangeThreshold,
+                accelerationNoiseFloorRaw: ringSensitivity.accelerationNoiseFloor,
+                gyroscopeNoiseFloorRaw: ringSensitivity.gyroscopeNoiseFloor,
+                strongTriggerCooldownMilliseconds: Int(
+                    RingRapidMovementDetector.strongTriggerCooldownSeconds * 1_000
+                ),
+                minimumAccelerationForTriggerRaw:
+                    ringSensitivity.minimumAccelerationForTrigger,
+                minimumGyroscopeForTriggerRaw:
+                    ringSensitivity.minimumGyroscopeForTrigger,
+                normalConfirmationBatchCount: 2,
+                headRotationExcursionThresholdDegrees:
+                    ringSensitivity.headRotationExcursionThresholdDegrees,
+                headGravityTiltThresholdDegrees:
+                    ringSensitivity.headGravityTiltThresholdDegrees,
+                headMovementStartDPS:
+                    ringSensitivity.headMovementStartDPS,
+                headSettleDPS: ringSensitivity.headSettleDPS,
+                headSettleDurationMilliseconds: Int(
+                    RingRapidMovementDetector.headSettleDurationSeconds * 1_000
+                )
             ),
             deviceSummaryAtStart: deviceSummary,
             observations: [],
@@ -602,6 +692,9 @@ final class GlassProbeModel: ObservableObject {
         ringSequenceGapCount = 0
         nextExpectedRingSequence = nil
         ringMotionDetector.reset()
+        acceleratedCaptureUntil = nil
+        acceleratedCaptureRearmRequired = false
+        stableBatchesAfterAcceleration = 0
         persistCurrentSession()
         appendLog("采集 Session 已开始：每 \(captureIntervalSeconds) 秒")
         if ringRapidMovementTriggerEnabled, !isRingSensorReporting {
@@ -609,6 +702,18 @@ final class GlassProbeModel: ObservableObject {
         }
         startSessionAudioIfNeeded()
         startCaptureLoop()
+    }
+
+    func startRingLinkedCapture() {
+        guard canStartRingLinkedCapture else {
+            appendLog("无法开始戒指联动采集：\(ringLinkedCaptureReadiness)")
+            return
+        }
+        retainLocalSamples = true
+        ringRapidMovementTriggerEnabled = true
+        ringTriggeredAudioEnabled = true
+        appendLog("戒指联动采集已配置：保留本地样本、触发图片和 8 秒短音频")
+        startCaptureSession()
     }
 
     func pauseCaptureSession() {
@@ -768,6 +873,7 @@ final class GlassProbeModel: ObservableObject {
                 {
                     self.selectedRingDeviceID = devices.first?.id
                 }
+                self.scheduleDebugSnapshot()
             }
         }
 
@@ -776,6 +882,7 @@ final class GlassProbeModel: ObservableObject {
                 guard let self else {
                     return
                 }
+                self.ringSystemInfo = systemInfo
                 self.ringIdentityStatus =
                     "\(systemInfo.displayName) · SN 尾号 \(systemInfo.serialNumberSuffix) · "
                     + "\(systemInfo.batteryPercent)%"
@@ -882,15 +989,48 @@ final class GlassProbeModel: ObservableObject {
         let result = ringMotionDetector.process(
             batch: batch,
             receivedAt: receivedAt,
-            sensitivity: ringSensitivity
+            sensitivity: ringSensitivity,
+            configuration: ringSensorConfiguration,
+            mountPosition: ringMountPosition
         )
         ringAccelerationMagnitude = result.metrics?.accelerationMagnitude
         ringGyroscopeMagnitude = result.metrics?.gyroscopeMagnitude
         ringAccelerationDelta = result.metrics?.accelerationDelta
+        ringAccelerationBaseline = result.metrics?.accelerationBaseline
+        ringGyroscopeBaseline = result.metrics?.gyroscopeBaseline
+        ringAccelerationDynamicThreshold = result.metrics?.accelerationDynamicThreshold
+        ringGyroscopeDynamicThreshold = result.metrics?.gyroscopeDynamicThreshold
+        ringRelativeChangeScore = result.metrics?.relativeChangeScore
+        ringMotionContextState = result.metrics?.contextState ?? "CALIBRATING"
+        ringRotationExcursionDegrees = result.metrics?.rotationExcursionDegrees
+        ringGravityTiltDegrees = result.metrics?.gravityTiltDegrees
+        ringEndingGyroscopeDPS = result.metrics?.endingGyroscopeDPS
+        updateAcceleratedCaptureState(
+            receivedAt: receivedAt,
+            contextState: ringMotionContextState
+        )
+        debugBridge.send(
+            type: "ringBatch",
+            payload: LiveDebugRingBatch(
+                receivedAt: receivedAt,
+                configuration: ringSensorConfiguration,
+                accelerationDeltaThresholdRaw:
+                    result.metrics?.accelerationDynamicThreshold
+                    ?? ringSensitivity.accelerationNoiseFloor
+                        * ringSensitivity.relativeChangeThreshold,
+                gyroscopeMagnitudeThresholdRaw:
+                    result.metrics?.gyroscopeDynamicThreshold
+                    ?? ringSensitivity.gyroscopeNoiseFloor
+                        * ringSensitivity.relativeChangeThreshold,
+                batch: batch
+            )
+        )
+        scheduleDebugSnapshot()
 
         guard sessionState == .active, let sessionID = currentSession?.id else {
             if let detection = result.detection {
                 lastRingJudgement = ringJudgementSummary(detection, suffix: "未在采集 Session 中，不触发眼镜")
+                lastRingJudgementAt = detection.detectedAt
             }
             return
         }
@@ -935,16 +1075,33 @@ final class GlassProbeModel: ObservableObject {
         sessionID: UUID
     ) {
         let decisionID = UUID()
-        let captureRequested = ringRapidMovementTriggerEnabled
+        let captureRequested =
+            ringRapidMovementTriggerEnabled
+            && !acceleratedCaptureRearmRequired
+        let burstPlan = ringPhotoBurstPlan(for: detection)
         let requestedModalities = captureRequested
             ? (ringTriggeredAudioEnabled ? ["IMAGE", "AUDIO"] : ["IMAGE"])
             : []
-        let suppressionReason = captureRequested ? nil : "RING_TRIGGER_DISABLED"
+        let suppressionReason: String?
+        if captureRequested {
+            suppressionReason = nil
+        } else if acceleratedCaptureRearmRequired {
+            suppressionReason = "WAITING_FOR_RELATIVE_STABILITY"
+        } else {
+            suppressionReason = "RING_TRIGGER_DISABLED"
+        }
 
         lastRingJudgement = ringJudgementSummary(
             detection,
-            suffix: captureRequested ? "已请求眼镜图片和短音频" : "仅记录判断，未开启联动"
+            suffix: captureRequested
+                ? (
+                    detection.mountPosition == .glassesMounted
+                        ? "\(burstPlan.displayName)，拍摄一张代表图"
+                        : "\(burstPlan.displayName)，立即拍照并进入 \(Int(burstPlan.acceleratedWindowSeconds)) 秒关注窗口"
+                )
+                : "仅记录判断，未开启联动"
         )
+        lastRingJudgementAt = detection.detectedAt
         appendLog("戒指判断：\(lastRingJudgement)")
 
         mutateCurrentSession { session in
@@ -955,16 +1112,47 @@ final class GlassProbeModel: ObservableObject {
                     windowStartedAt: detection.windowStartedAt,
                     windowEndedAt: detection.windowEndedAt,
                     detectedAt: detection.detectedAt,
-                    classification: "RAPID_MOVEMENT",
-                    displayLabel: "快速移动",
+                    classification:
+                        detection.mountPosition == .glassesMounted
+                            ? "HEAD_POSE_TRANSITION_SETTLED"
+                            : "RELATIVE_MOTION_CHANGE",
+                    displayLabel:
+                        detection.mountPosition == .glassesMounted
+                            ? (detection.sustainedMotion == true
+                                ? "持续运动结束并回稳"
+                                : "头部转向后回稳")
+                            : (detection.isStrongChange
+                                ? "强烈运动突变"
+                                : "运动状态变化"),
                     sampleCount: detection.sampleCount,
                     peakAccelerationDeltaRaw: detection.peakAccelerationDelta,
                     peakGyroscopeMagnitudeRaw: detection.peakGyroscopeMagnitude,
-                    detectorRuleVersion: RingRapidMovementDetector.ruleVersion,
+                    detectorRuleVersion:
+                        detection.mountPosition == .glassesMounted
+                            ? RingRapidMovementDetector.ruleVersion
+                            : RingRapidMovementDetector.legacyRuleVersion,
                     sensitivity: detection.sensitivity,
                     captureRequested: captureRequested,
                     requestedModalities: requestedModalities,
-                    suppressionReason: suppressionReason
+                    suppressionReason: suppressionReason,
+                    motionIntensityRatio: burstPlan.intensityRatio,
+                    captureTier: burstPlan.tier,
+                    requestedImageCount: burstPlan.imageCount,
+                    capturePolicyVersion: Self.ringPhotoBurstPolicyVersion,
+                    accelerationBaselineRaw: detection.accelerationBaseline,
+                    gyroscopeBaselineRaw: detection.gyroscopeBaseline,
+                    relativeChangeScore: detection.relativeChangeScore,
+                    isStrongChange: detection.isStrongChange,
+                    acceleratedCaptureIntervalMilliseconds:
+                        burstPlan.acceleratedIntervalSeconds * 1_000,
+                    acceleratedCaptureWindowMilliseconds:
+                        Int(burstPlan.acceleratedWindowSeconds * 1_000),
+                    mountPosition: detection.mountPosition,
+                    rotationExcursionDegrees:
+                        detection.rotationExcursionDegrees,
+                    gravityTiltDegrees: detection.gravityTiltDegrees,
+                    endingGyroscopeDPS: detection.endingGyroscopeDPS,
+                    sustainedMotion: detection.sustainedMotion
                 )
             )
             session.auditEvents.append(
@@ -972,7 +1160,15 @@ final class GlassProbeModel: ObservableObject {
                     id: UUID(),
                     occurredAt: detection.detectedAt,
                     type: "RING_RAPID_MOVEMENT_DETECTED",
-                    detail: "decision=\(decisionID.uuidString.lowercased())"
+                    detail:
+                        "decision=\(decisionID.uuidString.lowercased());"
+                        + "tier=\(burstPlan.tier);"
+                        + "ratio=\(String(format: "%.2f", burstPlan.intensityRatio));"
+                        + "mount=\(detection.mountPosition.rawValue);"
+                        + "rotationDegrees=\(String(format: "%.1f", detection.rotationExcursionDegrees ?? 0));"
+                        + "gravityTiltDegrees=\(String(format: "%.1f", detection.gravityTiltDegrees ?? 0));"
+                        + "interval=\(burstPlan.acceleratedIntervalSeconds)s;"
+                        + "window=\(Int(burstPlan.acceleratedWindowSeconds))s"
                 )
             )
         }
@@ -986,11 +1182,94 @@ final class GlassProbeModel: ObservableObject {
             triggerDecisionID: decisionID,
             scheduledAt: detection.detectedAt
         )
+        if burstPlan.acceleratedWindowSeconds > 0 {
+            activateAcceleratedCapture(plan: burstPlan)
+        }
         if ringTriggeredAudioEnabled {
             beginRingTriggeredAudioWindow(
                 decisionID: decisionID,
                 startedAt: detection.detectedAt
             )
+        }
+    }
+
+    private func ringPhotoBurstPlan(
+        for detection: RingRapidMovementDetection
+    ) -> RingPhotoBurstPlan {
+        if detection.mountPosition == .glassesMounted {
+            return RingPhotoBurstPlan(
+                tier: detection.sustainedMotion == true
+                    ? "POST_SUSTAINED_MOTION"
+                    : "HEAD_POSE_SETTLED",
+                displayName: detection.sustainedMotion == true
+                    ? "持续运动结束后视线已稳定"
+                    : "头部转向后视线已稳定",
+                imageCount: 1,
+                intensityRatio: detection.relativeChangeScore,
+                acceleratedIntervalSeconds: Self.acceleratedCaptureIntervalSeconds,
+                acceleratedWindowSeconds: 0
+            )
+        }
+        if detection.isStrongChange {
+            return RingPhotoBurstPlan(
+                tier: "STRONG_RELATIVE_CHANGE",
+                displayName: "相对基线强烈突变",
+                imageCount: 1,
+                intensityRatio: detection.relativeChangeScore,
+                acceleratedIntervalSeconds: Self.acceleratedCaptureIntervalSeconds,
+                acceleratedWindowSeconds: Self.strongAttentionWindowSeconds
+            )
+        }
+        return RingPhotoBurstPlan(
+            tier: "RELATIVE_CHANGE",
+            displayName: "相对基线发生变化",
+            imageCount: 1,
+            intensityRatio: detection.relativeChangeScore,
+            acceleratedIntervalSeconds: Self.acceleratedCaptureIntervalSeconds,
+            acceleratedWindowSeconds: Self.normalAttentionWindowSeconds
+        )
+    }
+
+    private func activateAcceleratedCapture(plan: RingPhotoBurstPlan) {
+        guard acceleratedCaptureUntil == nil else {
+            appendLog("动态关注窗口已在运行，本次变化不延长结束时间")
+            return
+        }
+        acceleratedCaptureUntil = Date().addingTimeInterval(plan.acceleratedWindowSeconds)
+        acceleratedCaptureRearmRequired = true
+        stableBatchesAfterAcceleration = 0
+        appendLog(
+            "动态采集加速：未来 \(Int(plan.acceleratedWindowSeconds)) 秒每 "
+                + "\(plan.acceleratedIntervalSeconds) 秒尝试一张"
+        )
+        captureLoopTask?.cancel()
+        startCaptureLoop()
+    }
+
+    private func updateAcceleratedCaptureState(
+        receivedAt: Date,
+        contextState: String
+    ) {
+        if let acceleratedCaptureUntil, receivedAt >= acceleratedCaptureUntil {
+            self.acceleratedCaptureUntil = nil
+            appendLog("动态关注窗口结束，恢复低频基线采集")
+            if sessionState == .active {
+                captureLoopTask?.cancel()
+                startCaptureLoop()
+            }
+        }
+        guard acceleratedCaptureRearmRequired, acceleratedCaptureUntil == nil else {
+            return
+        }
+        if contextState == "RELATIVELY_STABLE" || contextState == "HEAD_STABLE" {
+            stableBatchesAfterAcceleration += 1
+            if stableBatchesAfterAcceleration >= 3 {
+                acceleratedCaptureRearmRequired = false
+                stableBatchesAfterAcceleration = 0
+                appendLog("已重新达到相对稳定，下一次运动变化可以触发采集")
+            }
+        } else {
+            stableBatchesAfterAcceleration = 0
         }
     }
 
@@ -1071,6 +1350,21 @@ final class GlassProbeModel: ObservableObject {
             1,
             Int(min(endedAt, window.endsAt).timeIntervalSince(window.startedAt) * 1_000)
         )
+        debugBridge.send(
+            type: "media",
+            payload: LiveDebugMediaItem(
+                id: observationID.uuidString.lowercased(),
+                kind: "AUDIO",
+                occurredAt: min(endedAt, window.endsAt),
+                trigger: "RING_MOTION_WINDOW",
+                triggerDecisionID: window.decisionID.uuidString.lowercased(),
+                mimeType: "audio/pcm;rate=16000;channels=\(audioChannels)",
+                durationMilliseconds: durationMilliseconds,
+                captureLatencyMilliseconds: nil,
+                byteCount: window.data.count,
+                base64Data: window.data.base64EncodedString()
+            )
+        )
         var localReference: String?
         if retainLocalSamples {
             do {
@@ -1124,10 +1418,26 @@ final class GlassProbeModel: ObservableObject {
         _ detection: RingRapidMovementDetection,
         suffix: String
     ) -> String {
-        String(
-            format: "快速移动（加速度变化 %.0f，陀螺仪幅度 %.0f）· %@",
+        if detection.mountPosition == .glassesMounted {
+            return String(
+                format:
+                    "头部转向后已回稳（累计转角 %.1f°，重力方向变化 %.1f°，"
+                    + "末尾转动 P90 %.1f°/s）· %@",
+                detection.rotationExcursionDegrees ?? 0,
+                detection.gravityTiltDegrees ?? 0,
+                detection.endingGyroscopeDPS ?? 0,
+                suffix
+            )
+        }
+        return String(
+            format:
+                "运动变化 %.1f×（加速度 P90 %.0f / 基线 %.0f，"
+                + "转动 P90 %.0f / 基线 %.0f）· %@",
+            detection.relativeChangeScore,
             detection.peakAccelerationDelta,
+            detection.accelerationBaseline,
             detection.peakGyroscopeMagnitude,
+            detection.gyroscopeBaseline,
             suffix
         )
     }
@@ -1141,7 +1451,8 @@ final class GlassProbeModel: ObservableObject {
             deviceName: selectedRingDevice?.name ?? "Ring Sound",
             sampleRateHz: configuration.sampleRateHz,
             accelRangeG: configuration.accelRangeG,
-            gyroRangeDPS: configuration.gyroRangeDPS
+            gyroRangeDPS: configuration.gyroRangeDPS,
+            mountPosition: ringMountPosition
         )
     }
 
@@ -1236,6 +1547,21 @@ final class GlassProbeModel: ObservableObject {
             segment.peakDBFS
         )
         appendLog("VAD 语音片段完成：\(lastAudioSummary)")
+        debugBridge.send(
+            type: "media",
+            payload: LiveDebugMediaItem(
+                id: observationID.uuidString.lowercased(),
+                kind: "AUDIO",
+                occurredAt: segment.endedAt,
+                trigger: triggerDecisionID == nil ? "SESSION_VAD" : "RING_MOTION",
+                triggerDecisionID: triggerDecisionID?.uuidString.lowercased(),
+                mimeType: "audio/pcm;rate=16000;channels=\(audioChannels)",
+                durationMilliseconds: segment.durationMilliseconds,
+                captureLatencyMilliseconds: nil,
+                byteCount: segment.data.count,
+                base64Data: segment.data.base64EncodedString()
+            )
+        )
 
         guard let sessionID = currentSession?.id else {
             appendLog("当前没有采集 Session，仅保留音频测试指标")
@@ -1377,6 +1703,21 @@ final class GlassProbeModel: ObservableObject {
 
                 self.capturedImage = image
                 self.appendLog("照片接收成功：\(data.count) 字节，耗时 \(latency) ms")
+                self.debugBridge.send(
+                    type: "media",
+                    payload: LiveDebugMediaItem(
+                        id: observationID.uuidString.lowercased(),
+                        kind: "IMAGE",
+                        occurredAt: Date(),
+                        trigger: trigger.rawValue,
+                        triggerDecisionID: triggerDecisionID?.uuidString.lowercased(),
+                        mimeType: "image/jpeg",
+                        durationMilliseconds: nil,
+                        captureLatencyMilliseconds: latency,
+                        byteCount: data.count,
+                        base64Data: data.base64EncodedString()
+                    )
+                )
                 if let sessionID {
                     self.recordObservation(
                         id: observationID,
@@ -1423,7 +1764,7 @@ final class GlassProbeModel: ObservableObject {
             }
 
             while !Task.isCancelled {
-                let interval = self.captureIntervalSeconds
+                let interval = self.effectiveCaptureIntervalSeconds
                 let scheduledAt = Date().addingTimeInterval(TimeInterval(interval))
                 self.nextCaptureAt = scheduledAt
                 do {
@@ -1474,6 +1815,17 @@ final class GlassProbeModel: ObservableObject {
         }
     }
 
+    private var effectiveCaptureIntervalSeconds: Int {
+        guard let acceleratedCaptureUntil else {
+            return captureIntervalSeconds
+        }
+        if acceleratedCaptureUntil > Date() {
+            return min(captureIntervalSeconds, Self.acceleratedCaptureIntervalSeconds)
+        }
+        self.acceleratedCaptureUntil = nil
+        return captureIntervalSeconds
+    }
+
     private func pauseCaptureSession(reason: String) {
         guard sessionState == .active else {
             return
@@ -1481,6 +1833,9 @@ final class GlassProbeModel: ObservableObject {
 
         captureLoopTask?.cancel()
         captureLoopTask = nil
+        acceleratedCaptureUntil = nil
+        acceleratedCaptureRearmRequired = false
+        stableBatchesAfterAcceleration = 0
         nextCaptureAt = nil
         if let audioCaptureMode, !audioCaptureMode.isManualTest {
             stopAudioCapture(reason: reason)
@@ -1507,6 +1862,9 @@ final class GlassProbeModel: ObservableObject {
 
         captureLoopTask?.cancel()
         captureLoopTask = nil
+        acceleratedCaptureUntil = nil
+        acceleratedCaptureRearmRequired = false
+        stableBatchesAfterAcceleration = 0
         nextCaptureAt = nil
         cancelPendingPhoto(reason: "SESSION_ENDED")
         if let audioCaptureMode, !audioCaptureMode.isManualTest {
@@ -1746,6 +2104,170 @@ final class GlassProbeModel: ObservableObject {
         if logs.count > 30 {
             logs.removeLast(logs.count - 30)
         }
+        scheduleDebugSnapshot()
+    }
+
+    private func bindDebugBridge() {
+        debugBridge.onStatusChanged = { [weak self] status in
+            guard let self else {
+                return
+            }
+            desktopDebugStatus = status
+            scheduleDebugSnapshot()
+        }
+        debugBridge.onCommand = { [weak self] command in
+            self?.handleDebugCommand(command)
+        }
+    }
+
+    private func handleDebugCommand(_ command: LiveDebugCommand) {
+        switch command.command {
+        case "ring.scan":
+            scanRingDevices()
+        case "ring.connect":
+            guard
+                let value = command.deviceID,
+                let deviceID = UUID(uuidString: value)
+            else {
+                appendLog("电脑调试命令缺少有效戒指 UUID")
+                return
+            }
+            selectRingDevice(deviceID)
+            connectSelectedRing()
+        case "ring.disconnect":
+            disconnectRing()
+        case "ring.sensor.auto":
+            setRingSensorAutoStartEnabled(command.boolValue ?? true)
+        case "ring.sensitivity":
+            guard
+                let value = command.stringValue,
+                let sensitivity = ProbeRingSensitivity(rawValue: value)
+            else {
+                appendLog("电脑调试命令的灵敏度无效")
+                return
+            }
+            setRingSensitivity(sensitivity)
+        case "glasses.customView.toggle":
+            toggleCustomView()
+        case "glasses.photo":
+            takePhoto()
+        case "audio.toggle":
+            toggleAudioTest()
+        case "session.start":
+            startRingLinkedCapture()
+        case "session.pause":
+            pauseCaptureSession()
+        case "session.resume":
+            resumeCaptureSession()
+        case "session.end":
+            endCaptureSession()
+        default:
+            appendLog("收到未知电脑调试命令：\(command.command)")
+        }
+    }
+
+    private func scheduleDebugSnapshot() {
+        guard debugSnapshotTask == nil else {
+            return
+        }
+        debugSnapshotTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            guard !Task.isCancelled, let self else {
+                return
+            }
+            self.debugSnapshotTask = nil
+            self.sendDebugSnapshot()
+        }
+    }
+
+    private func sendDebugSnapshot() {
+        let snapshot = LiveDebugSnapshot(
+            phoneName: UIDevice.current.name,
+            applicationState: applicationState,
+            desktopConnection: desktopDebugStatus,
+            glasses: LiveDebugGlassesState(
+                authentication: authStatus,
+                connection: linkStatus,
+                customView: customViewStatus,
+                wearing: wearingStatus,
+                deviceSummary: deviceSummary,
+                photoReady: photoReadinessStatus
+            ),
+            ring: LiveDebugRingState(
+                bluetooth: ringBluetoothStatus,
+                connection: ringConnectionStatus,
+                selectedDeviceID: selectedRingDeviceID?.uuidString.lowercased(),
+                serviceUUID: RingProtocolCodec.serviceUUID,
+                notifyCharacteristicUUID: RingProtocolCodec.notifyCharacteristicUUID,
+                writeCharacteristicUUID: RingProtocolCodec.writeCharacteristicUUID,
+                macAddress: "iOS 不提供蓝牙 MAC 地址",
+                candidates: ringDevices.map {
+                    LiveDebugRingCandidate(
+                        id: $0.id.uuidString.lowercased(),
+                        name: $0.name,
+                        displayName: $0.displayName,
+                        rssi: $0.rssi,
+                        advertisesRingService: $0.advertisesRingService,
+                        isKnownRing: $0.isKnownRing
+                    )
+                },
+                identity: ringSystemInfo,
+                sensorConfiguration: ringSensorConfiguration,
+                sensorAutoStartEnabled: ringSensorAutoStartEnabled,
+                sensorReporting: isRingSensorReporting,
+                batchCount: ringBatchCount,
+                sampleCount: ringSampleCount,
+                sequenceGapCount: ringSequenceGapCount,
+                accelerationMagnitudeRaw: ringAccelerationMagnitude,
+                accelerationDeltaRaw: ringAccelerationDelta,
+                gyroscopeMagnitudeRaw: ringGyroscopeMagnitude,
+                accelerationDeltaThresholdRaw:
+                    ringAccelerationDynamicThreshold
+                    ?? ringSensitivity.accelerationNoiseFloor
+                        * ringSensitivity.relativeChangeThreshold,
+                gyroscopeMagnitudeThresholdRaw:
+                    ringGyroscopeDynamicThreshold
+                    ?? ringSensitivity.gyroscopeNoiseFloor
+                        * ringSensitivity.relativeChangeThreshold,
+                accelerationBaselineRaw: ringAccelerationBaseline,
+                gyroscopeBaselineRaw: ringGyroscopeBaseline,
+                relativeChangeScore: ringRelativeChangeScore,
+                motionContextState: ringMotionContextState,
+                mountPosition: ringMountPosition.rawValue,
+                rotationExcursionDegrees: ringRotationExcursionDegrees,
+                gravityTiltDegrees: ringGravityTiltDegrees,
+                endingGyroscopeDPS: ringEndingGyroscopeDPS,
+                detectorRuleVersion:
+                    ringMountPosition == .glassesMounted
+                        ? RingRapidMovementDetector.ruleVersion
+                        : RingRapidMovementDetector.legacyRuleVersion,
+                sensitivity: ringSensitivity.rawValue,
+                lastJudgement: lastRingJudgement,
+                lastJudgementAt: lastRingJudgementAt,
+                lastEvent: lastRingEvent
+            ),
+            session: LiveDebugSessionState(
+                id: currentSession?.id.uuidString.lowercased(),
+                state: sessionState.rawValue,
+                imageCount: currentSession?.observations.count ?? 0,
+                audioCount: currentSession?.audioObservations.count ?? 0,
+                rapidMovementCount: currentSession?.ringMotionAssessments.count ?? 0,
+                retainLocalSamples: retainLocalSamples,
+                audioLevelDBFS: audioLevelDBFS,
+                speechActive: isSpeechActive,
+                captureIntervalSeconds: effectiveCaptureIntervalSeconds,
+                captureMode:
+                    acceleratedCaptureUntil.map { $0 > Date() } == true
+                    ? "动态加速"
+                    : acceleratedCaptureRearmRequired
+                        ? "等待重新稳定"
+                        : "稳定基线",
+                acceleratedUntil: acceleratedCaptureUntil,
+                captureRearmRequired: acceleratedCaptureRearmRequired
+            ),
+            recentLogs: Array(logs.prefix(12))
+        )
+        debugBridge.send(type: "snapshot", payload: snapshot)
     }
 
     private static func makeCustomViewPayload(showsDebugOverlay: Bool) -> String? {

@@ -6,7 +6,7 @@ struct RingSensorConfiguration: Codable, Equatable {
     let gyroRangeDPS: Int
 }
 
-struct RingSystemInfo: Equatable {
+struct RingSystemInfo: Codable, Equatable {
     let firmwareVersion: String
     let systemTime: UInt32
     let audioStorageTotal: UInt32

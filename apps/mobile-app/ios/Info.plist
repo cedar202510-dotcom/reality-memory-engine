@@ -45,6 +45,10 @@
 	<string>用于连接 Rokid Glasses 和戒指，在授权会话中接收设备事件与传感器数据。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于在本地网络中连接已绑定的智能硬件并接收授权数据。</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_rme-debug._tcp</string>
+	</array>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>用于在用户授权的采集会话中处理短音频和语音活动检测。</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

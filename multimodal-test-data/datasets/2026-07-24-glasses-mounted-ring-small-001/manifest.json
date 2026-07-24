@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "rme.test-fixture.v2",
+  "datasetId": "2026-07-24-glasses-mounted-ring-small-001",
+  "title": "眼镜固定戒指触发的图片、音频与 IMU 小型闭环样本",
+  "createdAt": "2026-07-24T13:33:06.644Z",
+  "approvedForRepositoryTestFixture": true,
+  "fixtureScope": "LEGACY_COMPATIBILITY_ONLY_NOT_RV101_NATIVE_SENSOR_VALIDATION",
+  "source": {
+    "chain": "Rokid glasses -> CXR-L iOS app; external ring fixed to glasses -> BLE iOS app",
+    "originalSessionId": "910D287D-0E63-456F-B374-A1896D11F85E",
+    "originalSessionSchema": "rme.capture-session.v1",
+    "originalState": "paused"
+  },
+  "counts": {
+    "images": 5,
+    "audioSegments": 1,
+    "sensorEvidence": 1,
+    "captureAttempts": 7,
+    "failedOrSkippedAttempts": 0,
+    "ringSamples": 338,
+    "motionDecisions": 1,
+    "captureWindows": 6
+  },
+  "contract": {
+    "documentation": "docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md",
+    "schemas": "contracts/reality-memory/v1/"
+  },
+  "limitations": [
+    "This is legacy iOS/CXR-L data, not Rokid native Android capture.",
+    "Media wall-clock timestamps have no recorded monotonic timestamp; normalized values are null.",
+    "Ring device time and iOS receive time are both preserved and are not treated as exact hardware synchronization.",
+    "Raw fixture files are intentionally unencrypted and must never enter the production ingestion namespace.",
+    "Audio duration_ms is derived from PCM byte count; the original requested capture duration remains in media metadata."
+  ]
+}

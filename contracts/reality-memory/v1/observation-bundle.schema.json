@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/contracts/v1/observation-bundle.schema.json",
+  "title": "ObservationBundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_ref",
+    "bundle_id",
+    "time_range",
+    "capture_window_ids",
+    "observation_ids",
+    "bundle_kind",
+    "fusion"
+  ],
+  "properties": {
+    "schema_ref": {
+      "const": "rme.observation-bundle.v1"
+    },
+    "bundle_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "time_range": {
+      "$ref": "common.schema.json#/$defs/timeRange"
+    },
+    "capture_window_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      }
+    },
+    "observation_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      }
+    },
+    "bundle_kind": {
+      "enum": [
+        "MULTIMODAL_MOMENT",
+        "STATE_CHANGE",
+        "REPEATED_SUPPORT",
+        "CORRECTION_CONTEXT"
+      ]
+    },
+    "fusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "procedure_version",
+        "max_alignment_gap_ms",
+        "confidence"
+      ],
+      "properties": {
+        "procedure_version": {
+          "type": "string"
+        },
+        "max_alignment_gap_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "supersedes_bundle_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  }
+}

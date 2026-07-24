@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/contracts/v1/capture-session.schema.json",
+  "title": "CaptureSession",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_ref",
+    "capture_session_id",
+    "device_id",
+    "state",
+    "started_at",
+    "started_monotonic_ns",
+    "start_reason",
+    "policy_snapshot_id",
+    "consent_notice_version",
+    "runtime_version"
+  ],
+  "properties": {
+    "schema_ref": {
+      "const": "rme.capture-session.v1"
+    },
+    "capture_session_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "device_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "state": {
+      "enum": [
+        "ARMED",
+        "DISCLOSURE",
+        "ACTIVE",
+        "PAUSED",
+        "BLOCKED",
+        "ENDED"
+      ]
+    },
+    "started_at": {
+      "$ref": "common.schema.json#/$defs/utcTime"
+    },
+    "started_monotonic_ns": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "ended_at": {
+      "$ref": "common.schema.json#/$defs/nullableUtcTime"
+    },
+    "ended_monotonic_ns": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "start_reason": {
+      "enum": [
+        "WEAR_CONFIRMED",
+        "USER_EXPLICIT",
+        "DEBUG_TEST"
+      ]
+    },
+    "end_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "policy_snapshot_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "consent_notice_version": {
+      "type": "string"
+    },
+    "runtime_version": {
+      "type": "string"
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  }
+}

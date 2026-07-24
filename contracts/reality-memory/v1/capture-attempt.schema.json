@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/contracts/v1/capture-attempt.schema.json",
+  "title": "CaptureAttempt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_ref",
+    "capture_attempt_id",
+    "capture_window_id",
+    "modality",
+    "requested_at",
+    "result",
+    "latency_ms",
+    "runtime_version"
+  ],
+  "properties": {
+    "schema_ref": {
+      "const": "rme.capture-attempt.v1"
+    },
+    "capture_attempt_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "capture_window_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "modality": {
+      "$ref": "common.schema.json#/$defs/modality"
+    },
+    "requested_at": {
+      "$ref": "common.schema.json#/$defs/utcTime"
+    },
+    "result": {
+      "enum": [
+        "SUCCEEDED",
+        "FAILED",
+        "SKIPPED",
+        "CANCELLED"
+      ]
+    },
+    "reason_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "latency_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "evidence_item_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "runtime_version": {
+      "type": "string"
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  }
+}

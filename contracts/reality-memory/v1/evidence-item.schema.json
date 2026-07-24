@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/contracts/v1/evidence-item.schema.json",
+  "title": "EvidenceItem",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_ref",
+    "evidence_item_id",
+    "source_envelope_id",
+    "capture_window_id",
+    "modality",
+    "mime_type",
+    "captured_at",
+    "duration_ms",
+    "byte_count",
+    "sha256",
+    "encryption",
+    "retention",
+    "media",
+    "sensitivity_labels"
+  ],
+  "properties": {
+    "schema_ref": {
+      "const": "rme.evidence-item.v1"
+    },
+    "evidence_item_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "source_envelope_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "capture_window_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "modality": {
+      "$ref": "common.schema.json#/$defs/modality"
+    },
+    "mime_type": {
+      "type": "string",
+      "minLength": 3
+    },
+    "captured_at": {
+      "$ref": "common.schema.json#/$defs/utcTime"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "byte_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{64}$"
+    },
+    "encryption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "key_ref",
+        "iv_base64"
+      ],
+      "properties": {
+        "algorithm": {
+          "enum": [
+            "AES_256_GCM",
+            "NONE_TEST_FIXTURE"
+          ]
+        },
+        "key_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "iv_base64": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ttl_expires_at",
+        "purpose",
+        "debug_sample"
+      ],
+      "properties": {
+        "ttl_expires_at": {
+          "$ref": "common.schema.json#/$defs/utcTime"
+        },
+        "purpose": {
+          "enum": [
+            "STRUCTURE_EXTRACTION",
+            "CROSS_MODAL_VALIDATION",
+            "EXPLICIT_DEBUG_SAMPLE"
+          ]
+        },
+        "debug_sample": {
+          "type": "boolean"
+        }
+      }
+    },
+    "media": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "sensitivity_labels": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  }
+}

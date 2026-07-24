@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/contracts/v1/evidence-lifecycle-event.schema.json",
+  "title": "EvidenceLifecycleEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_ref",
+    "event_id",
+    "evidence_item_id",
+    "state",
+    "occurred_at",
+    "actor"
+  ],
+  "properties": {
+    "schema_ref": {
+      "const": "rme.evidence-lifecycle-event.v1"
+    },
+    "event_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "evidence_item_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "state": {
+      "enum": [
+        "CAPTURED_LOCAL",
+        "ENCRYPTED_LOCAL",
+        "QUEUED",
+        "UPLOADED_ENCRYPTED",
+        "PROCESSING",
+        "STRUCTURED",
+        "DELETING",
+        "DELETED",
+        "FAILED",
+        "REJECTED",
+        "EXPIRED"
+      ]
+    },
+    "occurred_at": {
+      "$ref": "common.schema.json#/$defs/utcTime"
+    },
+    "actor": {
+      "enum": [
+        "GLASSES_EDGE",
+        "INGESTION_SERVICE",
+        "PERCEPTION_SERVICE",
+        "RETENTION_SERVICE",
+        "USER"
+      ]
+    },
+    "reason_code": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "request_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  }
+}

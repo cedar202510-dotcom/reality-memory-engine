@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/contracts/v1/source-envelope.schema.json",
+  "title": "SourceEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_ref",
+    "source_envelope_id",
+    "device_id",
+    "device_kind",
+    "device_adapter",
+    "capture_session_id",
+    "occurred_at",
+    "observed_at",
+    "monotonic_start_ns",
+    "monotonic_end_ns",
+    "clock_domain",
+    "clock_sync_method",
+    "time_uncertainty_ms",
+    "policy_snapshot_id",
+    "modality",
+    "payload_kind",
+    "payload_ref",
+    "idempotency_key"
+  ],
+  "properties": {
+    "schema_ref": {
+      "const": "rme.source-envelope.v1"
+    },
+    "source_envelope_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "device_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "device_kind": {
+      "type": "string"
+    },
+    "device_adapter": {
+      "type": "string"
+    },
+    "capture_session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "capture_window_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "capture_intent_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "occurred_at": {
+      "$ref": "common.schema.json#/$defs/utcTime"
+    },
+    "observed_at": {
+      "$ref": "common.schema.json#/$defs/utcTime"
+    },
+    "monotonic_start_ns": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "monotonic_end_ns": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "clock_domain": {
+      "type": "string"
+    },
+    "clock_sync_method": {
+      "type": "string"
+    },
+    "time_uncertainty_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "policy_snapshot_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "modality": {
+      "$ref": "common.schema.json#/$defs/modality"
+    },
+    "payload_kind": {
+      "enum": [
+        "EVIDENCE_ITEM",
+        "STRUCTURED_EVENT"
+      ]
+    },
+    "payload_ref": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 6
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  }
+}

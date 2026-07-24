@@ -80,6 +80,7 @@ struct ProbeAudioPolicySnapshot: Codable {
 }
 
 struct ProbeRingPolicySnapshot: Codable {
+    let mountPosition: ProbeRingMountPosition?
     let sensorCollectionEnabled: Bool
     let rapidMovementTriggerEnabled: Bool
     let triggeredAudioEnabled: Bool
@@ -89,6 +90,20 @@ struct ProbeRingPolicySnapshot: Codable {
     let triggerCooldownMilliseconds: Int
     let triggeredAudioWindowMilliseconds: Int
     let detectorRuleVersion: String
+    let baselineWindowBatchCount: Int?
+    let relativeChangeThreshold: Double?
+    let strongRelativeChangeThreshold: Double?
+    let accelerationNoiseFloorRaw: Double?
+    let gyroscopeNoiseFloorRaw: Double?
+    let strongTriggerCooldownMilliseconds: Int?
+    let minimumAccelerationForTriggerRaw: Double?
+    let minimumGyroscopeForTriggerRaw: Double?
+    let normalConfirmationBatchCount: Int?
+    let headRotationExcursionThresholdDegrees: Double?
+    let headGravityTiltThresholdDegrees: Double?
+    let headMovementStartDPS: Double?
+    let headSettleDPS: Double?
+    let headSettleDurationMilliseconds: Int?
 }
 
 struct ProbeRingSensorSnapshot: Codable {
@@ -97,6 +112,7 @@ struct ProbeRingSensorSnapshot: Codable {
     let sampleRateHz: Int
     let accelRangeG: Int
     let gyroRangeDPS: Int
+    let mountPosition: ProbeRingMountPosition?
 }
 
 struct ProbeRingMotionAssessment: Identifiable, Codable {
@@ -115,6 +131,21 @@ struct ProbeRingMotionAssessment: Identifiable, Codable {
     let captureRequested: Bool
     let requestedModalities: [String]
     let suppressionReason: String?
+    let motionIntensityRatio: Double?
+    let captureTier: String?
+    let requestedImageCount: Int?
+    let capturePolicyVersion: String?
+    let accelerationBaselineRaw: Double?
+    let gyroscopeBaselineRaw: Double?
+    let relativeChangeScore: Double?
+    let isStrongChange: Bool?
+    let acceleratedCaptureIntervalMilliseconds: Int?
+    let acceleratedCaptureWindowMilliseconds: Int?
+    let mountPosition: ProbeRingMountPosition?
+    let rotationExcursionDegrees: Double?
+    let gravityTiltDegrees: Double?
+    let endingGyroscopeDPS: Double?
+    let sustainedMotion: Bool?
 }
 
 struct ProbeRingHardwareEventRecord: Identifiable, Codable {

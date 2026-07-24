@@ -179,6 +179,7 @@ struct ContentView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            LabeledContent("电脑调试台", value: model.desktopDebugStatus)
 
             if model.ringDevices.isEmpty {
                 LabeledContent("戒指候选", value: "尚未扫描或未发现")
@@ -320,6 +321,23 @@ struct ContentView: View {
                     .accessibilityLabel("导出 Session JSON")
                 }
             }
+
+            ActionButton(
+                title: model.sessionState == .active
+                    ? "戒指联动采集中"
+                    : "开始戒指联动采集",
+                symbol: model.sessionState == .active
+                    ? "waveform.path.ecg"
+                    : "record.circle",
+                prominent: true,
+                disabled: !model.canStartRingLinkedCapture
+            ) {
+                model.startRingLinkedCapture()
+            }
+
+            LabeledContent("联动条件", value: model.ringLinkedCaptureReadiness)
+            LabeledContent("联动输出", value: "戒指六轴数据 · 图片 · 8 秒短音频")
+            LabeledContent("短视频", value: "CXR-L SDK 暂无采集接口")
 
             Picker(
                 "采集间隔",

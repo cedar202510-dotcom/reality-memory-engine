@@ -1,6 +1,8 @@
 # 多模态测试数据结构说明
 
-这份文档说明 `multimodal-test-data` 里的样本如何映射到 Reality Memory Engine 的核心数据链路。这里的目标不是把所有正式契约一次定死，而是给后续图片、音频、戒指传感器解析器提供一个可复现的输入基准。
+这份文档说明 `multimodal-test-data` 里的样本如何映射到 Reality Memory Engine 的核心数据链路。正式字段以
+[`Reality-Memory-Multimodal-Data-Contract-v1.0.md`](../docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md)
+和 `contracts/reality-memory/v1/` 为准；本目录保存少量可复现的真实输入。
 
 ## 核心概念
 
@@ -84,6 +86,15 @@ datasets/2026-07-24-ios-cxrl-session-001/sessions/ce998edb-cc5f-4c18-a93f-55d6b9
 
 `derived/wav/*.wav` 是同一段 PCM 音频加 WAV 头后的派生文件，方便播放器和人工听检。正式解析器应优先使用 `localMediaReference` 指向的原始 PCM，或明确记录自己使用了派生 WAV。
 
+## 两类样本
+
+`2026-07-24-ios-cxrl-session-001` 用于图片与 VAD 音频测试。它没有持久化的戒指原始
+IMU，不能测试传感器闭环。
+
+`2026-07-24-glasses-mounted-ring-small-001` 是最小兼容样本。它包含外置戒指固定在
+眼镜框时的 338 个 IMU 样本，以及同一旧手机会话中的 5 张图片和 1 段音频。它可
+测试旧数据导入和时间关联，但不是 RV101 本机传感器结果。
+
 ## 调试事件
 
 `debug-events.ndjson` 是 App 级调试日志，每行一个 JSON 对象。它不等同于会话事实，但对排查设备状态很有用。
@@ -95,16 +106,21 @@ datasets/2026-07-24-ios-cxrl-session-001/sessions/ce998edb-cc5f-4c18-a93f-55d6b9
 - 眼镜 BLE 连接和断开。
 - 戒指扫描、连接、设备确认、普通双击、开启传感器等事件。
 
-需要注意：本次导出没有会话内的戒指传感器样本文件，所以不能用它验证“戒指 IMU 快速移动触发图片和音频采集”的完整闭环。它只能证明当时 App 收到过戒指连接和开启传感器相关事件。
+需要注意：第一包导出没有会话内的戒指传感器样本文件。第二包才包含一段很小的
+外置戒指 IMU 闭环样本。
 
 ## 时间对齐规则
 
-后续解析器和沉淀链路应统一使用 UTC 时间字段做对齐：
+后续解析器和沉淀链路应优先使用同一 `capture_window_id`，并结合双时间标尺：
 
 - 图片优先使用 `completedAt` 表示证据形成时间，`scheduledAt` 表示触发计划时间。
 - 音频使用 `startedAt` 到 `endedAt` 表示声音片段窗口。
 - 审计事件使用 `occurredAt`。
 - 调试事件使用 `date`。
+- 外置戒指原始样本保留 `timestampMilliseconds` 设备相对时间，批次保留
+  `receivedAt` 手机接收时间。两者不能互相覆盖。
+- 历史手机媒体没有记录单调时钟，标准化后明确为 `null` 并标记
+  `clock_sync_method=LEGACY_IMPORT`。
 
 跨模态合并时，不建议只按数组顺序推断关联关系。正确做法是使用时间窗口，例如：
 
@@ -127,11 +143,12 @@ Session
 
 它还不能直接覆盖完整链路，因为当前缺少：
 
-- 戒指传感器原始样本。
+- RV101 原生 `SensorManager` 六轴样本。
 - 图片解析器输出。
 - 音频转写和语义解析输出。
 - ActivityEpisode，也就是“活动片段”，例如一次吃饭、一段通勤或一次找东西过程。
 - MemoryEvent，也就是可持久化的事实变更。
 - StateProjection，也就是由事件流推导出的当前状态。
 
-这个数据包的价值在于先固定最前端的真实输入：同一个会话中，图片和音频都能带时间标尺保存下来。后面的解析、候选生成和记忆沉淀，都可以围绕这份样本逐步补齐。
+这个数据包的价值在于固定少量真实输入和兼容映射。正式眼镜 App 上机后，原生图片、
+短视频、8 通道音频和六轴数据必须建立新的数据集，不能覆盖历史样本。

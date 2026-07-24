@@ -109,7 +109,10 @@ final class RingDeviceAdapter: NSObject {
     private var connectionTimeoutTask: Task<Void, Never>?
     private var responseTimeoutTask: Task<Void, Never>?
     private var identityTimeoutTask: Task<Void, Never>?
+    private var reconnectTask: Task<Void, Never>?
     private var hasAttemptedAutomaticReconnect = false
+    private var shouldMaintainConnection = false
+    private var reconnectAttempt = 0
     private var knownRingIdentifier: UUID? {
         guard
             let value = UserDefaults.standard.string(forKey: knownRingIdentifierKey),
@@ -170,6 +173,14 @@ final class RingDeviceAdapter: NSObject {
             state = .failed("找不到所选戒指，请重新扫描")
             return
         }
+        shouldMaintainConnection = true
+        reconnectAttempt = 0
+        beginConnection(to: peripheral)
+    }
+
+    private func beginConnection(to peripheral: CBPeripheral) {
+        reconnectTask?.cancel()
+        reconnectTask = nil
         stopScan()
         disconnectCurrentIfNeeded()
         connectedPeripheral = peripheral
@@ -189,6 +200,9 @@ final class RingDeviceAdapter: NSObject {
     }
 
     func disconnect() {
+        shouldMaintainConnection = false
+        reconnectTask?.cancel()
+        reconnectTask = nil
         guard let connectedPeripheral else {
             state = .idle
             return
@@ -420,7 +434,33 @@ final class RingDeviceAdapter: NSObject {
         discovered[device.id] = device
         publishDiscoveredDevices()
         onLog?("正在自动连接已验证的戒指")
+        shouldMaintainConnection = true
         connect(deviceID: device.id)
+    }
+
+    private func scheduleReconnect(to peripheral: CBPeripheral) {
+        guard shouldMaintainConnection, reconnectTask == nil else {
+            return
+        }
+        reconnectAttempt += 1
+        let delaySeconds = min(15, max(2, reconnectAttempt * 2))
+        onLog?("\(delaySeconds) 秒后自动重连已验证戒指（第 \(reconnectAttempt) 次）")
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delaySeconds) * 1_000_000_000)
+            guard !Task.isCancelled, let self else {
+                return
+            }
+            self.reconnectTask = nil
+            guard
+                self.shouldMaintainConnection,
+                self.central.state == .poweredOn,
+                self.connectedPeripheral == nil
+            else {
+                return
+            }
+            self.onLog?("正在自动重连已验证戒指")
+            self.beginConnection(to: peripheral)
+        }
     }
 
     private func updateBluetoothState() {
@@ -478,6 +518,7 @@ extension RingDeviceAdapter: CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         connectionTimeoutTask?.cancel()
+        reconnectAttempt = 0
         state = .discoveringServices
         peripheral.discoverServices([serviceUUID])
     }
@@ -490,6 +531,7 @@ extension RingDeviceAdapter: CBCentralManagerDelegate {
         connectionTimeoutTask?.cancel()
         connectedPeripheral = nil
         state = .failed(error?.localizedDescription ?? "连接戒指失败")
+        scheduleReconnect(to: peripheral)
     }
 
     func centralManager(
@@ -497,6 +539,7 @@ extension RingDeviceAdapter: CBCentralManagerDelegate {
         didDisconnectPeripheral peripheral: CBPeripheral,
         error: Error?
     ) {
+        let shouldReconnect = shouldMaintainConnection && state != .disconnecting
         connectedPeripheral = nil
         notifyCharacteristic = nil
         writeCharacteristic = nil
@@ -504,10 +547,12 @@ extension RingDeviceAdapter: CBCentralManagerDelegate {
         identityTimeoutTask?.cancel()
         connectionTimeoutTask?.cancel()
         streamParser.reset()
-        if case .failed = state {
+        if !shouldReconnect {
+            state = .idle
             return
         }
         state = error == nil ? .idle : .failed("戒指蓝牙断开：\(error!.localizedDescription)")
+        scheduleReconnect(to: peripheral)
     }
 }
 

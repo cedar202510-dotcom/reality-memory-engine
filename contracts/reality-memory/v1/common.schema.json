@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/contracts/v1/common.schema.json",
+  "title": "Reality Memory common definitions",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 6,
+      "maxLength": 128
+    },
+    "utcTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nullableUtcTime": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/utcTime"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "modality": {
+      "enum": [
+        "IMAGE",
+        "VIDEO",
+        "AUDIO",
+        "SENSOR",
+        "DEVICE_EVENT",
+        "USER_INPUT",
+        "ONLINE_CONTEXT"
+      ]
+    },
+    "timeRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start",
+        "end"
+      ],
+      "properties": {
+        "start": {
+          "$ref": "#/$defs/utcTime"
+        },
+        "end": {
+          "$ref": "#/$defs/nullableUtcTime"
+        },
+        "time_uncertainty_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "entityRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entity_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolution_state": {
+          "enum": [
+            "RESOLVED",
+            "UNRESOLVED",
+            "AMBIGUOUS",
+            "NOT_REQUIRED"
+          ]
+        }
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_item_id"
+      ],
+      "properties": {
+        "evidence_item_id": {
+          "$ref": "#/$defs/id"
+        },
+        "start_offset_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_offset_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "observationSourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_envelope_id"
+      ],
+      "properties": {
+        "source_envelope_id": {
+          "$ref": "#/$defs/id"
+        },
+        "evidence_item_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "start_offset_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_offset_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "producer",
+        "procedure_version"
+      ],
+      "properties": {
+        "producer": {
+          "type": "string"
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "procedure_version": {
+          "type": "string"
+        }
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

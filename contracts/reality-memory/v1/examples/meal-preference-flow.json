@@ -1,0 +1,399 @@
+{
+  "scenario": "用户用餐时说这个胡辣汤太难喝了",
+  "capture_session": {
+    "schema_ref": "rme.capture-session.v1",
+    "capture_session_id": "ses_meal_001",
+    "device_id": "glass_rv101_001",
+    "state": "ACTIVE",
+    "started_at": "2026-07-24T06:20:10.123Z",
+    "started_monotonic_ns": 78422100123000,
+    "ended_at": null,
+    "ended_monotonic_ns": null,
+    "start_reason": "WEAR_CONFIRMED",
+    "end_reason": null,
+    "policy_snapshot_id": "policy_meal_001",
+    "consent_notice_version": "wear-notice/1.0",
+    "runtime_version": "android-glasses/0.1.0",
+    "extensions": {}
+  },
+  "capture_intent": {
+    "schema_ref": "rme.capture-intent.v1",
+    "capture_intent_id": "cin_meal_001",
+    "capture_session_id": "ses_meal_001",
+    "signal_kind": "HEAD_MOTION_TRANSITION",
+    "occurred_at": "2026-07-24T06:21:02.410Z",
+    "monotonic_start_ns": 78474380000000,
+    "monotonic_end_ns": 78475740000000,
+    "detector_rule_version": "glasses-head-transition.v1",
+    "intensity": "MEDIUM",
+    "metrics": {
+      "duration_ms": 1360,
+      "integrated_rotation_deg": 21.4,
+      "peak_gyro_rad_s": 0.91,
+      "max_gravity_tilt_deg": 12.8
+    },
+    "requested_modalities": [
+      "IMAGE",
+      "AUDIO",
+      "SENSOR"
+    ],
+    "extensions": {}
+  },
+  "capture_window": {
+    "schema_ref": "rme.capture-window.v1",
+    "capture_window_id": "win_meal_001",
+    "capture_session_id": "ses_meal_001",
+    "capture_intent_id": "cin_meal_001",
+    "window_start": "2026-07-24T06:20:58.410Z",
+    "window_end": "2026-07-24T06:21:12.410Z",
+    "monotonic_start_ns": 78470380000000,
+    "monotonic_end_ns": 78484380000000,
+    "requested_modalities": [
+      "IMAGE",
+      "AUDIO",
+      "SENSOR"
+    ],
+    "policy_snapshot_id": "policy_meal_001",
+    "state": "FINALIZED",
+    "extensions": {}
+  },
+  "source_envelopes": [
+    {
+      "schema_ref": "rme.source-envelope.v1",
+      "source_envelope_id": "src_image_001",
+      "device_id": "glass_rv101_001",
+      "device_kind": "ROKID_GLASSES_RV101",
+      "device_adapter": "rokid-native-android/1.0",
+      "capture_session_id": "ses_meal_001",
+      "capture_window_id": "win_meal_001",
+      "capture_intent_id": "cin_meal_001",
+      "occurred_at": "2026-07-24T06:21:03.000Z",
+      "observed_at": "2026-07-24T06:21:03.188Z",
+      "monotonic_start_ns": 78474970000000,
+      "monotonic_end_ns": 78474970000000,
+      "clock_domain": "ANDROID_ELAPSED_REALTIME_NANOS",
+      "clock_sync_method": "ANDROID_SYSTEM_CLOCK_ANCHOR",
+      "time_uncertainty_ms": 50,
+      "policy_snapshot_id": "policy_meal_001",
+      "modality": "IMAGE",
+      "payload_kind": "EVIDENCE_ITEM",
+      "payload_ref": "evd_image_001",
+      "idempotency_key": "evd_image_001",
+      "extensions": {}
+    },
+    {
+      "schema_ref": "rme.source-envelope.v1",
+      "source_envelope_id": "src_audio_001",
+      "device_id": "glass_rv101_001",
+      "device_kind": "ROKID_GLASSES_RV101",
+      "device_adapter": "rokid-native-android/1.0",
+      "capture_session_id": "ses_meal_001",
+      "capture_window_id": "win_meal_001",
+      "capture_intent_id": "cin_meal_001",
+      "occurred_at": "2026-07-24T06:21:03.000Z",
+      "observed_at": "2026-07-24T06:21:13.120Z",
+      "monotonic_start_ns": 78474970000000,
+      "monotonic_end_ns": 78484970000000,
+      "clock_domain": "ANDROID_ELAPSED_REALTIME_NANOS",
+      "clock_sync_method": "ANDROID_SYSTEM_CLOCK_ANCHOR",
+      "time_uncertainty_ms": 50,
+      "policy_snapshot_id": "policy_meal_001",
+      "modality": "AUDIO",
+      "payload_kind": "EVIDENCE_ITEM",
+      "payload_ref": "evd_audio_001",
+      "idempotency_key": "evd_audio_001",
+      "extensions": {}
+    }
+  ],
+  "evidence_items": [
+    {
+      "schema_ref": "rme.evidence-item.v1",
+      "evidence_item_id": "evd_image_001",
+      "source_envelope_id": "src_image_001",
+      "capture_window_id": "win_meal_001",
+      "modality": "IMAGE",
+      "mime_type": "image/jpeg",
+      "captured_at": "2026-07-24T06:21:03.000Z",
+      "duration_ms": 0,
+      "byte_count": 428112,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "encryption": {
+        "algorithm": "AES_256_GCM",
+        "key_ref": "dek_image_001",
+        "iv_base64": "AAAAAAAAAAAAAAAA"
+      },
+      "retention": {
+        "ttl_expires_at": "2026-07-24T06:36:03.000Z",
+        "purpose": "STRUCTURE_EXTRACTION",
+        "debug_sample": false
+      },
+      "media": {
+        "codec": "JPEG",
+        "width_px": 1920,
+        "height_px": 1080,
+        "orientation_deg": 0,
+        "camera_facing": "WORLD",
+        "capture_mode": "CAMERAX_IMAGE_CAPTURE_NO_PREVIEW"
+      },
+      "sensitivity_labels": [],
+      "extensions": {}
+    },
+    {
+      "schema_ref": "rme.evidence-item.v1",
+      "evidence_item_id": "evd_audio_001",
+      "source_envelope_id": "src_audio_001",
+      "capture_window_id": "win_meal_001",
+      "modality": "AUDIO",
+      "mime_type": "audio/L16",
+      "captured_at": "2026-07-24T06:21:03.000Z",
+      "duration_ms": 10000,
+      "byte_count": 2560000,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "encryption": {
+        "algorithm": "AES_256_GCM",
+        "key_ref": "dek_audio_001",
+        "iv_base64": "BBBBBBBBBBBBBBBB"
+      },
+      "retention": {
+        "ttl_expires_at": "2026-07-24T06:36:13.000Z",
+        "purpose": "STRUCTURE_EXTRACTION",
+        "debug_sample": false
+      },
+      "media": {
+        "container": "RAW_PCM",
+        "codec": "PCM_S16LE",
+        "sample_rate_hz": 16000,
+        "channel_count": 8,
+        "channel_mask": "0x6000FC",
+        "capture_mode": "ROKID_RAW_8_CHANNEL"
+      },
+      "sensitivity_labels": [],
+      "extensions": {}
+    }
+  ],
+  "atomic_observations": [
+    {
+      "schema_ref": "rme.atomic-observation.v1",
+      "observation_id": "obs_transcript_001",
+      "observation_type": "TRANSCRIPT_SEGMENT",
+      "time_range": {
+        "start": "2026-07-24T06:21:04.100Z",
+        "end": "2026-07-24T06:21:06.300Z",
+        "time_uncertainty_ms": 80
+      },
+      "capture_window_id": "win_meal_001",
+      "source_refs": [
+        {
+          "source_envelope_id": "src_audio_001",
+          "evidence_item_id": "evd_audio_001",
+          "start_offset_ms": 1100,
+          "end_offset_ms": 3300
+        }
+      ],
+      "evidence_refs": [
+        {
+          "evidence_item_id": "evd_audio_001",
+          "start_offset_ms": 1100,
+          "end_offset_ms": 3300
+        }
+      ],
+      "content": {
+        "text": "这个胡辣汤太难喝了",
+        "language": "zh-CN",
+        "speaker_role": "PROBABLE_USER"
+      },
+      "confidence": 0.94,
+      "provenance": {
+        "producer": "audio-extractor",
+        "model": "asr-model-id",
+        "model_version": "2026-07-01",
+        "procedure_version": "audio-extractor/1.0"
+      },
+      "usage_constraints": [
+        "NO_DIRECT_FACT_WRITE",
+        "NO_LONG_TERM_MEDIA_DEPENDENCY"
+      ],
+      "extensions": {}
+    },
+    {
+      "schema_ref": "rme.atomic-observation.v1",
+      "observation_id": "obs_visual_meal_001",
+      "observation_type": "VISUAL_OBJECT",
+      "time_range": {
+        "start": "2026-07-24T06:21:03.000Z",
+        "end": "2026-07-24T06:21:03.000Z",
+        "time_uncertainty_ms": 50
+      },
+      "capture_window_id": "win_meal_001",
+      "source_refs": [
+        {
+          "source_envelope_id": "src_image_001",
+          "evidence_item_id": "evd_image_001",
+          "start_offset_ms": 0,
+          "end_offset_ms": 0
+        }
+      ],
+      "evidence_refs": [
+        {
+          "evidence_item_id": "evd_image_001",
+          "start_offset_ms": 0,
+          "end_offset_ms": 0
+        }
+      ],
+      "content": {
+        "object_class": "FOOD_CONTAINER",
+        "label": "餐食容器"
+      },
+      "confidence": 0.82,
+      "provenance": {
+        "producer": "image-extractor",
+        "model": "vision-model-id",
+        "model_version": "2026-07-01",
+        "procedure_version": "image-extractor/1.0"
+      },
+      "usage_constraints": [
+        "NO_DIRECT_FACT_WRITE",
+        "NO_LONG_TERM_MEDIA_DEPENDENCY"
+      ],
+      "extensions": {}
+    }
+  ],
+  "observation_bundle": {
+    "schema_ref": "rme.observation-bundle.v1",
+    "bundle_id": "bundle_meal_001",
+    "time_range": {
+      "start": "2026-07-24T06:21:03.000Z",
+      "end": "2026-07-24T06:21:06.300Z",
+      "time_uncertainty_ms": 80
+    },
+    "capture_window_ids": [
+      "win_meal_001"
+    ],
+    "observation_ids": [
+      "obs_transcript_001",
+      "obs_visual_meal_001"
+    ],
+    "bundle_kind": "MULTIMODAL_MOMENT",
+    "fusion": {
+      "procedure_version": "temporal-fusion/1.0",
+      "max_alignment_gap_ms": 2500,
+      "confidence": 0.87
+    },
+    "supersedes_bundle_id": null,
+    "extensions": {}
+  },
+  "activity_episode": {
+    "schema_ref": "rme.activity-episode.v1",
+    "activity_episode_id": "episode_meal_001",
+    "episode_type": "MEAL",
+    "time_range": {
+      "start": "2026-07-24T06:18:00.000Z",
+      "end": "2026-07-24T06:42:00.000Z",
+      "time_uncertainty_ms": 3000
+    },
+    "bundle_ids": [
+      "bundle_meal_001"
+    ],
+    "boundary_confidence": 0.78,
+    "state": "CLOSED",
+    "segmentation": {
+      "procedure_version": "episode-segmentation/1.0",
+      "start_reasons": [
+        "SCENE_CHANGE",
+        "MEAL_OBJECTS_APPEARED"
+      ],
+      "end_reasons": [
+        "MEAL_OBJECTS_DISAPPEARED"
+      ]
+    },
+    "supersedes_episode_id": null,
+    "extensions": {}
+  },
+  "memory_candidate": {
+    "schema_ref": "rme.memory-candidate.v1",
+    "memory_candidate_id": "candidate_preference_001",
+    "candidate_type": "PREFERENCE_STATED",
+    "subject": {
+      "entity_type": "USER",
+      "entity_id": "user_001",
+      "label": null,
+      "resolution_state": "RESOLVED"
+    },
+    "predicate": "DISLIKES",
+    "object": {
+      "entity_type": "FOOD_ITEM",
+      "entity_id": null,
+      "label": "胡辣汤",
+      "resolution_state": "UNRESOLVED"
+    },
+    "valid_time": {
+      "start": "2026-07-24T06:21:04.100Z",
+      "end": null,
+      "time_uncertainty_ms": 80
+    },
+    "supporting_bundle_ids": [
+      "bundle_meal_001"
+    ],
+    "supporting_observation_ids": [
+      "obs_transcript_001",
+      "obs_visual_meal_001"
+    ],
+    "confidence": 0.83,
+    "conflicts": [],
+    "policy_decision": "REVIEW_OR_RULE_GATE",
+    "candidate_procedure_version": "preference-candidate/1.0",
+    "supersedes_candidate_id": null,
+    "extensions": {}
+  },
+  "memory_event": {
+    "schema_ref": "rme.memory-event.v1",
+    "memory_event_id": "memory_preference_001",
+    "event_type": "PREFERENCE_STATED",
+    "subject": {
+      "entity_type": "USER",
+      "entity_id": "user_001",
+      "label": null,
+      "resolution_state": "RESOLVED"
+    },
+    "predicate": "DISLIKES",
+    "object": {
+      "entity_type": "FOOD_ITEM",
+      "entity_id": "food_hulatang_001",
+      "label": "胡辣汤"
+    },
+    "recorded_at": "2026-07-24T06:22:00.000Z",
+    "valid_time": {
+      "start": "2026-07-24T06:21:04.100Z",
+      "end": null,
+      "time_uncertainty_ms": 80
+    },
+    "source_candidate_ids": [
+      "candidate_preference_001"
+    ],
+    "confidence": 0.86,
+    "policy_snapshot_id": "policy_meal_001",
+    "supersedes_event_id": null,
+    "correction_target_event_id": null,
+    "status": "ACTIVE",
+    "extensions": {}
+  },
+  "state_projection": {
+    "schema_ref": "rme.state-projection.v1",
+    "projection_id": "projection_preference_001",
+    "projection_type": "USER_PREFERENCE",
+    "subject_id": "user_001",
+    "key": "food:胡辣汤",
+    "value": {
+      "sentiment": "DISLIKE",
+      "target_entity_id": "food_hulatang_001"
+    },
+    "as_of": "2026-07-24T06:22:00.000Z",
+    "source_event_ids": [
+      "memory_preference_001"
+    ],
+    "confidence": 0.86,
+    "freshness": "CURRENT",
+    "projection_version": 1,
+    "extensions": {}
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/contracts/v1/activity-episode.schema.json",
+  "title": "ActivityEpisode",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_ref",
+    "activity_episode_id",
+    "episode_type",
+    "time_range",
+    "bundle_ids",
+    "boundary_confidence",
+    "state",
+    "segmentation"
+  ],
+  "properties": {
+    "schema_ref": {
+      "const": "rme.activity-episode.v1"
+    },
+    "activity_episode_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "episode_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "time_range": {
+      "$ref": "common.schema.json#/$defs/timeRange"
+    },
+    "bundle_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      }
+    },
+    "boundary_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "state": {
+      "enum": [
+        "OPEN",
+        "CLOSED",
+        "SUPERSEDED"
+      ]
+    },
+    "segmentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "procedure_version",
+        "start_reasons",
+        "end_reasons"
+      ],
+      "properties": {
+        "procedure_version": {
+          "type": "string"
+        },
+        "start_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "end_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "supersedes_episode_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  }
+}

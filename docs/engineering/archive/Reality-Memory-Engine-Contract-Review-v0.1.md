@@ -1,5 +1,9 @@
 # Reality Memory Engine 数据契约 Review v0.1
 
+> 历史审查记录。正式开发口径请使用
+> `docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md` 与
+> `contracts/reality-memory/v1/`。
+
 ## 结论
 
 当前总方向是合理的：多模态采集先进统一入口，再转成统一观察，最后只有 `MemoryEvent` 成为长期事实。真正需要收紧的是边界：现在 iOS App 导出的 `session.json` 还是“采集清单”，不能直接当成最终记忆核心契约。
@@ -89,6 +93,65 @@
 
 “快速移动触发眼镜”属于 `CaptureIntent`（采集意图），不是 `MemoryEvent`。它只说明系统为何发起一次取证，不说明现实世界发生了什么。图片、音频和后续解析结果仍需经过观察、组合、活动段和记忆候选流程。
 
+### 6. 连续图片不能逐张沉淀为记忆
+
+戒指触发后的连续图片只是同一关注窗口内的候选证据。即使每张图片的像素不同，现实信息也可能没有变化，例如用户只是轻微转头，但画面仍是同一张桌子和同一批物品。因此不能把“图片文件不同”等同于“出现了新信息”，也不能让每张图片各自产生一条长期记忆。
+
+首版应把图片处理拆成两级：
+
+1. **证据级筛选**：在原始图片仍处于短期 TTL 时，检查模糊、过暗、遮挡、完全重复和短窗视觉相似度。这一步只决定图片是否适合进入解析，不产生现实事实。
+2. **语义增量判断**：图片解析器输出对象、关系、文字、场景和动作等 `AtomicObservation`。时间融合层比较前后观察，只有对象集合、对象关系、状态、活动阶段或用户语音关联发生有意义的变化时，才形成新的 `ObservationBundle` 或 `MemoryCandidate`。
+
+每个关注窗口应选少量代表证据，而不是永久保留全部帧。代表帧优先选择：
+
+- 触发前后最接近真实变化的帧。
+- 清晰度和曝光更好的帧。
+- 能支持新增对象、关系或状态变化的帧。
+- 与同窗语音时间最接近、能帮助消歧的帧。
+
+证据筛选结果建议使用独立的 `EvidenceSelectionRecord`（证据筛选记录），不要把模型判断直接塞进不可变的 `EvidenceItem`：
+
+```json
+{
+  "id": "sel_01",
+  "evidence_item_id": "evd_02",
+  "window_id": "capture_window_01",
+  "decision": "REDUNDANT",
+  "representative_evidence_item_id": "evd_01",
+  "quality_score": 0.91,
+  "visual_novelty_score": 0.08,
+  "semantic_novelty_score": 0.03,
+  "reasons": ["SAME_OBJECT_SET", "NO_RELATION_CHANGE"],
+  "procedure_version": "evidence-selection/1.0",
+  "decided_at": "2026-07-24T10:00:00Z"
+}
+```
+
+其中：
+
+- `SELECTED`：作为当前窗口的代表证据进入后续融合。
+- `REDUNDANT`：信息已由另一张代表图覆盖，媒体按 TTL 删除。
+- `UNUSABLE`：模糊、过暗、严重遮挡或损坏。
+- `DEFERRED`：仅凭当前帧无法判断，等待短窗内后续图片或音频。
+
+`EvidenceSelectionRecord` 只保留选择依据、分数、规则版本和证据引用，不长期保存图片特征向量。被判为重复的媒体删除后，仍可通过记录审计“为什么没有形成新观察”。多个相似 `AtomicObservation` 也不能逐条提升为事实；它们应进入同一个 `ObservationBundle`，作为同一现实状态的重复支持。
+
+### 7. 传感器安装位置必须进入来源契约
+
+同一个六轴传感器戴在手指和固定在眼镜上，表达的现实含义完全不同：
+
+- `FINGER_WORN`（手指佩戴）主要反映手部动作，不能可靠代表用户视线或头部方向。
+- `GLASSES_MOUNTED`（固定在眼镜）主要反映头部转向，可作为视线方向变化的代理信号，但无法检测只动眼睛、不动头部的注视。
+
+因此安装位置不是调试备注，而是设备能力和来源解释的一部分。`DeviceCapability`、`SourceEnvelope`、Session 的戒指策略快照和每条动作判断都必须记录：
+
+- `mount_position`
+- `mount_profile` 或安装方向校准版本
+- `detector_rule_version`
+- 量程、采样率和时钟域
+
+眼镜安装位首版规则是“转动开始 → 累计转角/重力方向变化 → 等待头部回稳 → 产生一次采集意图”。它不能直接生成“用户看到了某物”的事实；图片解析结果仍需验证画面中是否存在有意义的信息增量。
+
 ## 最小闭环建议
 
 第一阶段不要急着做复杂 Agent。建议按这个闭环落地：
@@ -121,5 +184,6 @@ CaptureSession（采集会话）
 
 1. 用当前 iOS App 跑真机：开启会话内短音频/VAD，导出 `session.json`，确认音频片段、策略快照和审计事件完整。
 2. 新增正式 JSON Schema：`source-envelope.schema.json`、`evidence-item.schema.json`、`atomic-observation.schema.json`、`memory-candidate.schema.json`、`memory-event.schema.json`。
-3. 把 `ProbeCaptureObservation` 映射到正式 `SourceEnvelope + EvidenceItem`，不要让后端直接依赖 iOS 临时结构。
-4. 再做图片/音频解析器，先输出 `AtomicObservation`，不要直接写 `MemoryEvent`。
+3. 增加 `evidence-selection-record.schema.json`，用真实连续图片校准质量、视觉相似度和语义增量阈值。
+4. 把 `ProbeCaptureObservation` 映射到正式 `SourceEnvelope + EvidenceItem`，不要让后端直接依赖 iOS 临时结构。
+5. 再做图片/音频解析器，先输出 `AtomicObservation`，不要直接写 `MemoryEvent`。

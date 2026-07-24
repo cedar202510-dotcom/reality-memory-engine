@@ -1,0 +1,21 @@
+{
+  "schema_ref": "rme.capture-session.v1",
+  "capture_session_id": "ses_910d287d0e63456fb374a1896d11f85e",
+  "device_id": "device_legacy_ios_cxrl_fixture",
+  "state": "PAUSED",
+  "started_at": "2026-07-24T09:24:06Z",
+  "started_monotonic_ns": null,
+  "ended_at": null,
+  "ended_monotonic_ns": null,
+  "start_reason": "DEBUG_TEST",
+  "end_reason": null,
+  "policy_snapshot_id": "policy_910d287d0e63456fb374a1896d11f85e",
+  "consent_notice_version": "legacy-explicit-test-export/1.0",
+  "runtime_version": "ios-cxrl-legacy",
+  "extensions": {
+    "source_schema_version": "rme.capture-session.v1",
+    "monotonic_time_missing": true,
+    "original_state": "paused",
+    "original_session_id": "910D287D-0E63-456F-B374-A1896D11F85E"
+  }
+}

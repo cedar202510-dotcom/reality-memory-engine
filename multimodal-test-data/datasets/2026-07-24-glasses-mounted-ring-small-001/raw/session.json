@@ -1,0 +1,221 @@
+{
+  "audioObservations" : [
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 172160,
+      "channels" : 1,
+      "codec" : "PCM_S16LE_16KHZ",
+      "durationMilliseconds" : 8000,
+      "endedAt" : "2026-07-24T09:24:16Z",
+      "id" : "72568110-3527-495E-9C06-5EFA18E1EC67",
+      "localMediaReference" : "evidence/72568110-3527-495e-9c06-5efa18e1ec67.pcm",
+      "peakDBFS" : -16.268374990055616,
+      "sessionID" : "910D287D-0E63-456F-B374-A1896D11F85E",
+      "startedAt" : "2026-07-24T09:24:08Z",
+      "trigger" : "RING_MOTION_WINDOW",
+      "triggerDecisionID" : "22C1176E-2CD3-49CC-8110-1D9AA3DF8CB8"
+    }
+  ],
+  "audioPolicy" : {
+    "maxPreRollBytes" : 32000,
+    "maxSegmentMilliseconds" : 15000,
+    "minSegmentMilliseconds" : 400,
+    "rawAudioPersistedOnlyWhenRetainLocalSamples" : true,
+    "sessionVADEnabled" : false,
+    "silenceEndMilliseconds" : 1000,
+    "speechStartFrames" : 3,
+    "streamCodec" : "PCM_S16LE_16KHZ",
+    "vadThresholdDBFS" : -38
+  },
+  "auditEvents" : [
+    {
+      "detail" : "interval=30s",
+      "id" : "63CFAAD3-2198-4F37-BCD2-76151E3D045D",
+      "occurredAt" : "2026-07-24T09:24:06Z",
+      "type" : "SESSION_STARTED"
+    },
+    {
+      "detail" : "decision=22c1176e-2cd3-49cc-8110-1d9aa3df8cb8",
+      "id" : "00BFD17F-F171-46C9-AB5D-1C242CBE05E3",
+      "occurredAt" : "2026-07-24T09:24:08Z",
+      "type" : "RING_RAPID_MOVEMENT_DETECTED"
+    },
+    {
+      "detail" : "失败：戒指蓝牙断开：The connection has timed out unexpectedly.",
+      "id" : "388D19B9-4A4F-4921-905A-451692CB8FCF",
+      "occurredAt" : "2026-07-24T09:24:10Z",
+      "type" : "RING_DISCONNECTED"
+    },
+    {
+      "id" : "EFFAA73A-4546-43AA-BDF3-53D0E7D05B3F",
+      "occurredAt" : "2026-07-24T09:24:11Z",
+      "type" : "CAPTURE_SUCCEEDED"
+    },
+    {
+      "detail" : "decision=22c1176e-2cd3-49cc-8110-1d9aa3df8cb8;bytes=172160",
+      "id" : "07E50E56-1BA4-431F-A7CB-A2A67B4DCE05",
+      "occurredAt" : "2026-07-24T09:24:16Z",
+      "type" : "RING_TRIGGER_AUDIO_WINDOW_COMPLETED"
+    },
+    {
+      "id" : "937A98C8-7A03-4634-9104-B6882B3B798F",
+      "occurredAt" : "2026-07-24T09:24:39Z",
+      "type" : "CAPTURE_SUCCEEDED"
+    },
+    {
+      "id" : "325F9B40-B7B6-4E4C-8F82-2912A87B1F00",
+      "occurredAt" : "2026-07-24T09:25:10Z",
+      "type" : "CAPTURE_SUCCEEDED"
+    },
+    {
+      "id" : "2F3E631B-7625-44BB-ACC0-F0DC5028BBF5",
+      "occurredAt" : "2026-07-24T09:25:42Z",
+      "type" : "CAPTURE_SUCCEEDED"
+    },
+    {
+      "id" : "8BF4261F-804E-4C71-A2EB-EDEB74326423",
+      "occurredAt" : "2026-07-24T09:26:12Z",
+      "type" : "CAPTURE_SUCCEEDED"
+    },
+    {
+      "detail" : "USER_PAUSED",
+      "id" : "63E185FD-4561-479C-8DF1-FC78783334FC",
+      "occurredAt" : "2026-07-24T09:26:20Z",
+      "type" : "SESSION_PAUSED"
+    }
+  ],
+  "deviceSummaryAtStart" : "尚未读取",
+  "id" : "910D287D-0E63-456F-B374-A1896D11F85E",
+  "intervalSeconds" : 30,
+  "localMediaTTLSeconds" : 86400,
+  "observations" : [
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 48414,
+      "captureLatencyMilliseconds" : 3143,
+      "completedAt" : "2026-07-24T09:24:11Z",
+      "deviceSummary" : "尚未读取",
+      "id" : "1847EED2-4950-46C2-B2A7-CC4E007C6A62",
+      "localMediaReference" : "evidence/1847eed2-4950-46c2-b2a7-cc4e007c6a62.webp",
+      "outcome" : "SUCCEEDED",
+      "scheduledAt" : "2026-07-24T09:24:08Z",
+      "sessionID" : "910D287D-0E63-456F-B374-A1896D11F85E",
+      "trigger" : "RING_MOTION",
+      "triggerDecisionID" : "22C1176E-2CD3-49CC-8110-1D9AA3DF8CB8",
+      "wearingStatus" : "未知"
+    },
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 84290,
+      "captureLatencyMilliseconds" : 3756,
+      "completedAt" : "2026-07-24T09:24:39Z",
+      "deviceSummary" : "尚未读取",
+      "id" : "693DD4C4-548F-4752-AA99-128506C07925",
+      "localMediaReference" : "evidence/693dd4c4-548f-4752-aa99-128506c07925.webp",
+      "outcome" : "SUCCEEDED",
+      "scheduledAt" : "2026-07-24T09:24:36Z",
+      "sessionID" : "910D287D-0E63-456F-B374-A1896D11F85E",
+      "trigger" : "PERIODIC",
+      "wearingStatus" : "未知"
+    },
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 86082,
+      "captureLatencyMilliseconds" : 3698,
+      "completedAt" : "2026-07-24T09:25:10Z",
+      "deviceSummary" : "尚未读取",
+      "id" : "97538816-E974-4B75-8938-124C01192810",
+      "localMediaReference" : "evidence/97538816-e974-4b75-8938-124c01192810.webp",
+      "outcome" : "SUCCEEDED",
+      "scheduledAt" : "2026-07-24T09:25:06Z",
+      "sessionID" : "910D287D-0E63-456F-B374-A1896D11F85E",
+      "trigger" : "PERIODIC",
+      "wearingStatus" : "未知"
+    },
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 86316,
+      "captureLatencyMilliseconds" : 5062,
+      "completedAt" : "2026-07-24T09:25:42Z",
+      "deviceSummary" : "尚未读取",
+      "id" : "BE464EE1-4878-4B7D-B223-8FFE80186E6D",
+      "localMediaReference" : "evidence/be464ee1-4878-4b7d-b223-8ffe80186e6d.webp",
+      "outcome" : "SUCCEEDED",
+      "scheduledAt" : "2026-07-24T09:25:37Z",
+      "sessionID" : "910D287D-0E63-456F-B374-A1896D11F85E",
+      "trigger" : "PERIODIC",
+      "wearingStatus" : "未知"
+    },
+    {
+      "analysisState" : "PENDING_LOCAL",
+      "applicationState" : "前台",
+      "byteCount" : 74474,
+      "captureLatencyMilliseconds" : 4064,
+      "completedAt" : "2026-07-24T09:26:12Z",
+      "deviceSummary" : "尚未读取",
+      "id" : "46F79771-8FDE-410E-A74E-0AFAA11A1626",
+      "localMediaReference" : "evidence/46f79771-8fde-410e-a74e-0afaa11a1626.webp",
+      "outcome" : "SUCCEEDED",
+      "scheduledAt" : "2026-07-24T09:26:08Z",
+      "sessionID" : "910D287D-0E63-456F-B374-A1896D11F85E",
+      "trigger" : "PERIODIC",
+      "wearingStatus" : "未知"
+    }
+  ],
+  "retainLocalSamples" : true,
+  "ringBatchCount" : 13,
+  "ringDataReference" : "ring/imu.ndjson",
+  "ringHardwareEvents" : [
+
+  ],
+  "ringMotionAssessments" : [
+    {
+      "captureRequested" : true,
+      "classification" : "RAPID_MOVEMENT",
+      "detectedAt" : "2026-07-24T09:24:08Z",
+      "detectorRuleVersion" : "rapid-movement.raw-threshold.v1",
+      "displayLabel" : "快速移动",
+      "id" : "22C1176E-2CD3-49CC-8110-1D9AA3DF8CB8",
+      "peakAccelerationDeltaRaw" : 5078.189736510442,
+      "peakGyroscopeMagnitudeRaw" : 4492.165958644004,
+      "requestedModalities" : [
+        "IMAGE",
+        "AUDIO"
+      ],
+      "sampleCount" : 26,
+      "sensitivity" : "medium",
+      "sessionID" : "910D287D-0E63-456F-B374-A1896D11F85E",
+      "windowEndedAt" : "2026-07-24T09:24:08Z",
+      "windowStartedAt" : "2026-07-24T09:24:08Z"
+    }
+  ],
+  "ringPolicy" : {
+    "accelerationDeltaThresholdRaw" : 5000,
+    "detectorRuleVersion" : "rapid-movement.raw-threshold.v1",
+    "gyroscopeMagnitudeThresholdRaw" : 9000,
+    "rapidMovementTriggerEnabled" : true,
+    "sensitivity" : "medium",
+    "sensorCollectionEnabled" : true,
+    "triggerCooldownMilliseconds" : 8000,
+    "triggeredAudioEnabled" : true,
+    "triggeredAudioWindowMilliseconds" : 8000
+  },
+  "ringSampleCount" : 338,
+  "ringSensor" : {
+    "accelRangeG" : 16,
+    "deviceID" : "8140c5e1-bd87-69ef-1662-d802a49f3b51",
+    "deviceName" : "ring",
+    "gyroRangeDPS" : 2000,
+    "sampleRateHz" : 100
+  },
+  "ringSequenceGapCount" : 0,
+  "schemaVersion" : "rme.capture-session.v1",
+  "startedAt" : "2026-07-24T09:24:06Z",
+  "state" : "paused",
+  "uploadAllowed" : false
+}

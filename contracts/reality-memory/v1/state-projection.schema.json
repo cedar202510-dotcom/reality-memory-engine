@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/contracts/v1/state-projection.schema.json",
+  "title": "StateProjection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_ref",
+    "projection_id",
+    "projection_type",
+    "subject_id",
+    "key",
+    "value",
+    "as_of",
+    "source_event_ids",
+    "confidence",
+    "freshness",
+    "projection_version"
+  ],
+  "properties": {
+    "schema_ref": {
+      "const": "rme.state-projection.v1"
+    },
+    "projection_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "projection_type": {
+      "type": "string"
+    },
+    "subject_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1
+    },
+    "value": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "as_of": {
+      "$ref": "common.schema.json#/$defs/utcTime"
+    },
+    "source_event_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "freshness": {
+      "enum": [
+        "CURRENT",
+        "STALE",
+        "UNKNOWN"
+      ]
+    },
+    "projection_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  }
+}

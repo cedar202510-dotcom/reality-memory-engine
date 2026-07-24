@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/contracts/v1/capture-window.schema.json",
+  "title": "CaptureWindow",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_ref",
+    "capture_window_id",
+    "capture_session_id",
+    "capture_intent_id",
+    "window_start",
+    "window_end",
+    "monotonic_start_ns",
+    "monotonic_end_ns",
+    "requested_modalities",
+    "policy_snapshot_id",
+    "state"
+  ],
+  "properties": {
+    "schema_ref": {
+      "const": "rme.capture-window.v1"
+    },
+    "capture_window_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "capture_session_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "capture_intent_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "window_start": {
+      "$ref": "common.schema.json#/$defs/utcTime"
+    },
+    "window_end": {
+      "$ref": "common.schema.json#/$defs/utcTime"
+    },
+    "monotonic_start_ns": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "monotonic_end_ns": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "requested_modalities": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/modality"
+      }
+    },
+    "policy_snapshot_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "state": {
+      "enum": [
+        "OPEN",
+        "FINALIZING",
+        "FINALIZED",
+        "CANCELLED"
+      ]
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  }
+}

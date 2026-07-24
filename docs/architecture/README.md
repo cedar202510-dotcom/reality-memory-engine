@@ -280,7 +280,7 @@ RV101 开发线尚未到位，当前只能先走手机协同路径：
 - 当前三层部署和数据通道决策以本文件及三份分层文档为工程口径。
 - `docs/engineering/Reality-Memory-Engine-Engineering-Architecture-v1.3.md`
   保留完整流水线解释。
-- `docs/engineering/Reality-Memory-Engine-Contract-Review-v0.1.md`
-  保留第一次数据契约 Review 结论。
-- 后续正式 JSON Schema 应放入独立 `contracts/` 目录，并由采集、云端和 Agent
-  三方共同运行契约测试。
+- `docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md`
+  与 `contracts/reality-memory/v1/` 是当前正式数据契约和机器 Schema。
+- `docs/engineering/archive/Reality-Memory-Engine-Contract-Review-v0.1.md`
+  保留第一次数据契约 Review 结论，仅作历史参考。

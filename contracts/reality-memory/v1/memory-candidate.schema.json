@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/contracts/v1/memory-candidate.schema.json",
+  "title": "MemoryCandidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_ref",
+    "memory_candidate_id",
+    "candidate_type",
+    "subject",
+    "predicate",
+    "object",
+    "valid_time",
+    "supporting_bundle_ids",
+    "supporting_observation_ids",
+    "confidence",
+    "conflicts",
+    "policy_decision",
+    "candidate_procedure_version"
+  ],
+  "properties": {
+    "schema_ref": {
+      "const": "rme.memory-candidate.v1"
+    },
+    "memory_candidate_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "candidate_type": {
+      "enum": [
+        "OBJECT_OBSERVED_AT",
+        "OBJECT_MOVED",
+        "CONSUMABLE_LEVEL_OBSERVED",
+        "PREFERENCE_STATED",
+        "TASK_STATED",
+        "USER_CORRECTION",
+        "FORGET_REQUESTED"
+      ]
+    },
+    "subject": {
+      "$ref": "common.schema.json#/$defs/entityRef"
+    },
+    "predicate": {
+      "type": "string",
+      "minLength": 1
+    },
+    "object": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": true
+    },
+    "valid_time": {
+      "$ref": "common.schema.json#/$defs/timeRange"
+    },
+    "supporting_bundle_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      }
+    },
+    "supporting_observation_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      }
+    },
+    "policy_decision": {
+      "enum": [
+        "AUTO_GATE",
+        "REVIEW_OR_RULE_GATE",
+        "USER_REVIEW_REQUIRED",
+        "REJECTED"
+      ]
+    },
+    "candidate_procedure_version": {
+      "type": "string"
+    },
+    "supersedes_candidate_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  }
+}

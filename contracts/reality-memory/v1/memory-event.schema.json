@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/contracts/v1/memory-event.schema.json",
+  "title": "MemoryEvent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_ref",
+    "memory_event_id",
+    "event_type",
+    "subject",
+    "predicate",
+    "object",
+    "recorded_at",
+    "valid_time",
+    "source_candidate_ids",
+    "confidence",
+    "policy_snapshot_id",
+    "status"
+  ],
+  "properties": {
+    "schema_ref": {
+      "const": "rme.memory-event.v1"
+    },
+    "memory_event_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "event_type": {
+      "enum": [
+        "OBJECT_OBSERVED_AT",
+        "OBJECT_MOVED",
+        "CONSUMABLE_LEVEL_OBSERVED",
+        "PREFERENCE_STATED",
+        "TASK_STATED",
+        "USER_CORRECTION",
+        "FORGET_REQUESTED"
+      ]
+    },
+    "subject": {
+      "$ref": "common.schema.json#/$defs/entityRef"
+    },
+    "predicate": {
+      "type": "string",
+      "minLength": 1
+    },
+    "object": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": true
+    },
+    "recorded_at": {
+      "$ref": "common.schema.json#/$defs/utcTime"
+    },
+    "valid_time": {
+      "$ref": "common.schema.json#/$defs/timeRange"
+    },
+    "source_candidate_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "policy_snapshot_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "supersedes_event_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "correction_target_event_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "ACTIVE",
+        "SUPERSEDED",
+        "REDACTED",
+        "FORGOTTEN"
+      ]
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  }
+}

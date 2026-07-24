@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reality-memory.local/contracts/v1/atomic-observation.schema.json",
+  "title": "AtomicObservation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_ref",
+    "observation_id",
+    "observation_type",
+    "time_range",
+    "capture_window_id",
+    "source_refs",
+    "content",
+    "confidence",
+    "provenance",
+    "usage_constraints"
+  ],
+  "properties": {
+    "schema_ref": {
+      "const": "rme.atomic-observation.v1"
+    },
+    "observation_id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "observation_type": {
+      "enum": [
+        "VISUAL_OBJECT",
+        "VISUAL_ATTRIBUTE",
+        "SPATIAL_RELATION",
+        "VISIBLE_TEXT",
+        "SCENE_CONTEXT",
+        "TRANSCRIPT_SEGMENT",
+        "SPEECH_ACT",
+        "EXPRESSED_SENTIMENT",
+        "MOTION_SIGNAL",
+        "DEVICE_STATE",
+        "ONLINE_RECORD"
+      ]
+    },
+    "time_range": {
+      "$ref": "common.schema.json#/$defs/timeRange"
+    },
+    "capture_window_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "common.schema.json#/$defs/observationSourceRef"
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/evidenceRef"
+      }
+    },
+    "content": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": true
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "provenance": {
+      "$ref": "common.schema.json#/$defs/provenance"
+    },
+    "usage_constraints": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "NO_DIRECT_FACT_WRITE",
+          "NO_IDENTITY_INFERENCE",
+          "NO_LONG_TERM_MEDIA_DEPENDENCY",
+          "USER_REVIEW_REQUIRED"
+        ]
+      }
+    },
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/extensions"
+    }
+  }
+}
