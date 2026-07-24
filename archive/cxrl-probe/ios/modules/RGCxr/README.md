@@ -1089,4 +1089,4 @@ enum RGCxrSubCmd: String {
 ### C. 参考资料
 
 - [RGCxrProtocol.swift](./RGCxrCore/Classes/RGCxrProtocol.swift)
-- [iOS 保活策略.md](./iOS 保活策略.md)
+- `iOS 保活策略.md`（历史仓库未包含该文件，保留名称用于追溯）

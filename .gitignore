@@ -33,6 +33,9 @@ xcuserdata/
 # Device/app runtime exports
 **/device-backups/
 **/audio-vad-test/
+**/device-exports/
+**/device-test-results/
+**/release-bundles/
 
 # Python
 __pycache__/

@@ -1,9 +1,11 @@
 # 云端记忆平台技术架构
 
-> 文档版本：v0.2  
+> 文档版本：v0.3
 > 负责范围：数据接入、证据管理、模态解析、时间融合、事实事件和当前状态  
 > 上游接口：[数据采集技术架构](01-Data-Capture-Architecture.md)  
 > 下游接口：[Agent 调用技术架构](03-Agent-Access-Architecture.md)
+> 通信边界：[设备与云端通信](05-Device-Cloud-Communication.md)
+> 当前状态：云端职责边界已明确；解析模型、沉淀规则和提醒业务字段待专项 review
 
 ## 1. 目标
 
@@ -62,6 +64,9 @@ audit-records
 
 调用层默认不接收原始图片、视频和音频。
 
+`memory-signals` 只表示“可能值得提醒的结构化信号”。它是否转成提醒、提醒业务
+字段如何定义、由哪个终端投递，尚未冻结，不能由 Memory Platform 直接写死。
+
 ## 3. 总体处理链
 
 ```text
@@ -105,7 +110,7 @@ SourceEnvelope + EvidenceItem
 | Event Store | 保存不可变的长期事实事件和纠正关系 |
 | Projection Engine | 从事件流计算对象、偏好、任务和活动的当前状态 |
 | Query Service | 提供查找、时间线、状态和解释接口 |
-| Signal Service | 把值得关注的状态变化转成可订阅信号 |
+| Signal Service | 把值得关注的状态变化转成可订阅信号，不直接决定最终提醒文案 |
 | Privacy & Audit | 删除、近窗遗忘、访问审计和最小墓碑 |
 
 首个闭环可以部署成较少的进程，但逻辑职责不能混合。例如单个后端进程可以同时
@@ -501,16 +506,21 @@ scope = 当前实例或一般偏好待定
 
 ## 14. API 和事件主题
 
-建议最小入口：
+上行 Evidence 的当前最小入口以 v1 数据契约为准：
 
 ```text
-POST /v1/source-envelopes
-POST /v1/evidence/upload-intents
-POST /v1/evidence/{id}/complete
-POST /v1/evidence/{id}/deleted
+POST /internal/v1/evidence/init
+PUT  <short-lived-upload-url>
+POST /internal/v1/evidence/{id}/complete
+POST /internal/v1/evidence/{id}/delete-receipt
 POST /v1/capture-sessions
 PATCH /v1/capture-sessions/{id}
 ```
+
+是否把采集会话和小型设备事件改为批量接口、是否统一 `/internal/v1` 路径，仍可在
+服务实现 review 中调整，但对象 Schema、幂等和状态含义不能改变。下行设备收件箱
+和回执接口见 [设备与云端通信](05-Device-Cloud-Communication.md)，当前仍是建议
+接口。
 
 内部事件：
 
@@ -558,7 +568,7 @@ evidence.deleted
 
 ## 16. 最小实现顺序
 
-1. 建立版本化 Schema 仓库和契约测试。
+1. 使用现有 `contracts/reality-memory/v1/` 建立持续集成契约测试。
 2. 实现 SourceEnvelope、EvidenceItem 和 CaptureIntent Ingest。
 3. 使用现有真实样本实现图片与音频 Extractor。
 4. 输出 AtomicObservation，并保存来源引用。
@@ -591,5 +601,7 @@ evidence.deleted
 - 哪些低置信观察可以保留多久。
 - 实体归因的自动确认门槛。
 - 哪些结构化记忆允许 Agent 主动订阅。
+- `SignalCandidate` 如何进入提醒决策，哪些字段可以下发到眼镜。
+- 下行提醒与用户确认如何回到纠正、任务或审计流程。
 
 这些开放问题不影响先冻结对象边界、来源关系、幂等、删除和事实写入规则。

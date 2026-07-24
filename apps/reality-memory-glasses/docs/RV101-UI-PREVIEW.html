@@ -1,0 +1,980 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RealGit RV101 UI 提案</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --glass-green: #00ff00;
+      --page: #111414;
+      --panel: #191d1c;
+      --panel-2: #212625;
+      --line: #38403e;
+      --text: #f3f7f5;
+      --muted: #a8b1ae;
+      --note: #d8b968;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--page);
+      color: var(--text);
+      font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button {
+      font: inherit;
+      letter-spacing: 0;
+    }
+
+    body {
+      padding: 28px;
+    }
+
+    .page {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+    }
+
+    .page-header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 24px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .page-header h1 {
+      margin: 5px 0 0;
+      font-size: 26px;
+      line-height: 1.25;
+    }
+
+    .kicker {
+      margin: 0;
+      color: var(--glass-green);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .draft-note {
+      max-width: 420px;
+      margin: 0;
+      color: var(--note);
+      font-size: 13px;
+      line-height: 1.55;
+      text-align: right;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(540px, 1fr) minmax(300px, 370px);
+      gap: 36px;
+      align-items: start;
+    }
+
+    .stage {
+      min-width: 0;
+      padding: 24px 24px 30px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #0d0f0f;
+    }
+
+    .stage-title,
+    .panel-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .stage-title h2,
+    .panel-title h2 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .stage-title span,
+    .panel-title span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .screen-rig {
+      position: relative;
+      width: min(480px, calc(100vw - 110px));
+      margin: 32px auto 20px;
+    }
+
+    .dimension-x {
+      position: absolute;
+      top: -24px;
+      left: 0;
+      width: 100%;
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .dimension-x::before,
+    .dimension-x::after {
+      position: absolute;
+      top: 7px;
+      width: 39%;
+      height: 1px;
+      background: var(--line);
+      content: "";
+    }
+
+    .dimension-x::before {
+      left: 0;
+    }
+
+    .dimension-x::after {
+      right: 0;
+    }
+
+    .dimension-y {
+      position: absolute;
+      top: 0;
+      right: -37px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 100%;
+      border-left: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      writing-mode: vertical-rl;
+    }
+
+    .glass-canvas {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      overflow: hidden;
+      border: 1px solid #2e3634;
+      background: #000;
+      container-type: inline-size;
+    }
+
+    .world-view {
+      position: absolute;
+      inset: 0;
+      display: none;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .glass-canvas.view-mode .world-view {
+      display: block;
+    }
+
+    .safe-rule {
+      position: absolute;
+      left: 0;
+      z-index: 5;
+      display: none;
+      width: 100%;
+      border-top: 1px dashed rgb(0 255 0 / 45%);
+      pointer-events: none;
+    }
+
+    .show-rulers .safe-rule {
+      display: block;
+    }
+
+    .safe-rule.top {
+      top: 12.5%;
+    }
+
+    .safe-rule.bottom {
+      bottom: 12.5%;
+    }
+
+    .safe-rule span {
+      position: absolute;
+      top: 4px;
+      left: 6px;
+      color: rgb(0 255 0 / 65%);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: clamp(7px, 2.1cqw, 10px);
+    }
+
+    .safe-rule.bottom span {
+      top: auto;
+      bottom: 4px;
+    }
+
+    .glass-ui {
+      position: absolute;
+      top: 12.5%;
+      right: 0;
+      bottom: 12.5%;
+      left: 0;
+      z-index: 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 32px;
+      color: var(--glass-green);
+    }
+
+    .glass-ui.is-blank {
+      display: none;
+    }
+
+    .message {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      max-width: 400px;
+      min-height: 190px;
+      text-align: center;
+    }
+
+    .message.line-layout {
+      align-items: flex-start;
+      min-height: auto;
+      padding-left: 24px;
+      border-left: 2px solid var(--glass-green);
+      text-align: left;
+    }
+
+    .glass-icon {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      margin-bottom: 16px;
+      color: var(--glass-green);
+      font-size: 22px;
+      font-weight: 400;
+      line-height: 1;
+    }
+
+    .glass-icon.record {
+      position: relative;
+      width: 24px;
+      height: 24px;
+      margin-bottom: 18px;
+      border: 1.5px solid var(--glass-green);
+      border-radius: 50%;
+      font-size: 0;
+    }
+
+    .glass-icon.record::after {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--glass-green);
+      content: "";
+      animation: sensing-blink 1.6s steps(1, end) infinite;
+    }
+
+    @keyframes sensing-blink {
+      0%,
+      58% {
+        opacity: 1;
+      }
+
+      59%,
+      100% {
+        opacity: 0.28;
+      }
+    }
+
+    .glass-icon.check,
+    .glass-icon.alert {
+      width: 24px;
+      height: 24px;
+      border: 1.5px solid var(--glass-green);
+      border-radius: 50%;
+      font-size: 14px;
+    }
+
+    .message.line-layout .glass-icon {
+      margin-bottom: 10px;
+    }
+
+    .message.line-layout .glass-icon:not(.alert):not(.check) {
+      width: 32px;
+      height: 32px;
+    }
+
+    .glass-title {
+      max-width: 100%;
+      margin: 0;
+      color: var(--glass-green);
+      font-size: clamp(14px, 3.55cqw, 17px);
+      font-weight: 600;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .glass-subtitle {
+      max-width: 100%;
+      margin: 10px 0 0;
+      color: var(--glass-green);
+      font-size: clamp(10px, 2.5cqw, 12px);
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .key-hint {
+      margin-top: 18px;
+      color: var(--glass-green);
+      font-size: clamp(9px, 2.3cqw, 11px);
+    }
+
+    .message[hidden],
+    .icon-lab[hidden] {
+      display: none;
+    }
+
+    .icon-lab {
+      width: 100%;
+      color: var(--glass-green);
+    }
+
+    .icon-lab-title {
+      margin: 0 0 18px;
+      color: var(--glass-green);
+      font-size: clamp(10px, 2.5cqw, 12px);
+      font-weight: 400;
+      text-align: center;
+    }
+
+    .icon-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: clamp(12px, 4cqw, 19px) clamp(8px, 3cqw, 14px);
+      width: 100%;
+    }
+
+    .icon-sample {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      color: var(--glass-green);
+    }
+
+    .icon-sample svg {
+      width: clamp(25px, 6.7cqw, 32px);
+      height: clamp(25px, 6.7cqw, 32px);
+      overflow: visible;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.5;
+    }
+
+    .icon-sample span {
+      margin-top: 8px;
+      color: var(--glass-green);
+      font-size: clamp(8px, 2.1cqw, 10px);
+      line-height: 1;
+    }
+
+    .icon-sample.sensing svg .pulse-dot {
+      fill: currentColor;
+      stroke: none;
+      animation: sensing-blink 1.6s steps(1, end) infinite;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .glass-icon.record::after,
+      .icon-sample.sensing svg .pulse-dot {
+        animation: none;
+      }
+    }
+
+    .stage-foot {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .stage-foot b {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .inspector {
+      display: grid;
+      gap: 16px;
+    }
+
+    .panel {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+    }
+
+    .scenario-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .scenario-list button,
+    .view-controls button,
+    .copy-option {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: var(--panel-2);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .scenario-list button:hover,
+    .scenario-list button:focus-visible,
+    .view-controls button:hover,
+    .view-controls button:focus-visible,
+    .copy-option:hover,
+    .copy-option:focus-visible {
+      border-color: var(--glass-green);
+      outline: none;
+    }
+
+    .scenario-list button[aria-pressed="true"],
+    .view-controls button[aria-pressed="true"],
+    .copy-option[aria-pressed="true"] {
+      border-color: var(--glass-green);
+      color: var(--glass-green);
+    }
+
+    .view-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .copy-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .copy-option {
+      padding: 11px 12px;
+      text-align: left;
+    }
+
+    .copy-option b,
+    .copy-option span {
+      display: block;
+    }
+
+    .copy-option b {
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+
+    .copy-option span {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .copy-option[aria-pressed="true"] span {
+      color: var(--glass-green);
+    }
+
+    .delivery-meta {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 8px 14px;
+      margin: 0;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .delivery-meta dt {
+      color: var(--muted);
+    }
+
+    .delivery-meta dd {
+      margin: 0;
+      color: var(--text);
+    }
+
+    .design-rules {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .design-rules li + li {
+      margin-top: 7px;
+    }
+
+    .design-rules b {
+      color: var(--glass-green);
+    }
+
+    @media (max-width: 960px) {
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .inspector {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .panel:first-child,
+      .panel:last-child {
+        grid-column: 1 / -1;
+      }
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 16px;
+      }
+
+      .page-header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .draft-note {
+        text-align: left;
+      }
+
+      .stage {
+        padding: 16px 12px 24px;
+      }
+
+      .screen-rig {
+        width: min(100%, 480px);
+      }
+
+      .dimension-y {
+        display: none;
+      }
+
+      .inspector {
+        grid-template-columns: 1fr;
+      }
+
+      .panel:first-child,
+      .panel:last-child {
+        grid-column: auto;
+      }
+
+      .stage-foot {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="page-header">
+      <div>
+        <p class="kicker">RealGit · RV101 Glass UI Study</p>
+        <h1>单绿、悬浮、低打扰的眼镜提醒</h1>
+      </div>
+      <p class="draft-note">佩戴告知、空白感知、取消状态和通用提醒已同步到 Android 0.1.1。右侧控制面板与图标探索只用于电脑预览，不属于眼镜界面。</p>
+    </header>
+
+    <div class="workspace">
+      <section class="stage" aria-labelledby="stage-title">
+        <div class="stage-title">
+          <h2 id="stage-title">眼镜实际输出画布</h2>
+          <span>黑色像素不发光，实际视觉上透明</span>
+        </div>
+
+        <div class="screen-rig">
+          <div class="dimension-x">480 px</div>
+          <div class="dimension-y">640 px</div>
+          <div class="glass-canvas show-rulers" id="glass-canvas">
+            <img
+              class="world-view"
+              src="../../../multimodal-test-data/datasets/2026-07-24-glasses-mounted-ring-small-001/raw/evidence/be464ee1-4878-4b7d-b223-8ffe80186e6d.webp"
+              alt=""
+            >
+            <div class="safe-rule top"><span>y = 80</span></div>
+            <div class="safe-rule bottom"><span>y = 560</span></div>
+
+            <div class="glass-ui" id="glass-ui">
+              <div class="message" id="message">
+                <div class="glass-icon record" id="glass-icon" aria-hidden="true"></div>
+                <h3 class="glass-title" id="glass-title">RealGit 已开启现实感知</h3>
+                <p class="glass-subtitle" id="glass-subtitle">正在为您整理现实记忆</p>
+                <div class="key-hint" id="key-hint">单击取消本次</div>
+              </div>
+
+              <div class="icon-lab" id="icon-lab" hidden>
+                <p class="icon-lab-title">单绿线性图标探索 · 非产品页面</p>
+                <div class="icon-grid">
+                  <div class="icon-sample sensing">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <circle cx="12" cy="12" r="8"></circle>
+                      <circle class="pulse-dot" cx="12" cy="12" r="2.3"></circle>
+                    </svg>
+                    <span>感知</span>
+                  </div>
+                  <div class="icon-sample">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M19 5 5.8 10.7l5.4 2.1 2.1 5.4L19 5Z"></path>
+                      <path d="m11.2 12.8 3-3"></path>
+                    </svg>
+                    <span>位置</span>
+                  </div>
+                  <div class="icon-sample">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="5" y="4" width="14" height="16" rx="2"></rect>
+                      <path d="m8 12 2.2 2.2L16 8.5"></path>
+                    </svg>
+                    <span>任务</span>
+                  </div>
+                  <div class="icon-sample">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <rect x="3" y="7" width="16" height="10" rx="2"></rect>
+                      <path d="M21 10v4M6 12h4"></path>
+                    </svg>
+                    <span>耗材</span>
+                  </div>
+                  <div class="icon-sample">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <circle cx="12" cy="12" r="8.5"></circle>
+                      <path d="M12 7v5l3.3 2"></path>
+                    </svg>
+                    <span>时间</span>
+                  </div>
+                  <div class="icon-sample">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M12 3.5 19 6v5.2c0 4.4-2.9 7.7-7 9.3-4.1-1.6-7-4.9-7-9.3V6l7-2.5Z"></path>
+                      <path d="m7 17 10-10"></path>
+                    </svg>
+                    <span>隐私</span>
+                  </div>
+                  <div class="icon-sample">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="m12 3 1.3 4.7L18 9l-4.7 1.3L12 15l-1.3-4.7L6 9l4.7-1.3L12 3Z"></path>
+                      <path d="m18.5 14 .7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7.7-2.3Z"></path>
+                    </svg>
+                    <span>顾问</span>
+                  </div>
+                  <div class="icon-sample">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M4.7 9.7a10.3 10.3 0 0 1 14.6 0"></path>
+                      <path d="M7.8 12.8a6 6 0 0 1 8.4 0"></path>
+                      <path d="M10.5 15.5a2.2 2.2 0 0 1 3 0"></path>
+                      <circle cx="12" cy="18.5" r=".8"></circle>
+                    </svg>
+                    <span>连接</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stage-foot">
+          <span><b>物理画布</b><br>480 × 640 px</span>
+          <span><b>建议内容区</b><br>y = 80–560，共 480 px</span>
+          <span><b>实际输出颜色</b><br>#00FF00 单绿</span>
+          <span><b>标尺说明</b><br>虚线不进入眼镜 UI</span>
+        </div>
+      </section>
+
+      <aside class="inspector" aria-label="电脑端预览控制">
+        <section class="panel">
+          <div class="panel-title">
+            <h2>出现时机</h2>
+            <span>选择预览</span>
+          </div>
+          <div class="scenario-list">
+            <button type="button" data-scene="wear" aria-pressed="true">佩戴告知</button>
+            <button type="button" data-scene="blank" aria-pressed="false">正常空白</button>
+            <button type="button" data-scene="status" aria-pressed="false">状态查询</button>
+            <button type="button" data-scene="object" aria-pressed="false">物品查询回答</button>
+            <button type="button" data-scene="task" aria-pressed="false">任务提醒</button>
+            <button type="button" data-scene="stock" aria-pressed="false">耗材提醒</button>
+            <button type="button" data-scene="advisor" aria-pressed="false">顾问摘要（探索）</button>
+            <button type="button" data-scene="iconlab" aria-pressed="false">图标探索</button>
+            <button type="button" data-scene="cancelled" aria-pressed="false">本次已取消</button>
+            <button type="button" data-scene="privacy" aria-pressed="false">隐私状态</button>
+          </div>
+        </section>
+
+        <section class="panel" id="copy-panel">
+          <div class="panel-title">
+            <h2>佩戴文案候选</h2>
+            <span>尚未定稿</span>
+          </div>
+          <div class="copy-list">
+            <button class="copy-option" type="button" data-copy="a" aria-pressed="true">
+              <b>A · 推荐讨论稿</b>
+              <span>RealGit 已开启现实感知 / 正在为您整理现实记忆</span>
+            </button>
+            <button class="copy-option" type="button" data-copy="b" aria-pressed="false">
+              <b>B · 更有连续感</b>
+              <span>RealGit 现实感知已开启 / 正在延续您的现实记忆</span>
+            </button>
+            <button class="copy-option" type="button" data-copy="c" aria-pressed="false">
+              <b>C · 更强调去向</b>
+              <span>现实感知已开启 / 重要片段将整理到 RealGit</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">
+            <h2>查看方式</h2>
+            <span>只影响预览</span>
+          </div>
+          <div class="view-controls">
+            <button type="button" id="mode-button" aria-pressed="false">模拟透视</button>
+            <button type="button" id="ruler-button" aria-pressed="true">隐藏标尺</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">
+            <h2>当前呈现规则</h2>
+            <span>v0.2</span>
+          </div>
+          <dl class="delivery-meta">
+            <dt>显示时长</dt>
+            <dd id="duration">约 5 秒，随后恢复空白</dd>
+            <dt>语音</dt>
+            <dd id="voice">首次佩戴可短句播报</dd>
+            <dt>交互</dt>
+            <dd id="interaction">单击取消本次</dd>
+          </dl>
+        </section>
+
+        <section class="panel">
+          <ul class="design-rules">
+            <li><b>默认沉默：</b>持续感知时不常驻文字，不占据视野。</li>
+            <li><b>只有单绿：</b>不使用灰、黄、红等颜色区分状态。</li>
+            <li><b>最多两层：</b>一个结论，加一行必要补充或一个动作。</li>
+            <li><b>边框有含义：</b>仅用细线、圆点和清晰的圆形状态图标。</li>
+            <li><b>Agent 是顾问：</b>提供判断和建议，不扮演替用户做决定的管家。</li>
+            <li><b>详情回手机：</b>记忆列表、证据和设置在 RealGit 手机端查看。</li>
+          </ul>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    const scenes = {
+      blank: {
+        blank: true,
+        duration: "持续感知期间默认保持空白",
+        voice: "无",
+        interaction: "需要时通过按键或语音唤起"
+      },
+      wear: {
+        icon: "record",
+        title: "RealGit 已开启现实感知",
+        subtitle: "正在为您整理现实记忆",
+        keyHint: "单击取消本次",
+        duration: "约 5 秒，随后恢复空白",
+        voice: "首次佩戴可短句播报",
+        interaction: "单击取消本次；再次佩戴时重新开启"
+      },
+      status: {
+        icon: "dot",
+        iconText: "●",
+        title: "现实感知中",
+        subtitle: "",
+        keyHint: "单击取消本次",
+        duration: "用户主动查看后约 3 秒",
+        voice: "无",
+        interaction: "单击取消本次"
+      },
+      object: {
+        icon: "arrow",
+        iconText: "→",
+        title: "钥匙在客厅茶几右侧",
+        subtitle: "从当前位置向前，出门后左转",
+        lineLayout: true,
+        duration: "用户询问后显示，约 8 秒",
+        voice: "作为 Agent 查询回答播报",
+        interaction: "由用户主动询问触发，不主动推送"
+      },
+      task: {
+        icon: "alert",
+        iconText: "!",
+        title: "记得把资料给小王",
+        subtitle: "你已经到公司了",
+        keyHint: "单击知道了",
+        lineLayout: true,
+        duration: "约 8 秒或确认后消失",
+        voice: "可播报更短版本",
+        interaction: "单击确认"
+      },
+      stock: {
+        icon: "alert",
+        iconText: "!",
+        title: "洗衣液大约只够这次",
+        subtitle: "采购建议已放到 RealGit",
+        lineLayout: true,
+        duration: "约 6 秒",
+        voice: "默认无",
+        interaction: "详情回手机查看"
+      },
+      advisor: {
+        icon: "alert",
+        iconText: "!",
+        title: "今天有 2 件值得留意",
+        subtitle: "出门前带资料 · 洗衣液余量偏低",
+        lineLayout: true,
+        duration: "首页或顾问入口概念，平台权限待确认",
+        voice: "默认无",
+        interaction: "打开 RealGit 顾问后查看"
+      },
+      iconlab: {
+        gallery: true,
+        duration: "设计比较页面，不进入正式产品",
+        voice: "无",
+        interaction: "在电脑预览中比较图标语义"
+      },
+      cancelled: {
+        icon: "alert",
+        iconText: "×",
+        title: "本次现实感知已取消",
+        subtitle: "再次佩戴时重新开启",
+        duration: "约 3 秒，随后退出本次状态",
+        voice: "可播报“本次已取消”",
+        interaction: "无需操作"
+      },
+      privacy: {
+        icon: "alert",
+        iconText: "×",
+        title: "当前空间不记录",
+        subtitle: "离开后自动恢复",
+        duration: "保持到隐私状态解除",
+        voice: "可选",
+        interaction: "无需操作"
+      }
+    };
+
+    const wearCopies = {
+      a: {
+        title: "RealGit 已开启现实感知",
+        subtitle: "正在为您整理现实记忆"
+      },
+      b: {
+        title: "RealGit 现实感知已开启",
+        subtitle: "正在延续您的现实记忆"
+      },
+      c: {
+        title: "现实感知已开启",
+        subtitle: "重要片段将整理到 RealGit"
+      }
+    };
+
+    const canvas = document.querySelector("#glass-canvas");
+    const glassUi = document.querySelector("#glass-ui");
+    const message = document.querySelector("#message");
+    const iconLab = document.querySelector("#icon-lab");
+    const icon = document.querySelector("#glass-icon");
+    const title = document.querySelector("#glass-title");
+    const subtitle = document.querySelector("#glass-subtitle");
+    const keyHint = document.querySelector("#key-hint");
+    const duration = document.querySelector("#duration");
+    const voice = document.querySelector("#voice");
+    const interaction = document.querySelector("#interaction");
+    const sceneButtons = document.querySelectorAll("[data-scene]");
+    const copyButtons = document.querySelectorAll("[data-copy]");
+    const modeButton = document.querySelector("#mode-button");
+    const rulerButton = document.querySelector("#ruler-button");
+    let currentScene = "wear";
+    let currentCopy = "a";
+
+    function renderScene(name) {
+      currentScene = name;
+      const scene = scenes[name];
+      glassUi.classList.toggle("is-blank", Boolean(scene.blank));
+      message.classList.toggle("line-layout", Boolean(scene.lineLayout));
+      message.hidden = Boolean(scene.gallery);
+      iconLab.hidden = !scene.gallery;
+
+      if (!scene.blank && !scene.gallery) {
+        const copy = name === "wear" ? wearCopies[currentCopy] : scene;
+        title.textContent = copy.title;
+        subtitle.textContent = copy.subtitle || "";
+        subtitle.hidden = !copy.subtitle;
+        icon.className = `glass-icon ${scene.icon || ""}`;
+        icon.textContent = scene.iconText || "";
+        keyHint.textContent = scene.keyHint || "";
+        keyHint.hidden = !scene.keyHint;
+      }
+
+      duration.textContent = scene.duration;
+      voice.textContent = scene.voice;
+      interaction.textContent = scene.interaction;
+      sceneButtons.forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.scene === name));
+      });
+    }
+
+    sceneButtons.forEach((button) => {
+      button.addEventListener("click", () => renderScene(button.dataset.scene));
+    });
+
+    copyButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        currentCopy = button.dataset.copy;
+        copyButtons.forEach((item) => {
+          item.setAttribute("aria-pressed", String(item === button));
+        });
+        if (currentScene !== "wear") {
+          renderScene("wear");
+        } else {
+          renderScene(currentScene);
+        }
+      });
+    });
+
+    modeButton.addEventListener("click", () => {
+      const enabled = !canvas.classList.contains("view-mode");
+      canvas.classList.toggle("view-mode", enabled);
+      modeButton.setAttribute("aria-pressed", String(enabled));
+      modeButton.textContent = enabled ? "关闭透视" : "模拟透视";
+    });
+
+    rulerButton.addEventListener("click", () => {
+      const enabled = !canvas.classList.contains("show-rulers");
+      canvas.classList.toggle("show-rulers", enabled);
+      rulerButton.setAttribute("aria-pressed", String(enabled));
+      rulerButton.textContent = enabled ? "隐藏标尺" : "显示标尺";
+    });
+  </script>
+</body>
+</html>

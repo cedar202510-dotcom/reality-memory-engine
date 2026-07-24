@@ -13,6 +13,9 @@ Reality Memory Engine 的第一个云端后端：把眼镜/戒指/手机采集�
 
 ## 快速启动
 
+需要 Python 3.11+、PostgreSQL 16 和 pgvector。macOS 自带或 Xcode 附带的旧版
+Python 不作为运行环境。
+
 ```bash
 # 1. 起 PostgreSQL 16 + pgvector（端口 5432，库/用户/密码均为 rme）
 cd infra && docker compose up -d && cd ..
@@ -31,7 +34,7 @@ python3 -m venv .venv && ./.venv/bin/pip install -r requirements.txt
 ./.venv/bin/python scripts/smoke_demo.py
 
 # 6. 启动服务（默认 LLM_PROVIDER=fake，开箱即用）
-./.venv/bin/python -m uvicorn app.main:app --port 8000
+./.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8765
 ```
 
 启动时自动完成：建扩展 → seed 默认家庭+owner+默认设备 → 启动 outbox worker 与 TTL 清理 worker。

@@ -1,7 +1,8 @@
 # Reality Memory Engine 多模态数据契约 v1.0
 
-状态：可供采集端与结构化沉淀端并行开发
+状态：当前正式 v1 契约，可供采集端与结构化沉淀端并行开发
 适用范围：Rokid 眼镜原生 App、后端接入层、模态解析器、时间融合、记忆核心
+不含范围：云端下行设备消息、提醒业务载荷和 Agent 提醒决策
 机器契约：`contracts/reality-memory/v1/`
 
 ## 1. 这份契约解决什么
@@ -838,3 +839,20 @@ POST /internal/v1/evidence/{evidence_item_id}/delete-receipt
 - 网络切换、离线队列、温升、功耗和存储上限。
 
 这些取值通过新版本设备能力或校准配置下发，不修改本契约的核心语义。
+
+## 12. 本版本明确不包含的契约
+
+v1.0 只冻结“采集证据如何进入云端，以及云端如何形成可追溯记忆”的对象语义。
+以下内容尚未完成专项 review，因此不在 `contracts/reality-memory/v1/` 中提供正式
+Schema：
+
+- 云端发给眼镜的通用 `DeviceMessage`。
+- `ReminderSignal`、提醒文案、按钮和终端交互。
+- `DeliveryReceipt` 的最终状态与字段。
+- Agent、规则和用户策略之间的提醒决策分工。
+- 下行使用轮询、WebSocket、MQTT 或系统推送的最终选择。
+
+当前建议边界和联调顺序见
+[`05-Device-Cloud-Communication.md`](../architecture/05-Device-Cloud-Communication.md)。
+后续下行契约完成 review 后应使用独立 Schema 版本发布，不在现有 Evidence 对象中
+临时塞入提醒字段。

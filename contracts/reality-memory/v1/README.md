@@ -24,6 +24,10 @@
 
 `common.schema.json` 只提供共享定义，不单独作为业务消息发送。
 
+本目录当前不包含云端下行 `DeviceMessage`、提醒业务载荷或投递回执。这些内容仍在
+review，不能用 `extensions` 绕过版本流程塞进现有 v1 对象。建议边界见
+[`docs/architecture/04-Device-Cloud-Communication.md`](../../../docs/architecture/04-Device-Cloud-Communication.md)。
+
 ## 版本规则
 
 - `schema_ref` 是消息里的稳定版本，例如 `rme.evidence-item.v1`。

@@ -1,0 +1,219 @@
+package com.realitymemory.glasses
+
+import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.view.KeyEvent
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.realitymemory.glasses.runtime.RealityRuntimeService
+import com.realitymemory.glasses.runtime.RuntimeDisplayKind
+import com.realitymemory.glasses.runtime.RuntimeStatus
+import com.realitymemory.glasses.runtime.RuntimeStatusStore
+import com.realitymemory.glasses.runtime.SessionState
+import com.realitymemory.glasses.ui.GlassesUiView
+
+class MainActivity : ComponentActivity() {
+    private lateinit var glassesUi: GlassesUiView
+    private var currentStatus = RuntimeStatus(
+        state = SessionState.ARMED,
+        message = "",
+        lastEvidence = null,
+        displayKind = RuntimeDisplayKind.NONE,
+    )
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        if (hasPermissions()) {
+            startRuntimeAndOptionalPreview()
+        } else {
+            glassesUi.render(
+                RuntimeStatus(
+                    state = SessionState.BLOCKED,
+                    message = "需要相机和麦克风权限",
+                    lastEvidence = null,
+                    displayKind = RuntimeDisplayKind.BLOCKED,
+                ),
+            )
+        }
+    }
+
+    private val statusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            refresh()
+        }
+    }
+
+    private val glassesInputReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                ACTION_SPRITE_BUTTON_CLICK -> handleSingleClick()
+                ACTION_AI_START -> rememberNow()
+            }
+            if (isOrderedBroadcast) abortBroadcast()
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        buildUi()
+        registerReceivers()
+        refresh()
+        if (hasPermissions()) {
+            startRuntimeAndOptionalPreview()
+        } else {
+            permissionLauncher.launch(requiredPermissions())
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        maybeShowDebugReminder()
+    }
+
+    override fun onDestroy() {
+        runCatching { unregisterReceiver(statusReceiver) }
+        runCatching { unregisterReceiver(glassesInputReceiver) }
+        super.onDestroy()
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        return when (keyCode) {
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_BACK,
+            KeyEvent.KEYCODE_PROG_BLUE,
+            -> true
+            else -> super.onKeyDown(keyCode, event)
+        }
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+        if (event?.repeatCount != 0) return super.onKeyUp(keyCode, event)
+        return when (keyCode) {
+            KeyEvent.KEYCODE_ENTER -> {
+                handleSingleClick()
+                true
+            }
+            KeyEvent.KEYCODE_PROG_BLUE -> {
+                rememberNow()
+                true
+            }
+            KeyEvent.KEYCODE_BACK -> {
+                cancelCurrentSession()
+                true
+            }
+            else -> super.onKeyUp(keyCode, event)
+        }
+    }
+
+    private fun buildUi() {
+        glassesUi = GlassesUiView(this).apply {
+            setOnClickListener { handleSingleClick() }
+        }
+        setContentView(glassesUi)
+    }
+
+    private fun registerReceivers() {
+        ContextCompat.registerReceiver(
+            this,
+            statusReceiver,
+            IntentFilter(RuntimeStatusStore.ACTION_STATUS_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        val keyFilter = IntentFilter().apply {
+            priority = IntentFilter.SYSTEM_HIGH_PRIORITY
+            addAction(ACTION_SPRITE_BUTTON_CLICK)
+            addAction(ACTION_AI_START)
+        }
+        ContextCompat.registerReceiver(
+            this,
+            glassesInputReceiver,
+            keyFilter,
+            ContextCompat.RECEIVER_EXPORTED,
+        )
+    }
+
+    private fun startRuntimeAndOptionalPreview() {
+        sendRuntimeAction(RealityRuntimeService.ACTION_START_EXPLICIT)
+        maybeShowDebugReminder()
+    }
+
+    private fun maybeShowDebugReminder() {
+        if (!BuildConfig.DEBUG) return
+        val reminder = intent?.getStringExtra(EXTRA_DEBUG_REMINDER_TEXT) ?: return
+        intent?.removeExtra(EXTRA_DEBUG_REMINDER_TEXT)
+        glassesUi.postDelayed(
+            {
+                sendRuntimeAction(RealityRuntimeService.ACTION_TEST_REMINDER, reminder)
+            },
+            DEBUG_REMINDER_DELAY_MS,
+        )
+    }
+
+    private fun refresh() {
+        currentStatus = RuntimeStatusStore.read(this)
+        glassesUi.render(currentStatus)
+    }
+
+    private fun handleSingleClick() {
+        if (currentStatus.displayKind == RuntimeDisplayKind.REMINDER) {
+            sendRuntimeAction(RealityRuntimeService.ACTION_DISMISS_REMINDER)
+        } else {
+            cancelCurrentSession()
+        }
+    }
+
+    private fun rememberNow() {
+        sendRuntimeAction(RealityRuntimeService.ACTION_REMEMBER_NOW)
+    }
+
+    private fun cancelCurrentSession() {
+        sendRuntimeAction(RealityRuntimeService.ACTION_END_SESSION)
+        glassesUi.postDelayed(
+            { finishAndRemoveTask() },
+            CANCELLED_DISPLAY_MS,
+        )
+    }
+
+    private fun sendRuntimeAction(action: String, reminderText: String? = null) {
+        val serviceIntent = Intent(this, RealityRuntimeService::class.java).setAction(action)
+        if (reminderText != null) {
+            serviceIntent.putExtra(RealityRuntimeService.EXTRA_REMINDER_TEXT, reminderText)
+        }
+        ContextCompat.startForegroundService(this, serviceIntent)
+    }
+
+    private fun hasPermissions(): Boolean =
+        requiredPermissions().all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+
+    private fun requiredPermissions(): Array<String> = buildList {
+        add(Manifest.permission.CAMERA)
+        add(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }.toTypedArray()
+
+    companion object {
+        const val EXTRA_OPENED_FROM_WEAR = "opened_from_wear"
+        const val EXTRA_DEBUG_REMINDER_TEXT = "debug_reminder_text"
+
+        private const val ACTION_SPRITE_BUTTON_CLICK =
+            "com.android.action.ACTION_SPRITE_BUTTON_CLICK"
+        private const val ACTION_AI_START = "com.android.action.ACTION_AI_START"
+        private const val DEBUG_REMINDER_DELAY_MS = 400L
+        private const val CANCELLED_DISPLAY_MS = 3_000L
+    }
+}
