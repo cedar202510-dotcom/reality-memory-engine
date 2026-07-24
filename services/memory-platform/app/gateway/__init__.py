@@ -41,7 +41,6 @@ async def ingest_envelope(
     files: list[UploadFile] = File(default=[]),
     session: AsyncSession = Depends(get_session),
 ) -> IngestResponse:
-    settings = get_settings()
     try:
         env_in = SourceEnvelopeIn.model_validate(json.loads(envelope))
     except ValueError as exc:
@@ -162,6 +161,7 @@ async def _ingest_envelope(
     files: list[UploadFile],
     session: AsyncSession,
 ) -> IngestResponse:
+    settings = get_settings()
     # ---- 幂等：重复投递直接返回既有信封 ----
     existing = await session.scalar(
         select(SourceEnvelope).where(SourceEnvelope.idempotency_key == env_in.idempotency_key)
