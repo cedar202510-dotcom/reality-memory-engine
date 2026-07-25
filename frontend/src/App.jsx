@@ -39,9 +39,26 @@ const EVENT_LABEL = {
 };
 
 const CLUE_SOURCE_LABEL = { perception: "采集时看到", query: "问答时推断" };
+const TIMELINE_KIND_LABEL = {
+  OBJECT_OBSERVED_AT: "视觉",
+  OBJECT_MOVED: "视觉",
+  CONSUMABLE_LEVEL_OBSERVED: "视觉",
+  PREFERENCE_STATED: "偏好",
+  TASK_STATED: "任务",
+  USER_CORRECTION: "纠正",
+};
 
 function eventLabel(type) {
   return EVENT_LABEL[type] || type;
+}
+
+function timelineKindLabel(type) {
+  return TIMELINE_KIND_LABEL[type] || eventLabel(type);
+}
+
+function memoryCardLabel(type) {
+  const kind = timelineKindLabel(type);
+  return ["视觉", "偏好"].includes(kind) ? `${kind}记忆` : eventLabel(type);
 }
 
 /** 事件/线索卡片的正文：位置 + payload 里的附加属性（颜色、状态、姿态…）。
@@ -995,9 +1012,7 @@ function TimelineView() {
   const handlePreferenceDecision = async (clue, decision) => {
     if (clue.demo) {
       setDemoPreferenceResult(
-        decision === "CONFIRM"
-          ? "演示：确认后会沉淀为偏好事实"
-          : "演示：否认后不会写入记忆"
+        decision === "CONFIRM" ? "已确认" : "已否认"
       );
       return;
     }
@@ -1142,46 +1157,51 @@ function TimelineView() {
                   >
                     <div className="node-time-badge">
                       <span className="time-text">{clockText(clue.created_at)}</span>
-                      <span className="period-text">偏好线索</span>
+                      <span className="period-text">偏好</span>
                     </div>
                     <div className="node-bullet pending"></div>
 
                     <div className="dark-card preference-candidate-card">
                       <div className="preference-candidate-copy">
-                        <span className="preference-candidate-kicker">这项偏好准确吗？</span>
-                        <strong>{clueStatement(clue)}</strong>
-                        <p>
-                          置信度 {Math.round(clue.confidence * 100)}%
-                          <span> · 确认后记为事实</span>
+                        <span className="preference-memory-label">偏好记忆</span>
+                        <strong>{clue.object_text}</strong>
+                        <p className="preference-statement">
+                          {clue.payload?.preference || clue.payload?.value}
                         </p>
+                        <span className="preference-confidence">
+                          置信度 {Math.round(clue.confidence * 100)}%
+                        </span>
                       </div>
 
-                      {demoResult ? (
-                        <span className="preference-result">{demoResult}</span>
-                      ) : (
-                        <div className="preference-decision-actions">
-                          <button
-                            type="button"
-                            className="preference-decision confirm"
-                            title="确认这项偏好"
-                            aria-label="确认这项偏好"
-                            disabled={busyPreferenceId === clue.candidate_id}
-                            onClick={() => handlePreferenceDecision(clue, "CONFIRM")}
-                          >
-                            <Check size={18} strokeWidth={2.4} />
-                          </button>
-                          <button
-                            type="button"
-                            className="preference-decision reject"
-                            title="这项偏好不准确"
-                            aria-label="这项偏好不准确"
-                            disabled={busyPreferenceId === clue.candidate_id}
-                            onClick={() => handlePreferenceDecision(clue, "REJECT")}
-                          >
-                            <X size={18} strokeWidth={2.4} />
-                          </button>
-                        </div>
-                      )}
+                      <div className="preference-confirm-row">
+                        <span>这项偏好准确吗？</span>
+                        {demoResult ? (
+                          <span className="preference-result">{demoResult}</span>
+                        ) : (
+                          <div className="preference-decision-actions">
+                            <button
+                              type="button"
+                              className="preference-decision confirm"
+                              title="确认这项偏好"
+                              aria-label="确认这项偏好"
+                              disabled={busyPreferenceId === clue.candidate_id}
+                              onClick={() => handlePreferenceDecision(clue, "CONFIRM")}
+                            >
+                              <Check size={18} strokeWidth={2.4} />
+                            </button>
+                            <button
+                              type="button"
+                              className="preference-decision reject"
+                              title="这项偏好不准确"
+                              aria-label="这项偏好不准确"
+                              disabled={busyPreferenceId === clue.candidate_id}
+                              onClick={() => handlePreferenceDecision(clue, "REJECT")}
+                            >
+                              <X size={18} strokeWidth={2.4} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
 
                       {actionError && <p className="preference-action-error">{actionError}</p>}
                     </div>
@@ -1208,7 +1228,7 @@ function TimelineView() {
                 >
                   <div className="node-time-badge">
                     <span className="time-text">{clockText(head.event_time_from)}</span>
-                    <span className="period-text">{eventLabel(head.event_type)}</span>
+                    <span className="period-text">{timelineKindLabel(head.event_type)}</span>
                   </div>
                   <div className="node-bullet"></div>
 
@@ -1279,7 +1299,7 @@ function TimelineView() {
                         )}
                         <div className="card-with-thumb-body">
                           <div className="card-top-row">
-                            <span className="card-title">{head.entity_name} · {eventLabel(head.event_type)}</span>
+                            <span className="card-title">{head.entity_name} · {memoryCardLabel(head.event_type)}</span>
                             {canOpenSingle && (
                               <span className="more-link">
                                 详情 <ChevronRight size={14} />
