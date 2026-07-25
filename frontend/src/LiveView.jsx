@@ -18,6 +18,8 @@ function StreamPanel() {
   const [draft, setDraft] = useState(url);
   const [state, setState] = useState("connecting"); // connecting | live | stale | error
   const [staleAge, setStaleAge] = useState(null); // 僵住时最后一帧的秒龄
+  const [devicePresent, setDevicePresent] = useState(null); // 桥报告的设备在场状态；null=桥不支持
+  const wasLive = useRef(false); // 跟踪 live 跳变，用于自动重连
   const [epoch, setEpoch] = useState(0); // 变更强制 img 重连
   const [flash, setFlash] = useState(0); // 递增触发一次快门动画
   const [lastShot, setLastShot] = useState(null); // {ts, detail}
@@ -61,9 +63,22 @@ function StreamPanel() {
         if (!resp.ok || !alive) return; // 404 → 该服务端不支持，保持既有行为
         const s = await resp.json();
         if (!alive) return;
+        // 帧恢复了就强制重连 <img>：MJPEG 连接可能在长时间无数据后被浏览器/中间层丢弃，
+        // 此时源头虽已恢复，画面仍停在旧帧。拔掉眼镜再插回来正是这个场景，
+        // 不该要求用户手动点一次「连接」。
+        if (s.live && !wasLive.current) setEpoch((n) => n + 1);
+        wasLive.current = s.live;
         setState((prev) => (prev === "error" ? prev : s.live ? "live" : "stale"));
         setStaleAge(s.age_ms == null ? null : Math.round(s.age_ms / 1000));
-      } catch { /* 不支持 /status 或跨域被拒：沿用 onLoad 判定 */ }
+        setDevicePresent(s.device ?? null);
+      } catch {
+        // 区分两种失败：resp.ok=false 是「服务端没有 /status」（上面已 return，保持原判定）；
+        // 走到这里是 fetch 抛错 = 桥本身不可达，此时流必然也断了。必须把 wasLive 归位，
+        // 否则桥重启后 live 不构成跳变，永远不会触发重连。
+        if (!alive) return;
+        wasLive.current = false;
+        setDevicePresent(null);
+      }
     }, 2000);
     return () => { alive = false; clearInterval(timer); };
   }, [url, epoch]);
@@ -109,7 +124,9 @@ function StreamPanel() {
         {/* 僵住时不整屏遮挡：陈旧画面仍有参考价值，但必须一眼看出它不是实时的 */}
         {state === "stale" && (
           <div className="live-stale-banner">
-            画面已停止更新{staleAge != null && ` ${staleAge} 秒`} · 这不是实时画面
+            {devicePresent === false
+              ? "眼镜已断开 · 插回 USB 即自动恢复，无需操作"
+              : `画面已停止更新${staleAge != null ? ` ${staleAge} 秒` : ""} · 这不是实时画面`}
           </div>
         )}
         {(state === "connecting" || state === "error") && (
