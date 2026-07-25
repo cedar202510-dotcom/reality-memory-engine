@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RealGit RV101 UI 提案</title>
+  <title>RealGit RV101 UI 组件与消息契约</title>
   <style>
     :root {
       color-scheme: dark;
@@ -271,34 +271,83 @@
       line-height: 1;
     }
 
+    .glass-icon svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.5;
+    }
+
     .glass-icon.record {
       position: relative;
-      width: 24px;
-      height: 24px;
-      margin-bottom: 18px;
+      width: 44px;
+      height: 44px;
+      margin-bottom: 26px;
       border: 1.5px solid var(--glass-green);
       border-radius: 50%;
       font-size: 0;
+      animation: sensing-breathe 2.4s ease-in-out infinite;
     }
 
-    .glass-icon.record::after {
+    .glass-icon.record::before {
+      position: absolute;
       width: 6px;
       height: 6px;
       border-radius: 50%;
       background: var(--glass-green);
       content: "";
-      animation: sensing-blink 1.6s steps(1, end) infinite;
+      animation: sensing-core 2.4s ease-in-out infinite;
     }
 
-    @keyframes sensing-blink {
+    .glass-icon.record::after {
+      position: absolute;
+      inset: -1.5px;
+      border: 1.5px solid var(--glass-green);
+      border-radius: 50%;
+      content: "";
+      animation: sensing-ripple 2.4s ease-out infinite;
+    }
+
+    @keyframes sensing-breathe {
       0%,
-      58% {
-        opacity: 1;
+      100% {
+        opacity: .72;
+        transform: scale(.96);
       }
 
-      59%,
+      44% {
+        opacity: 1;
+        transform: scale(1.04);
+      }
+    }
+
+    @keyframes sensing-core {
+      0%,
       100% {
-        opacity: 0.28;
+        opacity: .55;
+        transform: scale(.78);
+      }
+
+      44% {
+        opacity: 1;
+        transform: scale(1.15);
+      }
+    }
+
+    @keyframes sensing-ripple {
+      0% {
+        opacity: .78;
+        transform: scale(.92);
+      }
+
+      72%,
+      100% {
+        opacity: 0;
+        transform: scale(1.72);
       }
     }
 
@@ -400,12 +449,22 @@
     .icon-sample.sensing svg .pulse-dot {
       fill: currentColor;
       stroke: none;
-      animation: sensing-blink 1.6s steps(1, end) infinite;
+      transform-origin: center;
+      animation: sensing-core 2.4s ease-in-out infinite;
+    }
+
+    .icon-sample.sensing svg .pulse-ring {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: sensing-ripple 2.4s ease-out infinite;
     }
 
     @media (prefers-reduced-motion: reduce) {
+      .glass-icon.record,
+      .glass-icon.record::before,
       .glass-icon.record::after,
-      .icon-sample.sensing svg .pulse-dot {
+      .icon-sample.sensing svg .pulse-dot,
+      .icon-sample.sensing svg .pulse-ring {
         animation: none;
       }
     }
@@ -524,6 +583,40 @@
       color: var(--text);
     }
 
+    .intent-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+    }
+
+    .intent-item {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .intent-item:last-child {
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
+
+    .intent-item dt {
+      color: var(--glass-green);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .intent-item dd {
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
     .design-rules {
       margin: 0;
       padding: 0;
@@ -601,10 +694,10 @@
   <main class="page">
     <header class="page-header">
       <div>
-        <p class="kicker">RealGit · RV101 Glass UI Study</p>
-        <h1>单绿、悬浮、低打扰的眼镜提醒</h1>
+        <p class="kicker">RealGit · RV101 Glass UI Contract Study</p>
+        <h1>单绿、低打扰的眼镜消息组件</h1>
       </div>
-      <p class="draft-note">佩戴告知、空白感知、取消状态和通用提醒已同步到 Android 0.1.1。右侧控制面板与图标探索只用于电脑预览，不属于眼镜界面。</p>
+      <p class="draft-note">佩戴告知、空白状态、取消和通用提醒已进入 Android 0.1.5；水纹感知、语义图标和消息契约是下一版预览，确认后再同步 APK。</p>
     </header>
 
     <div class="workspace">
@@ -640,6 +733,7 @@
                   <div class="icon-sample sensing">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                       <circle cx="12" cy="12" r="8"></circle>
+                      <circle class="pulse-ring" cx="12" cy="12" r="8"></circle>
                       <circle class="pulse-dot" cx="12" cy="12" r="2.3"></circle>
                     </svg>
                     <span>感知</span>
@@ -719,10 +813,10 @@
             <button type="button" data-scene="wear" aria-pressed="true">佩戴告知</button>
             <button type="button" data-scene="blank" aria-pressed="false">正常空白</button>
             <button type="button" data-scene="status" aria-pressed="false">状态查询</button>
-            <button type="button" data-scene="object" aria-pressed="false">物品查询回答</button>
+            <button type="button" data-scene="answer" aria-pressed="false">Agent 普通回答</button>
+            <button type="button" data-scene="reminder" aria-pressed="false">Agent 重要提醒</button>
             <button type="button" data-scene="task" aria-pressed="false">任务提醒</button>
             <button type="button" data-scene="stock" aria-pressed="false">耗材提醒</button>
-            <button type="button" data-scene="advisor" aria-pressed="false">顾问摘要（探索）</button>
             <button type="button" data-scene="iconlab" aria-pressed="false">图标探索</button>
             <button type="button" data-scene="cancelled" aria-pressed="false">本次已取消</button>
             <button type="button" data-scene="privacy" aria-pressed="false">隐私状态</button>
@@ -777,10 +871,40 @@
         </section>
 
         <section class="panel">
+          <div class="panel-title">
+            <h2>消息呈现契约</h2>
+            <span>后端只选意图</span>
+          </div>
+          <dl class="intent-list">
+            <div class="intent-item">
+              <dt>ANSWER</dt>
+              <dd>用户主动提问后的普通回答，不承诺方向导航，只展示 Agent 给出的结论与必要依据。</dd>
+            </div>
+            <div class="intent-item">
+              <dt>REMINDER</dt>
+              <dd>需要及时看到的重要提醒；使用感叹号，允许按策略播报。</dd>
+            </div>
+            <div class="intent-item">
+              <dt>TASK</dt>
+              <dd>明确任务或时间节点；使用任务图标，单击表示知道了。</dd>
+            </div>
+            <div class="intent-item">
+              <dt>CONSUMABLE</dt>
+              <dd>耗材余量建议；使用耗材图标，默认只显示文字。</dd>
+            </div>
+            <div class="intent-item">
+              <dt>PRIVACY</dt>
+              <dd>本地或云端策略状态；优先级最高，不能被普通 Agent 文案冒充。</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="panel">
           <ul class="design-rules">
             <li><b>默认沉默：</b>持续感知时不常驻文字，不占据视野。</li>
             <li><b>只有单绿：</b>不使用灰、黄、红等颜色区分状态。</li>
             <li><b>最多两层：</b>一个结论，加一行必要补充或一个动作。</li>
+            <li><b>语义选组件：</b>Agent 只返回呈现意图与文案，不能控制坐标、颜色、字号或动画。</li>
             <li><b>边框有含义：</b>仅用细线、圆点和清晰的圆形状态图标。</li>
             <li><b>Agent 是顾问：</b>提供判断和建议，不扮演替用户做决定的管家。</li>
             <li><b>详情回手机：</b>记忆列表、证据和设置在 RealGit 手机端查看。</li>
@@ -809,7 +933,6 @@
       },
       status: {
         icon: "dot",
-        iconText: "●",
         title: "现实感知中",
         subtitle: "",
         keyHint: "单击取消本次",
@@ -817,19 +940,27 @@
         voice: "无",
         interaction: "单击取消本次"
       },
-      object: {
-        icon: "arrow",
-        iconText: "→",
-        title: "钥匙在客厅茶几右侧",
-        subtitle: "从当前位置向前，出门后左转",
+      answer: {
+        icon: "answer",
+        title: "钥匙上次在客厅茶几右侧",
+        subtitle: "这是最近一次确认的位置",
         lineLayout: true,
         duration: "用户询问后显示，约 8 秒",
-        voice: "作为 Agent 查询回答播报",
-        interaction: "由用户主动询问触发，不主动推送"
+        voice: "按回答的 delivery_policy 决定",
+        interaction: "单击知道了；不生成虚构方向"
+      },
+      reminder: {
+        icon: "reminder",
+        title: "出门前记得带上资料",
+        subtitle: "十点的会议快开始了",
+        keyHint: "单击知道了",
+        lineLayout: true,
+        duration: "约 8 秒或确认后消失",
+        voice: "高优先级时可播报短句",
+        interaction: "单击确认"
       },
       task: {
-        icon: "alert",
-        iconText: "!",
+        icon: "task",
         title: "记得把资料给小王",
         subtitle: "你已经到公司了",
         keyHint: "单击知道了",
@@ -839,24 +970,13 @@
         interaction: "单击确认"
       },
       stock: {
-        icon: "alert",
-        iconText: "!",
+        icon: "stock",
         title: "洗衣液大约只够这次",
-        subtitle: "采购建议已放到 RealGit",
+        subtitle: "需要时可以加入采购清单",
         lineLayout: true,
         duration: "约 6 秒",
         voice: "默认无",
         interaction: "详情回手机查看"
-      },
-      advisor: {
-        icon: "alert",
-        iconText: "!",
-        title: "今天有 2 件值得留意",
-        subtitle: "出门前带资料 · 洗衣液余量偏低",
-        lineLayout: true,
-        duration: "首页或顾问入口概念，平台权限待确认",
-        voice: "默认无",
-        interaction: "打开 RealGit 顾问后查看"
       },
       iconlab: {
         gallery: true,
@@ -865,8 +985,7 @@
         interaction: "在电脑预览中比较图标语义"
       },
       cancelled: {
-        icon: "alert",
-        iconText: "×",
+        icon: "cancelled",
         title: "本次现实感知已取消",
         subtitle: "再次佩戴时重新开启",
         duration: "约 3 秒，随后退出本次状态",
@@ -874,14 +993,51 @@
         interaction: "无需操作"
       },
       privacy: {
-        icon: "alert",
-        iconText: "×",
+        icon: "privacy",
         title: "当前空间不记录",
         subtitle: "离开后自动恢复",
         duration: "保持到隐私状态解除",
         voice: "可选",
         interaction: "无需操作"
       }
+    };
+
+    const messageIcons = {
+      dot: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"></circle>
+        </svg>`,
+      answer: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="m12 3 1.3 4.7L18 9l-4.7 1.3L12 15l-1.3-4.7L6 9l4.7-1.3L12 3Z"></path>
+          <path d="m18.5 14 .7 2.3 2.3.7-2.3.7-.7 2.3-.7-2.3-2.3-.7 2.3-.7.7-2.3Z"></path>
+        </svg>`,
+      reminder: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.5"></circle>
+          <path d="M12 7.5v5.2"></path>
+          <circle cx="12" cy="16.2" r=".8" fill="currentColor" stroke="none"></circle>
+        </svg>`,
+      task: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="5" y="4" width="14" height="16" rx="2"></rect>
+          <path d="m8 12 2.2 2.2L16 8.5"></path>
+        </svg>`,
+      stock: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="7" width="16" height="10" rx="2"></rect>
+          <path d="M21 10v4M6 12h4"></path>
+        </svg>`,
+      cancelled: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.5"></circle>
+          <path d="m9 9 6 6m0-6-6 6"></path>
+        </svg>`,
+      privacy: `
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3.5 19 6v5.2c0 4.4-2.9 7.7-7 9.3-4.1-1.6-7-4.9-7-9.3V6l7-2.5Z"></path>
+          <path d="m7 17 10-10"></path>
+        </svg>`
     };
 
     const wearCopies = {
@@ -931,7 +1087,7 @@
         subtitle.textContent = copy.subtitle || "";
         subtitle.hidden = !copy.subtitle;
         icon.className = `glass-icon ${scene.icon || ""}`;
-        icon.textContent = scene.iconText || "";
+        icon.innerHTML = messageIcons[scene.icon] || "";
         keyHint.textContent = scene.keyHint || "";
         keyHint.hidden = !scene.keyHint;
       }
