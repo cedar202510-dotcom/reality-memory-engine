@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ArrowLeft, Battery, Bluetooth, ChevronRight, Moon, Settings, Shield, User } from "lucide-react";
 
 const deviceGroups = [
@@ -102,7 +102,16 @@ function DevicePage({ onBack }) {
 }
 
 export default function MyPage() {
-  const [view, setView] = useState("home");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view = searchParams.get("view") === "devices" ? "devices" : "home";
+  const setView = (nextView) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (nextView === "devices") next.set("view", "devices");
+      else next.delete("view");
+      return next;
+    }, { replace: true });
+  };
 
   if (view === "devices") {
     return <DevicePage onBack={() => setView("home")} />;

@@ -125,7 +125,7 @@ export default function LifeHome() {
             className="life-source-button"
             aria-label="查看连接设备"
             title="连接设备"
-            onClick={() => navigate("/my")}
+            onClick={() => navigate("/my?view=devices")}
           >
             <RadioTower size={18} />
           </button>
@@ -142,7 +142,11 @@ export default function LifeHome() {
             <Metric value="21.4" unit="%" label="体脂" />
             <Metric value="6.4" unit="k" label="活动" />
           </div>
-          <div className="life-trend" aria-label="今日活动趋势">
+          <div className="life-trend-meta">
+            <span>过去 12 小时活动强度</span>
+            <small>每柱 1 小时 · 手环</small>
+          </div>
+          <div className="life-trend" aria-label="过去12小时活动强度，每根柱代表1小时，数据来自手环">
             {[26, 34, 30, 48, 62, 52, 72, 56, 68, 84, 58, 38].map((height, index) => (
               <i key={index} style={{ height: `${height}%` }} />
             ))}
