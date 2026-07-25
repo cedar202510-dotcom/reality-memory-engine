@@ -541,3 +541,129 @@ class SignalListResponse(BaseModel):
     signals: list[SignalOut] = Field(default_factory=list)
     # 因冷却/每日上限/过期被抑制的数量（可观测性：抑制不是丢失）
     suppressed: int = 0
+
+
+# ---------------------------------------------------------------- 下行：设备消息与回执
+#
+# 注意：这里只冻结通用信封字段（通信架构 §5.2 `rme.device-message.v0`）。
+# payload 内的提醒主题、理由、按钮、措辞和交互动作仍待产品与 Agent 专项 review，
+# 不要把 REMINDER_SIGNAL 的 payload 当成已冻结的 v1 业务契约。
+
+DEVICE_MESSAGE_SCHEMA_REF = "rme.device-message.v0"
+
+DEVICE_MESSAGE_TYPES = (
+    "REMINDER_SIGNAL",          # 值得呈现的提醒
+    "POLICY_UPDATE",            # 策略版本更新通知
+    "PRIVACY_PAUSE",            # 隐私暂停 / 解绑 / 凭证撤销
+    "CAPTURE_BUDGET_UPDATE",    # 采集预算与能力配置更新
+    "DIAGNOSTIC",               # 仅限测试构建的诊断命令
+)
+
+# §5.4 回执状态。RECEIVED/PRESENTED/SPOKEN 是过程，DISMISSED/FAILED/EXPIRED 是终态。
+DELIVERY_RECEIPT_STATUSES = (
+    "RECEIVED",
+    "PRESENTED",
+    "SPOKEN",
+    "DISMISSED",
+    "EXPIRED",
+    "FAILED",
+)
+TERMINAL_RECEIPT_STATUSES = ("DISMISSED", "FAILED", "EXPIRED")
+
+
+class DeliveryPolicy(BaseModel):
+    """投递限制：设备据此决定能否展示文字、能否 TTS 播报。"""
+
+    allow_text: bool = True
+    # 语音是比 HUD 文字更硬的打断，默认关闭，由调用方显式开启
+    allow_tts: bool = False
+
+
+class DeviceMessageCreateRequest(BaseModel):
+    """手动注入一条下行消息（第一版触发源：不接规则也不接 Agent）。"""
+
+    message_type: str = "REMINDER_SIGNAL"
+    payload: dict[str, Any] = Field(default_factory=dict)
+    payload_schema_ref: str = Field(default="rme.reminder-signal.draft", max_length=128)
+    priority: Literal["LOW", "NORMAL", "HIGH"] = "NORMAL"
+    delivery_policy: DeliveryPolicy = Field(default_factory=DeliveryPolicy)
+    # 不传则用 config.device_message_ttl_seconds
+    ttl_seconds: int | None = Field(default=None, ge=1, le=86400)
+
+    @model_validator(mode="after")
+    def _known_type(self) -> DeviceMessageCreateRequest:
+        if self.message_type not in DEVICE_MESSAGE_TYPES:
+            raise ValueError(
+                f"未知消息类型：{self.message_type}（可用：{list(DEVICE_MESSAGE_TYPES)}）"
+            )
+        return self
+
+
+class DeviceMessageOut(BaseModel):
+    """下行信封，同时是 WebSocket 推送的报文体。"""
+
+    schema_ref: str = DEVICE_MESSAGE_SCHEMA_REF
+    message_id: uuid.UUID
+    target_device_id: uuid.UUID
+    message_type: str
+    created_at: datetime
+    expires_at: datetime
+    priority: str
+    payload_schema_ref: str
+    payload: dict[str, Any]
+    delivery_policy: DeliveryPolicy
+    # 服务端投递状态（设备侧不需要，用于本机调试与前端观测）
+    status: str
+    last_receipt_status: str | None = None
+
+    @classmethod
+    def of(cls, msg: Any) -> DeviceMessageOut:
+        return cls(
+            message_id=msg.id,
+            target_device_id=msg.target_device_id,
+            message_type=msg.message_type,
+            created_at=msg.created_at,
+            expires_at=msg.expires_at,
+            priority=msg.priority,
+            payload_schema_ref=msg.payload_schema_ref,
+            payload=msg.payload or {},
+            delivery_policy=DeliveryPolicy(allow_text=msg.allow_text, allow_tts=msg.allow_tts),
+            status=msg.status,
+            last_receipt_status=msg.last_receipt_status,
+        )
+
+
+class DeviceMessageCreateResponse(BaseModel):
+    message: DeviceMessageOut
+    # 本次创建时在线并已即时推送的连接数；0 表示落库等设备来拉（inbox 或重连补投）
+    pushed_connections: int = 0
+
+
+class DeviceInboxResponse(BaseModel):
+    """轮询兜底（§5.3 首版通道）：返回未终态且未过期的消息。"""
+
+    messages: list[DeviceMessageOut] = Field(default_factory=list)
+    expired: int = 0
+
+
+class DeliveryReceiptIn(BaseModel):
+    message_id: uuid.UUID
+    status: str
+    detail: dict[str, Any] = Field(default_factory=dict)
+    device_reported_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _known_status(self) -> DeliveryReceiptIn:
+        if self.status not in DELIVERY_RECEIPT_STATUSES:
+            raise ValueError(
+                f"未知回执状态：{self.status}（可用：{list(DELIVERY_RECEIPT_STATUSES)}）"
+            )
+        return self
+
+
+class DeliveryReceiptOut(BaseModel):
+    message_id: uuid.UUID
+    status: str
+    # 该 (message_id, status) 之前已上报过：幂等重放，未产生第二条终态
+    duplicate: bool = False
+    message_status: str

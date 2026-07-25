@@ -112,6 +112,15 @@ class Settings(BaseSettings):
     signal_stale_location_hours: int = 72   # 位置超过该小时数未更新 → STALE_LOCATION 信号
     signal_low_consumable_level: float = 0.2  # 数值型余量低于该值 → LOW_CONSUMABLE 信号
 
+    # --- 下行设备通道（通信架构 §5） ---
+    # 消息默认存活期：过期消息不投递、不展示、不播报。提醒是时效性内容，
+    # 宁可让设备错过，也不能在几分钟后才播报一条已经无关的建议。
+    device_message_ttl_seconds: int = 600
+    # 单次 inbox 拉取 / 长连重连补投的消息条数上限（防止离线久了一次涌出几十条）
+    device_inbox_limit: int = 20
+    # 长连心跳间隔：服务端超过该秒数没收到任何客户端帧则主动断开，交给设备重连
+    device_ws_idle_timeout_seconds: float = 90.0
+
     # --- 演示/测试用 Fake 行为由调用方注入，不在配置里 ---
 
 

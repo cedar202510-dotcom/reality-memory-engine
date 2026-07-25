@@ -427,6 +427,94 @@ class SignalSubscription(Base, UUIDPK):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+# ---------------------------------------------------------------- 下行：设备消息与回执
+
+
+class DeviceMessage(Base, UUIDPK):
+    """下行设备消息（通信架构 §5.2 `rme.device-message.v0`）。
+
+    只传结果和控制，不传记忆数据库本身（§5.1）：payload 是提醒/策略/诊断的最小载荷，
+    不是 MemoryEvent 或 StateProjection 的同步副本。
+
+    状态机（至少一次投递 + 设备侧按 message_id 幂等）：
+      PENDING  未推送
+      SENT     已推给某条长连或已被 inbox 拉取，等待设备回执
+      RECEIVED 设备确认收到（PRESENTED/SPOKEN 只更新时间戳，不改状态）
+      CLOSED   收到终态回执（DISMISSED/FAILED）
+      EXPIRED  到期仍未终态：过期消息不展示、不播报（§5.4）
+
+    id 即对外的 message_id。
+    """
+
+    __tablename__ = "device_messages"
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("households.id"), comment="所属家庭（下行按家庭隔离）"
+    )
+    target_device_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("devices.id"), comment="目标设备"
+    )
+    message_type: Mapped[str] = mapped_column(
+        String(64), comment="REMINDER_SIGNAL/POLICY_UPDATE/PRIVACY_PAUSE/CAPTURE_BUDGET_UPDATE/DIAGNOSTIC"
+    )
+    payload_schema_ref: Mapped[str] = mapped_column(
+        String(128), default="rme.reminder-signal.draft", comment="载荷版本（业务字段待 review）"
+    )
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict, comment="业务载荷，字段尚未冻结")
+    priority: Mapped[str] = mapped_column(String(16), default="NORMAL", comment="LOW/NORMAL/HIGH")
+    allow_text: Mapped[bool] = mapped_column(
+        Boolean, default=True, comment="delivery_policy：允许文字呈现"
+    )
+    allow_tts: Mapped[bool] = mapped_column(
+        Boolean, default=False, comment="delivery_policy：允许 TTS 播报（打断更硬，默认关）"
+    )
+    signal_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("memory_signals.id"), nullable=True, comment="来源信号（手动注入为空）"
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), default="PENDING", comment="PENDING/SENT/RECEIVED/CLOSED/EXPIRED"
+    )
+    last_receipt_status: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, comment="最近一次回执状态（可观测性）"
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), comment="过期时间：过期消息不投递、不播报"
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    presented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    spoken_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+Index("ix_device_messages_pending", DeviceMessage.target_device_id, DeviceMessage.status)
+
+
+class DeviceDeliveryReceipt(Base, UUIDPK):
+    """投递回执（§5.4）。
+
+    只说明设备投递结果，不代表用户接受了提醒内容，也不能直接修改记忆事实。
+    (message_id, status) 唯一：同一消息的同一状态只落一条，眼镜直连与手机中继
+    同时上报也不会产生两条终态（§7 去重要求）。
+    """
+
+    __tablename__ = "device_delivery_receipts"
+    __table_args__ = (UniqueConstraint("message_id", "status", name="uq_receipt_message_status"),)
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("device_messages.id", ondelete="CASCADE"), comment="对应下行消息"
+    )
+    status: Mapped[str] = mapped_column(
+        String(32), comment="RECEIVED/PRESENTED/SPOKEN/DISMISSED/EXPIRED/FAILED"
+    )
+    detail: Mapped[dict] = mapped_column(JSONB, default=dict, comment="失败原因等附加信息")
+    device_reported_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="设备本地上报时间（不覆盖服务端接收时间）"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, comment="服务端接收时间"
+    )
+
+
 # ---------------------------------------------------------------- 遗忘与审计
 
 

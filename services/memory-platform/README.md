@@ -131,6 +131,10 @@ iOS App 每次采集会话导出 `session.json`（采集清单）。上云时**�
 | POST/DELETE | `/v1/signal-subscriptions[/{id}]` | 信号订阅（类型/最低置信度/冷却/每日上限） |
 | GET | `/v1/signals` | 拉取待投递信号（过期不投递，抑制计数返回） |
 | POST | `/v1/signals/{id}/ack` | 信号回执 |
+| POST | `/internal/v1/devices/{device_id}/messages` | 下行：手动注入一条设备消息，在线则即时推送 |
+| GET | `/internal/v1/devices/{device_id}/inbox` | 下行：轮询兜底，返回未终态未过期消息 |
+| POST | `/internal/v1/devices/{device_id}/receipts` | 下行：投递回执（按 message_id + status 幂等） |
+| WS | `/internal/v1/devices/{device_id}/stream` | 下行：设备长连，连上先冲积压再实时推 |
 | GET | `/healthz` | 健康检查 |
 
 **Agent 鉴权（Agent Access Phase 1）**：带 `Authorization: Bearer <grant token>` 的请求走
@@ -140,6 +144,45 @@ scope 鉴权（401/403），审计 actor 记 `agent:<client_id>`，原始 Eviden
 [services/agent-gateway](../agent-gateway/README.md)。
 
 冻结契约（`SourceEnvelope` / `AtomicObservation` / `MemoryCandidate` / `FindObjectResponse`）的 JSON Schema 由 `python -m app.contracts.export` 导出到 `app/contracts/generated/`。
+
+## 下行设备通道（通信架构 §5）
+
+云端 → 设备的消息通道。**通信层已实现，业务载荷仍未冻结**：信封字段按
+`rme.device-message.v0` 固定（message_id / 目标设备 / 类型 / 过期 / 优先级 /
+delivery_policy），但 `payload` 里提醒的主题、理由、按钮和措辞仍待产品与 Agent
+专项 review，因此下行信封**不进** `app/contracts/export.py` 的 v1 契约白名单。
+
+```bash
+# 本机跑通全链路（真 uvicorn + 真 WebSocket，模拟一台眼镜）
+./.venv/bin/python scripts/downlink_smoke.py
+```
+
+设计要点：
+
+- **至少一次投递**。长连推送成功 ≠ 设备呈现成功，只有回执算数。重连会重新收到
+  未终结的消息，设备必须按 `message_id` 幂等——这正是通信架构 §7 要求的「眼镜
+  直连与手机中继同时收到也只产生一条最终投递状态」。
+- **三条路径同一张表**。WebSocket 是低延迟主路径，`GET inbox` 是离线兜底（§5.3
+  的首版轮询通道），两者共享 `device_messages` 的状态机与过期语义。
+- **过期即静默**。`device_message_ttl_seconds` 默认 600 秒，到期消息不投递、不
+  展示、不播报（§5.4）。提醒是时效性内容，宁可错过也不能在几分钟后才播报一条
+  已经无关的建议。
+- **TTS 默认关**。`delivery_policy.allow_tts` 默认 `false`，语音是比 HUD 文字更
+  硬的打断，必须由调用方显式开启。
+- **消息状态机**：`PENDING → SENT → RECEIVED → CLOSED`，或任意阶段超时 `EXPIRED`。
+  `PRESENTED` / `SPOKEN` 只记时间戳不改状态；终态只认第一条回执。
+
+第一版触发源是**手动注入**：`POST .../messages` 由人或调试脚本调用，不接规则引擎
+也不接 Agent。把 `MemorySignal` 接到下行（`device_messages.signal_id` 已预留外键）
+属于下一步，需要先回答通信架构 §6 的开放问题——谁拥有提醒决定权、优先级与终端
+选择怎么定。
+
+未实现（明确的已知缺口）：
+
+- **设备身份**。`/internal/v1` 沿用本机/内网可信假设，没有 device token，任何能
+  访问该端口的调用方都能给任意设备下发消息。设备绑定与凭证撤销属于通信 review。
+- **多副本**。`DeviceHub` 是进程内注册表，长连只在收到消息的那个进程可见。多副本
+  部署需要换 Redis pub/sub 或粘性路由，替换范围限于 `DeviceHub` 这一个类。
 
 ## 目录结构
 
@@ -159,8 +202,10 @@ app/
   privacy/           # TTL 清理、forget-recent 删除流水线、审计 API
   auth/              # AgentGrant：token 签发/解析、grant_or_owner 依赖、grants 管理端点
   signals/           # Signal 规则引擎（确定性）+ 订阅/投递/ack API
+  downlink/          # 下行设备通道：DeviceHub 长连注册表 + 注入/inbox/回执 API
   workers/           # outbox 轮询 + TTL 循环（投影重算后触发信号评估）
 scripts/smoke_demo.py
+scripts/downlink_smoke.py
 tests/               # pytest（FakeLLM + 真实 PG，库名 rme_test）
 ```
 

@@ -72,7 +72,8 @@ async def db_session():
                 " frame_assets, audio_assets, atomic_observations, entities, memory_candidates,"
                 " memory_events, state_projections, deletion_requests, deletion_jobs,"
                 " deletion_tombstones, audit_records, outbox_events, agent_grants,"
-                " memory_signals, signal_subscriptions CASCADE"
+                " memory_signals, signal_subscriptions, device_messages,"
+                " device_delivery_receipts CASCADE"
             )
         )
         await session.commit()

@@ -16,6 +16,8 @@ from .auth.router import router as grants_router
 from .auth.seed import ensure_dev_agent_grant
 from .config import get_settings
 from .db import SessionLocal, ensure_extensions
+from .downlink import DeviceHub
+from .downlink import router as downlink_router
 from .gateway import router as gateway_router
 from .llm import build_llm_client
 from .llm.base import LLMClient
@@ -73,11 +75,14 @@ def create_app(
     app.state.asr: Transcriber = (
         fake_asr if fake_asr is not None else build_transcriber(get_settings())
     )
+    # 设备长连注册表随 app 实例走（不是模块全局），测试里每个 create_app 互不串扰
+    app.state.device_hub = DeviceHub()
     app.include_router(gateway_router)
     app.include_router(query_router)
     app.include_router(privacy_router)
     app.include_router(grants_router)
     app.include_router(signals_router)
+    app.include_router(downlink_router)
 
     @app.get("/healthz")
     async def healthz() -> dict:
