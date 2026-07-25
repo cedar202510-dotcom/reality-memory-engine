@@ -2251,34 +2251,6 @@ header.top {
   filter: blur(10px);
 }
 
-.agent-dialogue.has-live-transcript .agent-greeting {
-  opacity: 0;
-  visibility: hidden;
-  transform: translateX(-50%) scale(0.96);
-  filter: blur(7px);
-}
-
-.agent-live-transcript {
-  width: min(340px, 92%);
-  color: rgba(248, 255, 250, 0.96);
-  font-size: 16px;
-  line-height: 1.55;
-  text-wrap: pretty;
-  text-shadow: 0 0 24px rgba(86, 235, 142, 0.32);
-  animation: agent-live-transcript-in 180ms ease-out both;
-}
-
-@keyframes agent-live-transcript-in {
-  from {
-    opacity: 0;
-    transform: translateX(-50%) translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
 .agent-answer-text {
   width: min(268px, 78%);
   padding: 0;
@@ -2485,6 +2457,15 @@ header.top {
     inset 0 1px 0 rgba(255, 255, 255, 0.025);
   font-size: 14px;
   line-height: 1.45;
+}
+
+.agent-user-bubble.live {
+  border-color: rgba(86, 235, 142, 0.22);
+  background: rgba(235, 245, 239, 0.075);
+  box-shadow:
+    0 12px 34px rgba(0, 0, 0, 0.2),
+    0 0 22px rgba(86, 235, 142, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.025);
 }
 
 .memory-hint-wrap {
@@ -3528,82 +3509,6 @@ header.top {
   pointer-events: none;
   backdrop-filter: blur(10px);
 }
-.graph-inspector {
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 88px;
-  z-index: 18;
-  padding: 12px;
-  border: 1px solid rgba(255,255,255,.13);
-  border-radius: 14px;
-  background: rgba(12,13,23,.76);
-  box-shadow: 0 18px 44px rgba(0,0,0,.34);
-  backdrop-filter: blur(20px) saturate(135%);
-  -webkit-backdrop-filter: blur(20px) saturate(135%);
-}
-.graph-node-title {
-  display: grid;
-  grid-template-columns: 30px 1fr auto;
-  gap: 9px;
-  align-items: center;
-}
-.graph-node-title > span {
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  border-radius: 8px;
-  color: #07100e;
-  box-shadow: 0 0 18px rgba(111,220,196,.22);
-}
-/* 有实拍图时整块换成照片：底色还在，图没加载出来之前不会闪成白块 */
-.graph-node-title > span img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: inherit;
-}
-.graph-node-title small { display: block; color: rgba(232,239,255,.46); font-size: 8px; }
-.graph-node-title h2 { margin-top: 2px; font-size: 15px; line-height: 1.1; }
-.graph-node-title > button {
-  height: 28px;
-  padding: 0 11px;
-  border: 1px solid rgba(86,235,142,.26);
-  border-radius: 7px;
-  background: rgba(86,235,142,.09);
-  color: var(--green);
-  font-size: 9px;
-}
-.graph-inspector > p {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 9px;
-  padding-top: 8px;
-  border-top: 1px solid rgba(255,255,255,.07);
-  color: rgba(231,238,255,.66);
-  font-size: 9px;
-}
-.graph-inspector > p span { color: rgba(231,238,255,.38); white-space: nowrap; }
-.graph-relations { display: flex; gap: 5px; overflow-x: auto; margin-top: 8px; scrollbar-width: none; }
-.graph-relations button {
-  flex: none;
-  min-width: 92px;
-  display: grid;
-  grid-template-columns: 7px 1fr;
-  gap: 3px 6px;
-  align-items: center;
-  padding: 6px 8px;
-  border: 1px solid rgba(255,255,255,.07);
-  border-radius: 7px;
-  background: rgba(255,255,255,.035);
-  text-align: left;
-}
-.graph-relations i { grid-row: 1 / span 2; width: 6px; height: 6px; border-radius: 50%; background:#6ee0c0; box-shadow:0 0 7px rgba(110,224,192,.6); }
-.graph-relations i.cross { border-radius:1px; transform:rotate(45deg); background:#7da9ff; box-shadow:0 0 7px rgba(125,169,255,.62); }
-.graph-relations span { font-size: 9px; }.graph-relations small { color: rgba(231,238,255,.38); font-size: 7px; }
-
 /* ===== TAB 4: MY ===== */
 .my-page {
   background:
@@ -4006,9 +3911,6 @@ header.top {
     aspect-ratio: 2.2 / 1;
   }
 
-  .graph-inspector { bottom: 76px; padding: 10px; }
-  .graph-relations { display: none; }
-  .graph-inspector > p { margin-top: 7px; }
 }
 
 
@@ -5046,21 +4948,6 @@ header.top {
   height: 5px;
   border-radius: 50%;
   background: currentColor;
-}
-
-.graph-stage.has-inspector .graph-demo-note {
-  bottom: 242px;
-}
-
-.graph-demo-badge {
-  margin-left: auto;
-  padding: 4px 8px;
-  border: 1px solid rgba(244, 197, 106, 0.28);
-  border-radius: 999px;
-  color: #f4c56a;
-  font-size: 10px;
-  font-style: normal;
-  font-weight: 700;
 }
 
 /* 事件卡里的来源帧缩略图。刻意做小做方：上下文页是一条长列表，

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { Box, ChevronDown, ChevronUp, RotateCcw, Search, X } from "lucide-react";
+import { ChevronDown, ChevronUp, RotateCcw, Search, X } from "lucide-react";
 import { apiUrl, objectGraph } from "./api";
 
 // 层的颜色只是分辨用的，没有语义（真实数据里没有「品类」这个维度）。
@@ -87,6 +87,37 @@ const DEMO_GRAPH = {
   relations: DEMO_RELATIONS,
 };
 
+/** 后端不可达时，给全览演示节点生成与真实 objectTimeline 相同形状的数据。 */
+export function demoGraphObjectTimeline(entityId) {
+  const rawId = entityId?.startsWith("demo-graph-") ? entityId.slice("demo-graph-".length) : null;
+  const node = DEMO_NODES.find((item) => item.id === rawId);
+  if (!node) return null;
+
+  const nodeIndex = DEMO_NODES.indexOf(node);
+  const observedAt = new Date();
+  observedAt.setHours(8 + (nodeIndex % 4), (nodeIndex * 7) % 60, 0, 0);
+  const eventTime = observedAt.toISOString();
+  return {
+    entity: { canonical_name: node.name, aliases: [] },
+    projection: {
+      location: node.location,
+      last_seen_time: eventTime,
+      confidence: node.confidence,
+      corrected: node.corrected,
+    },
+    events: [{
+      event_id: `demo-graph-event-${node.id}`,
+      event_type: "OBJECT_OBSERVED_AT",
+      event_time_from: eventTime,
+      frame_asset_id: null,
+      evidence_url: null,
+      payload: { location: node.location },
+      confidence: { aggregate: node.confidence },
+      superseded_by: null,
+    }],
+  };
+}
+
 /** 把 /objects 的返回投成三维图要的 {layers, nodes, relations}。
  *
  *  层 = 放了 2 件以上东西的位置，加上「单独存放」和「位置未知」两个兜底层。
@@ -139,15 +170,6 @@ function deriveGraph(data) {
     }
   }
   return { layers, nodes, relations };
-}
-
-function seenText(iso) {
-  if (!iso) return "没有观察记录";
-  const t = new Date(iso);
-  if (Number.isNaN(t.getTime())) return iso;
-  const sameDay = t.toDateString() === new Date().toDateString();
-  const clock = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-  return sameDay ? `今天 ${clock}` : `${t.toLocaleDateString("zh-CN", { month: "long", day: "numeric" })} ${clock}`;
 }
 
 function createTextSprite(text, color, small = false) {
@@ -501,27 +523,13 @@ export default function TopologyGraph({ onOpenItem }) {
     }
   }, [activeLayer, layers]);
 
-  const selected = nodes.find((node) => node.id === selectedId) || null;
-  const selectedLayer = selected
-    ? layers.find((layer) => layer.id === selected.layer) || null
-    : null;
-  const related = useMemo(() => {
-    if (!selected) return [];
-    return relations
-      .filter((relation) => relation.source === selected.id || relation.target === selected.id)
-      .map((relation) => ({
-        ...relation,
-        node: nodes.find((node) => node.id === (relation.source === selected.id ? relation.target : relation.source)),
-      }))
-      .filter(r => r.node);
-  }, [selected, relations, nodes]);
-
   const results = query.trim()
     ? nodes.filter((node) => `${node.name}${node.location}`.includes(query.trim())).slice(0, 5)
     : [];
-  const focusNode = (id) => {
+  const openNode = (id) => {
     setSelectedId(id);
     setFocusSignal({ id, tick: Date.now() });
+    onOpenItem(isDemo ? `demo-graph-${id}` : id);
   };
   const selectLayer = (id) => {
     setActiveLayer(id);
@@ -570,7 +578,7 @@ export default function TopologyGraph({ onOpenItem }) {
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={(event) => {
                   event.stopPropagation();
-                  focusNode(node.id);
+                  openNode(node.id);
                   setQuery("");
                 }}
               >
@@ -599,7 +607,7 @@ export default function TopologyGraph({ onOpenItem }) {
         <RotateCcw size={15}/>
       </button>
     </div>
-    <div className={`graph-stage ${selected ? "has-inspector" : ""}`}>
+    <div className="graph-stage">
       <div className="graph-layer-dropdown-container">
         <div className={`layer-dropdown ${isLayerDropdownOpen ? "open" : ""}`}>
           <button
@@ -675,23 +683,12 @@ export default function TopologyGraph({ onOpenItem }) {
           )}
         </div>
       </div>
-      <Scene layers={layers} nodes={nodes} relations={relations} activeLayer={activeLayer} relationMode={relationMode} focusId={hoveredId || selectedId} onNode={focusNode} onHover={setHoveredId} focusSignal={focusSignal} resetSignal={resetSignal}/>
+      <Scene layers={layers} nodes={nodes} relations={relations} activeLayer={activeLayer} relationMode={relationMode} focusId={hoveredId || selectedId} onNode={openNode} onHover={setHoveredId} focusSignal={focusSignal} resetSignal={resetSignal}/>
       {error && (
         <div className="graph-demo-note" role="status">
           <i></i>
           当前为演示数据
         </div>
-      )}
-      {selected && selectedLayer && (
-        <aside className="graph-inspector">
-          <div className="graph-node-title">
-            <span style={{ background: selectedLayer.color }}>{selected.thumb ? <img src={selected.thumb} alt=""/> : <Box size={14}/>}</span>
-            <div><small>{selectedLayer.label}</small><h2>{selected.name}</h2></div>
-            {isDemo ? <em className="graph-demo-badge">演示</em> : <button onClick={() => onOpenItem(selected.id)}>详情</button>}
-          </div>
-          <p>{selected.location}<span>最后确认 {seenText(selected.seen)} · {selected.eventCount} 条事件{selected.corrected ? " · 你纠正过" : ""}</span></p>
-          <div className="graph-relations">{related.slice(0, 3).map((relation) => <button key={`${relation.source}-${relation.target}`} onClick={() => focusNode(relation.node.id)}><i className={relation.type}/><span>{relation.node.name}</span><small>{relation.label}</small></button>)}</div>
-        </aside>
       )}
     </div>
   </div>;

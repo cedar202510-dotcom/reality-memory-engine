@@ -16,7 +16,7 @@ import {
 import { CirclesFour, Path, Robot, UserCircle } from "@phosphor-icons/react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import "./styles.css";
-import TopologyGraph from "./TopologyGraph";
+import TopologyGraph, { demoGraphObjectTimeline } from "./TopologyGraph";
 import LiveView from "./LiveView";
 import CaptureConsole from "./CaptureConsole";
 import MediaLibrary from "./MediaLibrary";
@@ -716,17 +716,12 @@ function AgentHome() {
       )}
 
       <div
-        className={`dialogue agent-dialogue ${thinking || phase === "recording" ? "is-asking" : ""} ${hasAnswered ? "has-answer" : ""} ${liveTranscript ? "has-live-transcript" : ""}`}
+        className={`dialogue agent-dialogue ${thinking || phase === "recording" ? "is-asking" : ""} ${hasAnswered ? "has-answer" : ""}`}
         aria-live="polite"
       >
         <div className="agent-center-text agent-greeting" aria-hidden={hasAnswered}>
           {messages[0]?.text}
         </div>
-        {phase === "recording" && liveTranscript && (
-          <div className="agent-center-text agent-live-transcript">
-            {liveTranscript}
-          </div>
-        )}
         {hasAnswered && lastAgent && (
           <div key={lastAgent.id} className={`agent-center-text agent-answer-text ${lastAgent.error ? "error" : ""}`}>
             <span className="agent-answer-copy">{lastAgent.text}</span>
@@ -760,17 +755,17 @@ function AgentHome() {
 
       <div className="agent-user-lane" aria-live="polite">
         <AnimatePresence>
-          {lastUser && (
+          {(phase === "recording" ? liveTranscript : lastUser?.text) && (
             <motion.div
-              key={lastUser.id}
+              key="active-user-question"
               initial={reduceMotion
                 ? { opacity: 0 }
                 : { opacity: 0, transform: "translateY(42px) scale(0.97)", filter: "blur(5px)" }}
               animate={{ opacity: 1, transform: "translateY(0px) scale(1)", filter: "blur(0px)" }}
               transition={reduceMotion ? { duration: 0.18 } : { type: "spring", duration: 0.32, bounce: 0.1 }}
-              className="agent-user-bubble"
+              className={`agent-user-bubble ${phase === "recording" ? "live" : ""}`}
             >
-              {lastUser.text}
+              {phase === "recording" ? liveTranscript : lastUser.text}
             </motion.div>
           )}
         </AnimatePresence>
@@ -1235,7 +1230,7 @@ function ObjectDrawer({ entityId, onClose }) {
     setData(null);
     setError(null);
     if (entityId?.startsWith("demo-")) {
-      const demoData = demoObjectTimeline(entityId);
+      const demoData = demoObjectTimeline(entityId) || demoGraphObjectTimeline(entityId);
       if (demoData) setData(demoData);
       else setError("演示轨迹中没有这个物品。");
       return () => { alive = false; };
