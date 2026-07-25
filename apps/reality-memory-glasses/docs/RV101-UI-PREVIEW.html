@@ -241,6 +241,7 @@
     }
 
     .message {
+      position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -253,7 +254,8 @@
 
     .message.line-layout {
       align-items: flex-start;
-      min-height: auto;
+      min-height: 190px;
+      padding-right: 46px;
       padding-left: 24px;
       border-left: 2px solid var(--glass-green);
       text-align: left;
@@ -388,10 +390,40 @@
       overflow-wrap: anywhere;
     }
 
-    .key-hint {
-      margin-top: 18px;
+    .action-hint {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      min-height: 40px;
       color: var(--glass-green);
-      font-size: clamp(9px, 2.3cqw, 11px);
+      font-size: clamp(7px, 1.9cqw, 9px);
+      line-height: 1;
+      opacity: .78;
+    }
+
+    .action-hint svg {
+      width: 20px;
+      height: 20px;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.5;
+    }
+
+    .message:not(.line-layout) .action-hint {
+      right: 12px;
+      bottom: 6px;
+    }
+
+    .action-hint[hidden] {
+      display: none;
     }
 
     .message[hidden],
@@ -724,7 +756,13 @@
                 <div class="glass-icon record" id="glass-icon" aria-hidden="true"></div>
                 <h3 class="glass-title" id="glass-title">RealGit 已开启现实感知</h3>
                 <p class="glass-subtitle" id="glass-subtitle">正在为您整理现实记忆</p>
-                <div class="key-hint" id="key-hint">单击取消本次</div>
+                <div class="action-hint cancel" id="action-hint" aria-label="单击取消本次">
+                  <svg id="action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="8.5"></circle>
+                    <path d="m9 9 6 6m0-6-6 6"></path>
+                  </svg>
+                  <span>单击</span>
+                </div>
               </div>
 
               <div class="icon-lab" id="icon-lab" hidden>
@@ -926,7 +964,7 @@
         icon: "record",
         title: "RealGit 已开启现实感知",
         subtitle: "正在为您整理现实记忆",
-        keyHint: "单击取消本次",
+        action: "cancel",
         duration: "约 5 秒，随后恢复空白",
         voice: "首次佩戴可短句播报",
         interaction: "单击取消本次；再次佩戴时重新开启"
@@ -935,7 +973,7 @@
         icon: "dot",
         title: "现实感知中",
         subtitle: "",
-        keyHint: "单击取消本次",
+        action: "cancel",
         duration: "用户主动查看后约 3 秒",
         voice: "无",
         interaction: "单击取消本次"
@@ -944,16 +982,17 @@
         icon: "answer",
         title: "钥匙上次在客厅茶几右侧",
         subtitle: "这是最近一次确认的位置",
+        action: "acknowledge",
         lineLayout: true,
         duration: "用户询问后显示，约 8 秒",
         voice: "按回答的 delivery_policy 决定",
-        interaction: "单击知道了；不生成虚构方向"
+        interaction: "右下角单击确认；不生成虚构方向"
       },
       reminder: {
         icon: "reminder",
         title: "出门前记得带上资料",
         subtitle: "十点的会议快开始了",
-        keyHint: "单击知道了",
+        action: "acknowledge",
         lineLayout: true,
         duration: "约 8 秒或确认后消失",
         voice: "高优先级时可播报短句",
@@ -963,7 +1002,7 @@
         icon: "task",
         title: "记得把资料给小王",
         subtitle: "你已经到公司了",
-        keyHint: "单击知道了",
+        action: "acknowledge",
         lineLayout: true,
         duration: "约 8 秒或确认后消失",
         voice: "可播报更短版本",
@@ -1040,6 +1079,15 @@
         </svg>`
     };
 
+    const actionIcons = {
+      acknowledge: `
+        <circle cx="12" cy="12" r="8.5"></circle>
+        <path d="m8.5 12.2 2.3 2.3 4.9-5"></path>`,
+      cancel: `
+        <circle cx="12" cy="12" r="8.5"></circle>
+        <path d="m9 9 6 6m0-6-6 6"></path>`
+    };
+
     const wearCopies = {
       a: {
         title: "RealGit 已开启现实感知",
@@ -1062,7 +1110,8 @@
     const icon = document.querySelector("#glass-icon");
     const title = document.querySelector("#glass-title");
     const subtitle = document.querySelector("#glass-subtitle");
-    const keyHint = document.querySelector("#key-hint");
+    const actionHint = document.querySelector("#action-hint");
+    const actionIcon = document.querySelector("#action-icon");
     const duration = document.querySelector("#duration");
     const voice = document.querySelector("#voice");
     const interaction = document.querySelector("#interaction");
@@ -1088,8 +1137,13 @@
         subtitle.hidden = !copy.subtitle;
         icon.className = `glass-icon ${scene.icon || ""}`;
         icon.innerHTML = messageIcons[scene.icon] || "";
-        keyHint.textContent = scene.keyHint || "";
-        keyHint.hidden = !scene.keyHint;
+        actionHint.className = `action-hint ${scene.action || ""}`;
+        actionHint.hidden = !scene.action;
+        actionHint.setAttribute(
+          "aria-label",
+          scene.action === "cancel" ? "单击取消本次" : "单击确认"
+        );
+        actionIcon.innerHTML = actionIcons[scene.action] || "";
       }
 
       duration.textContent = scene.duration;
