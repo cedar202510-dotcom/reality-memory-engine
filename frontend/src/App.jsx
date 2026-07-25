@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Mic, Keyboard, CircleDot, Milestone, Sparkles, X, Check, Coffee, Zap, MapPin, SlidersHorizontal, ChevronRight } from "lucide-react";
 import "./styles.css";
+import TopologyGraph from "./TopologyGraph";
 
 // Mock Data for Context
 const mockContextItems = [
@@ -218,7 +219,6 @@ function TimelineView({ setSelectedObject }) {
 function GalaxyView({ setSelectedObject }) {
   return (
     <div className="page-view galaxy-page">
-      {/* Indigo Space Nebula & Planet Glow Background */}
       <div className="galaxy-bg-canvas">
         <div className="star-field"></div>
         <div className="planet-glow"></div>
@@ -227,46 +227,10 @@ function GalaxyView({ setSelectedObject }) {
       <header className="top">
         <div className="brand">
           <b>全览</b>
-          <span>现实记忆拓扑全貌</span>
+          <span>物品之间，存在生活的路径。</span>
         </div>
       </header>
-
-      <div className="galaxy-viewport">
-        <div className="galaxy-canvas">
-          <div className="star-cluster c-objects" style={{top: '25%', left: '16%'}}>
-            <div className="dark-pill-node float-anim" onClick={() => setSelectedObject("充电器")}>
-              <span className="node-dot active"></span>
-              <span>充电器</span>
-            </div>
-            <div className="dark-pill-node dim float-anim delay-1">
-              <span>钥匙</span>
-            </div>
-            <span className="cluster-label">物品</span>
-          </div>
-
-          <div className="star-cluster c-prefs" style={{top: '52%', left: '56%'}}>
-            <div className="dark-pill-node float-anim delay-2" onClick={() => setSelectedObject("胡辣汤")}>
-              <span className="node-dot warning"></span>
-              <span>胡辣汤</span>
-            </div>
-            <div className="dark-pill-node float-anim">
-              <span>咖啡无糖</span>
-            </div>
-            <span className="cluster-label">偏好</span>
-          </div>
-
-          <div className="star-cluster c-tasks" style={{top: '72%', left: '22%'}}>
-            <div className="dark-pill-node float-anim delay-1">
-              <span>快递包裹</span>
-            </div>
-            <span className="cluster-label">待办</span>
-          </div>
-
-          <svg className="constellation" width="100%" height="100%">
-            <path d="M 120 140 Q 200 240 240 320" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1" strokeDasharray="3 3"/>
-          </svg>
-        </div>
-      </div>
+      <TopologyGraph onOpenItem={setSelectedObject}/>
     </div>
   );
 }
