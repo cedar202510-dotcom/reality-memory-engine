@@ -19,6 +19,7 @@ from ..llm.base import LLMClient
 from ..memory.events import record_audit
 from ..memory.gate import PREDICATE_TO_EVENT_TYPE, evaluate_candidate
 from ..memory.seed import get_default_household_id
+from ..voice_qa import handle_transcript
 from ..models import (
     AtomicObservation,
     AudioAsset,
@@ -92,20 +93,63 @@ async def process_audio_item(
     session.add(asset)
     await session.flush()
 
-    # ---- 阶段 2：语义抽取（偏好/意图/使用/消耗） ----
-    extractor = build_audio_extractor(llm)
-    ext = await extractor.run(
-        AudioExtractInput(
-            file_name=Path(item.storage_ref).name,
-            transcript=transcript,
-            captured_at=envelope.occurred_at.isoformat(),
+    # ---- 阶段 1.5：唤醒词问答 ----
+    # 「小忆我钥匙在哪」是一次查询，不是一条关于世界的陈述。让它走下面的事实抽取，
+    # 记忆里会攒出一堆「用户其实是在提问」的句子。
+    answer = await handle_transcript(session, transcript=transcript, envelope=envelope, llm=llm)
+    if answer is not None:
+        await record_audit(
+            session,
+            actor="system/voice-qa",
+            action="voice_question",
+            target=f"audio_asset:{asset.id}",
+            detail={"intent": answer.intent, "target": answer.target},
         )
-    )
-    if ext is None:
         await session.commit()
         return asset
 
+    # ---- 阶段 2：语义抽取（偏好/意图/使用/消耗） ----
+    await extract_transcript_observations(
+        session,
+        llm=llm,
+        asset=asset,
+        envelope=envelope,
+        file_name=Path(item.storage_ref).name,
+    )
+    await session.commit()
+    return asset
+
+
+async def extract_transcript_observations(
+    session: AsyncSession,
+    *,
+    llm: LLMClient,
+    asset: AudioAsset,
+    envelope: SourceEnvelope,
+    file_name: str,
+    visual_context: str = "",
+) -> int:
+    """转写文本 → 语义观察 → 候选门。返回落库的观察条数（不 commit，由调用方决定）。
+
+    纯音频和视频音轨走的是同一段逻辑：两者拿到的都是「一段转写 + 一个 AudioAsset」，
+    差别只在视频能额外提供 visual_context——同期画面里有哪些物体。那个上下文是
+    指代消解用的：食物测评里满嘴都是「这个一般般」「它已经软了」，
+    没有画面物体列表，object_text 只能抽出「这个」，跨模态永远对不上同一个实体。
+    """
+    extractor = build_audio_extractor(llm)
+    ext = await extractor.run(
+        AudioExtractInput(
+            file_name=file_name,
+            transcript=asset.transcript,
+            captured_at=envelope.occurred_at.isoformat(),
+            visual_context=visual_context or "（无画面信息）",
+        )
+    )
+    if ext is None:
+        return 0
+
     household_id = await get_default_household_id(session)
+    n_kept = 0
     for obs_in in ext.observations:
         if obs_in.predicate not in AUDIO_ALLOWED_PREDICATES:
             continue  # 语音白名单外谓词直接丢弃
@@ -144,6 +188,5 @@ async def process_audio_item(
             ingested_at=envelope.ingested_at,
             object_embedding=obj_vec[0] if obj_vec else None,
         )
-
-    await session.commit()
-    return asset
+        n_kept += 1
+    return n_kept

@@ -1,7 +1,9 @@
-"""视觉跨模态检索：文本/图片 query → frame_assets.visual_embedding 余弦 top-K。
+"""视觉跨模态检索：文本/图片 query → 帧向量 + 区域向量 余弦 top-K。
 
 - 文本走 vision.embed_texts、图片走 vision.embed_images（同一语义空间）。
 - 无可用编码器（None / NullVisionEncoder）或无输入时返回空列表，调用方降级。
+- 帧级向量看的是整张图的"氛围"，区域向量（frame_regions，切片而来）看的是局部——
+  小物体只在后者里有信号。两路同在一个 CLIP 空间，按帧取 max 合并。
 - fuse_rankings 为纯函数：多路召回的分数各自归一化到 [0,1] 后加权融合，便于单测。
 """
 from __future__ import annotations
@@ -9,10 +11,10 @@ from __future__ import annotations
 import math
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import FrameAsset
+from ..models import FrameAsset, FrameRegion
 from ..vision.base import VisionEncoder
 
 
@@ -30,6 +32,27 @@ def _combine_vectors(vectors: list[list[float]]) -> list[float]:
     return _l2_normalize(mean)
 
 
+async def _search_regions(
+    session: AsyncSession, *, query: list[float], top_k: int
+) -> dict[uuid.UUID, float]:
+    """区域向量检索 → 每帧取最好的那块区域的分数（帧 id → 相似度）。
+
+    用 GROUP BY + min(distance) 而不是"取前 N 个区域再去重"：一张帧有十几块区域，
+    先取 N 再去重会让少数几张"块块都像"的帧吃满名额，把真正命中的帧挤出榜。
+    """
+    distance = FrameRegion.visual_embedding.cosine_distance(query)
+    rows = (
+        await session.execute(
+            select(FrameRegion.frame_asset_id, func.min(distance).label("dist"))
+            .where(FrameRegion.visual_embedding.is_not(None))
+            .group_by(FrameRegion.frame_asset_id)
+            .order_by(func.min(distance))
+            .limit(top_k)
+        )
+    ).all()
+    return {frame_id: 1.0 - float(dist) for frame_id, dist in rows}
+
+
 async def visual_search_frames(
     session: AsyncSession,
     *,
@@ -38,11 +61,16 @@ async def visual_search_frames(
     query_image: bytes | None = None,
     top_k: int,
     extra_query_texts: list[str] | None = None,
+    include_regions: bool = True,
 ) -> list[tuple[FrameAsset, float]]:
     """跨模态视觉检索：返回 (frame, 余弦相似度) 列表，按相似度降序。
 
     extra_query_texts：附加查询文本（如中文查询的英文翻译），与主查询向量取均值。
-    无编码器、编码失败（None）或所有输入都缺省时返回空列表。
+    include_regions：并搜区域向量，帧分 = max(整图分, 该帧最好的区域分)。
+
+    ⚠️ 已切片和未切片的帧不完全可比：裁出来的瓦片背景更干净，对同一 query 的相似度
+    系统性地略高于整图。所以上线切片后要把存量帧回填（scripts/backfill_frame_regions.py），
+    否则老帧会被新帧压着——而且表面上看不出来，只会以为"那天没拍到"。
     """
     if vision is None or (query_text is None and query_image is None) or top_k <= 0:
         return []
@@ -70,7 +98,25 @@ async def visual_search_frames(
         )
     ).all()
     # pgvector cosine_distance ∈ [0, 2]；相似度 = 1 - 距离（归一化向量时 ∈ [-1, 1]）
-    return [(frame, 1.0 - float(dist)) for frame, dist in rows]
+    scored: dict[uuid.UUID, float] = {frame.id: 1.0 - float(dist) for frame, dist in rows}
+    frame_by_id: dict[uuid.UUID, FrameAsset] = {frame.id: frame for frame, _ in rows}
+
+    if include_regions:
+        region_scores = await _search_regions(session, query=query, top_k=top_k)
+        for frame_id, score in region_scores.items():
+            # max 而不是均值：一帧里绝大多数瓦片本来就与 query 无关，取均值等于让
+            # 无关区域把命中那块稀释掉——小物体刚被切出来又被平均没了。
+            if score > scored.get(frame_id, float("-inf")):
+                scored[frame_id] = score
+        missing = [fid for fid in region_scores if fid not in frame_by_id]
+        if missing:
+            for frame in (
+                await session.scalars(select(FrameAsset).where(FrameAsset.id.in_(missing)))
+            ).all():
+                frame_by_id[frame.id] = frame
+
+    ranked = sorted(scored.items(), key=lambda kv: kv[1], reverse=True)[:top_k]
+    return [(frame_by_id[fid], score) for fid, score in ranked if fid in frame_by_id]
 
 
 def fuse_rankings(

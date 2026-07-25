@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { healthz, recentFrames, evidenceUrl } from "./api";
+import { PreviewImage } from "./ImageLightbox";
 
 const DEFAULT_STREAM = "http://127.0.0.1:8090/stream";
 
@@ -195,7 +196,12 @@ function IngestPanel() {
         {frames.map((f) => (
           <li key={f.frame_asset_id}>
             {f.evidence_available
-              ? <img src={evidenceUrl(f.frame_asset_id)} alt="" loading="lazy" />
+              ? <PreviewImage
+                  src={evidenceUrl(f.frame_asset_id)}
+                  alt={f.caption || "摄入帧"}
+                  caption={`${timeText(f.captured_at)}${f.caption ? ` · ${f.caption}` : ""}`}
+                  loading="lazy"
+                />
               : <span className="live-thumb-gone">已过期</span>}
             <div>
               <b>{f.caption || "感知处理中…"}</b>

@@ -21,6 +21,23 @@ const patch = (path, body) => request("PATCH", path, { body });
 export const whereIs = (name, deep = false) =>
   get("/v1/memory/objects/where-is", { name, deep });
 
+/** 把一段录音转成字（在场页的语音输入）。
+ *
+ *  只转写，不入库：这段音频在后端用完即弃，不进 evidence_items、不生成记忆候选。
+ *  ASR 没配起来时后端回 503 而不是空串——空串会被界面显示成「你没说话」，那是在撒谎。 */
+export const transcribe = async (blob) => {
+  const form = new FormData();
+  // 文件名只是给 multipart 用的占位；后端按 Content-Type 与容器嗅探解码
+  form.append("audio", blob, "clip.webm");
+  const resp = await fetch(`${BASE}/v1/memory/transcribe`, { method: "POST", body: form });
+  if (!resp.ok) {
+    // FastAPI 的 detail 是人话，原样往上抛；解析不出来才退回状态码
+    const detail = await resp.json().then(d => d?.detail).catch(() => null);
+    throw new Error(detail || `转写失败（${resp.status}）`);
+  }
+  return resp.json();
+};
+
 /** 最近摄入帧 + 感知积压量（联调面板轮询用）。 */
 export const recentFrames = (limit = 12) => get("/v1/memory/frames/recent", { limit });
 
@@ -28,6 +45,62 @@ export const healthz = () => get("/healthz");
 
 /** 帧证据缩略图地址（TTL 删除后 404）。 */
 export const evidenceUrl = (frameId) => `${BASE}/v1/memory/frames/${frameId}/evidence`;
+
+/** 后端返回的媒体路径（thumb_url / evidence_url 这类）补上 /api 前缀。
+ *  后端一律给 /v1/... 的相对路径，不硬编码前缀——部署时前缀由反向代理决定。 */
+export const apiUrl = (path) => (path ? `${BASE}${path}` : null);
+
+// ---------------------------------------------------------------- 采集媒体总览
+//
+// 建在 evidence_items 上，所以能看到音频、视频和还在排队的条目——recentFrames 建在
+// frame_assets 上，只看得到已完成感知的图片。
+//
+// 原始媒体有 TTL：过期后条目仍在（caption/转写/向量是长期表示），但 raw_url 为 null。
+
+/** params: {kind, since, until, available_only, limit, offset} */
+export const listMedia = (params = {}) =>
+  get(
+    "/v1/memory/media",
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== "")),
+  );
+
+/** 原始字节地址，任意模态，Content-Type 按真实扩展名。TTL 删除后 404。 */
+export const mediaRawUrl = (evidenceItemId) =>
+  `${BASE}/v1/memory/media/${evidenceItemId}/raw`;
+
+// ---------------------------------------------------------------- 喜好度洞察
+//
+// 与 /preferences 的区别：那个按名字查某个物体说过什么，这个是聚合视图——
+// 四路证据（口头评价/行动意图/实际使用/画面停留）融合成 0~100 的分数。
+// 只有过了候选门的事件参与打分；还在等人确认的线索只体现在 pending_count 上。
+
+/** params: {limit, min_confidence, with_verdict_only} */
+export const preferenceInsights = (params = {}) =>
+  get(
+    "/v1/memory/insights/preferences",
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== "")),
+  );
+
+// ---------------------------------------------------------------- 记忆浏览
+//
+// 这几个是「翻记忆本身」而不是「问一件事」：确定性、不经 LLM，刷新两次结果一样。
+
+/** 跨实体的近期事件流（上下文页）。含已被取代的事件，带 superseded 标记。 */
+export const recentEvents = (limit = 30) => get("/v1/memory/events/recent", { limit });
+
+/** 全部物品 + 当前位置，并按位置聚成组（全览页的连线就是这些组）。 */
+export const objectGraph = (locatedOnly = false) =>
+  get("/v1/memory/objects", locatedOnly ? { located_only: true } : undefined);
+
+/** 单个物品的完整事件轨迹 + 当前投影（物品抽屉）。 */
+export const objectTimeline = (entityId) => get(`/v1/memory/objects/${entityId}/timeline`);
+
+/** 待确认线索：候选门没敢自动接受的记忆（置信度不够或撞了冲突）。 */
+export const listClues = (limit = 50) => get("/v1/memory/clues", { limit });
+
+/** 确认或忽略一条线索。decision: CONFIRM（升级为事件）| REJECT（判否，不写事件）。 */
+export const resolveClue = (candidateId, decision, reason = "") =>
+  post(`/v1/memory/clues/${candidateId}/resolve`, { decision, reason });
 
 // ---------------------------------------------------------------- 采集控制
 //

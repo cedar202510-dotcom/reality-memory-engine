@@ -235,3 +235,68 @@ async def test_preferences_endpoint(db_session):
             headers={"Authorization": f"Bearer {token2}"},
         )
         assert resp.status_code == 403
+
+
+async def test_answer_frame_url_is_owner_only(db_session, make_image):
+    """where-is 现在会带上答案出自的那一帧。这个字段同样受 §5 管辖：
+
+    agent 可以知道「有这么一帧」（frame_asset_id 是溯源信息），但拿不到取原图的地址——
+    否则新加一个字段就等于绕开了 `/frames/{id}/evidence` 那道 403。
+    """
+    import json
+    from datetime import datetime, timezone
+
+    fake = FakeLLMClient(
+        caption_rules=[("stool", {"caption": "一部黑色手机放在黑色圆凳上", "scene_tags": ["手机"]})],
+        extract_rules=[
+            (
+                "stool",
+                [
+                    {
+                        "predicate": "OBSERVED_AT",
+                        "object_text": "手机",
+                        "value": {"location": "黑色圆凳"},
+                        "confidence": {
+                            "model": 0.95, "identity": 0.95, "spatial": 0.95,
+                            "temporal": 0.95, "policy": 1.0, "aggregate": 0.95,
+                        },
+                    }
+                ],
+            )
+        ],
+    )
+    app = create_app(fake_llm=fake, with_workers=False)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        ts = datetime.now(timezone.utc).isoformat()
+        await client.post(
+            "/internal/v1/envelopes",
+            data={
+                "envelope": json.dumps(
+                    {
+                        "occurred_at": ts, "observed_at": ts,
+                        "idempotency_key": "agent-evidence-frame",
+                        "trigger": "explicit", "modality": "image",
+                    }
+                )
+            },
+            files=[("files", ("stool.jpg", make_image((10, 10, 10)), "image/jpeg"))],
+        )
+        from app.workers import process_outbox_once
+
+        while await process_outbox_once(fake):
+            pass
+
+        owner = (await client.get("/v1/memory/objects/where-is", params={"name": "手机"})).json()
+        assert owner["frame_asset_id"] is not None
+        assert owner["evidence_url"] is not None
+
+        token, _ = await _issue_grant(client, ["memory.query.objects"], client_id="frame-agent")
+        agent = (
+            await client.get(
+                "/v1/memory/objects/where-is",
+                params={"name": "手机"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        ).json()
+        assert agent["frame_asset_id"] == owner["frame_asset_id"]  # 溯源信息照给
+        assert agent["evidence_url"] is None                        # 取原图的地址不给

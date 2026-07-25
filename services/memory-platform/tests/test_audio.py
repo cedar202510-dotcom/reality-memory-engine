@@ -233,7 +233,8 @@ async def test_audio_worker_full_pipeline(db_session):
     assert obs.audio_asset_id == asset.id
     assert obs.frame_asset_id is None
     assert obs.predicate == "PREFERENCE_EXPRESSED"
-    assert obs.parser_version == "audio-extractor-v0.1"
+    # v0.2 起偏好带极性与强度（value.sentiment / value.intensity），喜好度打分依赖它们
+    assert obs.parser_version == "audio-extractor-v0.2"
 
     # 候选门接受（aggregate 0.95 ≥ 0.85）→ PREFERENCE_STATED 事件
     candidate = (await db_session.scalars(select(MemoryCandidate))).one()

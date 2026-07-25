@@ -18,6 +18,8 @@
 - `apps/reality-memory-glasses/`：正式 RV101 设备端 App，负责感知、隐私状态、
   本地短期队列、上行和提醒呈现。
 - `apps/rokid-glass-probe/`：保留的 RV101 能力探针与排障基线，不是正式产品。
+- `apps/iflybuds-collector/`：蓝牙耳机（IFLYBUDS Air 2）的宿主侧 Collector，跑在电脑上，
+  耳机只提供麦克风和扬声器，负责音频采集上行与语音提醒播报。
 - `archive/cxrl-probe/`：已归档 CXR-L 兼容实验，不是第二个用户 App。
 - `hardware/ring-sound-sdk/`：戒指 SDK、协议和硬件资料。
 

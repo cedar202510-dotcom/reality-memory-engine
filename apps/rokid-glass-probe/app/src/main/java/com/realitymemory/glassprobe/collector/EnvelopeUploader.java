@@ -6,7 +6,9 @@ import com.realitymemory.glassprobe.ProbeLog;
 
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -141,17 +143,47 @@ public final class EnvelopeUploader {
             }
             // 4xx 是契约级错误，重试不会好转：删除并审计，避免永久堵队列。
             if (code >= 400 && code < 500) {
-                ProbeLog.append(context, "UPLOAD_REJECTED", "http=" + code + ", dropping item");
+                ProbeLog.append(context, "UPLOAD_REJECTED",
+                        "http=" + code + ", dropping item; " + readError(conn));
                 return true;
             }
+            ProbeLog.append(context, "UPLOAD_HTTP_ERROR", "http=" + code + "; " + readError(conn));
             return false;
         } catch (Exception e) {
+            // 异常类型和消息必须落日志。原来这里直接 return false，UPLOAD_FAILED 只有
+            // 「latency_ms=34; will retry」——明文 HTTP 被系统拦截、DNS 不通、连接被拒
+            // 全长一个样，只能靠猜。眼镜上没法挂调试器，日志是唯一的排查入口。
+            ProbeLog.append(context, "UPLOAD_ERROR",
+                    e.getClass().getSimpleName() + ": " + e.getMessage());
             return false;
         } finally {
             if (conn != null) {
                 conn.disconnect();
             }
         }
+    }
+
+    /** 读后端返回的错误体（截断）。契约不匹配时 422 的正文才是真正有用的那部分。 */
+    private static String readError(HttpURLConnection conn) {
+        try (InputStream err = conn.getErrorStream()) {
+            if (err == null) {
+                return "no body";
+            }
+            String body = new String(readAll(err), StandardCharsets.UTF_8).trim();
+            return body.length() > 300 ? body.substring(0, 300) + "…" : body;
+        } catch (Exception e) {
+            return "unreadable: " + e.getClass().getSimpleName();
+        }
+    }
+
+    private static byte[] readAll(InputStream in) throws Exception {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        byte[] chunk = new byte[4096];
+        int n;
+        while ((n = in.read(chunk)) > 0) {
+            buf.write(chunk, 0, n);
+        }
+        return buf.toByteArray();
     }
 
     private static void writeFormField(OutputStream out, String name, String value) throws Exception {

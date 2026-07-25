@@ -1,14 +1,14 @@
 """感知哈希（aHash 64bit）：用于近 1 小时帧去重。"""
 from __future__ import annotations
 
-import io
-
 from PIL import Image
+
+from ..media import open_image
 
 
 def compute_phash(data: bytes) -> int:
     """平均哈希：缩放到 8x8 灰度，与均值比较得到 64bit（按有符号 int64 存储）。"""
-    img = Image.open(io.BytesIO(data)).convert("L").resize((8, 8), Image.LANCZOS)
+    img = open_image(data).convert("L").resize((8, 8), Image.LANCZOS)
     pixels = list(img.getdata())
     avg = sum(pixels) / len(pixels)
     bits = 0

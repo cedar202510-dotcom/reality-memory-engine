@@ -80,8 +80,12 @@ Rokid 官方给出三条开发路线（详见
 
 ### 5.1 设备注册与身份
 
-- 后端已有 `devices` 表（`household_id / kind / name`），`kind` 建议值：
-  `glasses / ring / phone`。
+- 后端已有 `devices` 表（`household_id / kind / name`），`kind` 取值见
+  `schemas.DEVICE_KINDS`：`glasses / ring / phone / earbuds`。注册走
+  `POST /internal/v1/devices`，按 (household, name) 幂等——设备侧 Collector 每次启动
+  都会调一次，没有幂等的话一副耳机重启十次就会在控制台上变成十台设备。
+- `kind` 不是能力声明。后端不知道 `earbuds` 没有摄像头，也不该知道：能力边界由设备侧
+  Collector 用 `REJECTED` 回执回答（见 [08](08-IFLYBUDS-Earbuds-Connector.md) §2）。
 - 设备侧配置文件持有自己的 `device_id`（后端注册后下发）。未注册设备
   `device_id` 可空，信封仍被接收（审计 actor 记为 `device:unknown`），便于
   真机联调，但生产策略应要求非空。
@@ -130,7 +134,8 @@ Rokid 官方给出三条开发路线（详见
 | 传输契约（冻结版） | `contracts/reality-memory/v1/source-envelope.schema.json` |
 | 平台侧 Adapter | `services/memory-platform/app/gateway/__init__.py`（幂等 + 去重 + 落盘 + outbox） |
 | 乐奇 Collector | `apps/rokid-glass-probe/`（CameraX 拍照 + AudioRecord + IMU 摘要 + spool 上传，见其 README） |
-| 设备注册 | `services/memory-platform/app/models/__init__.py` 的 `Device` |
+| 耳机 Collector | `apps/iflybuds-collector/`（宿主机跑，耳机只出麦克风和扬声器，见 [08](08-IFLYBUDS-Earbuds-Connector.md)） |
+| 设备注册 | `services/memory-platform/app/models/__init__.py` 的 `Device` + `POST /internal/v1/devices` |
 
 ## 7. Roadmap
 
