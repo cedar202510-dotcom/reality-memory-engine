@@ -2807,6 +2807,12 @@ header.top {
   flex: none;
 }
 
+.node-bullet.pending {
+  border-color: #101814;
+  background: var(--warm);
+  box-shadow: 0 0 0 3px rgba(255, 180, 84, 0.12);
+}
+
 .dark-card {
   flex: 1;
   min-width: 0;
@@ -2816,6 +2822,95 @@ header.top {
   background: var(--timeline-card);
   box-shadow: 3px 3px 0 rgba(248, 255, 250, 0.06), 0 14px 34px rgba(0, 0, 0, 0.2);
   transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.preference-candidate-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-color: rgba(255, 180, 84, 0.3);
+  background: rgba(255, 180, 84, 0.07);
+  box-shadow: 3px 3px 0 rgba(255, 180, 84, 0.07), 0 14px 34px rgba(0, 0, 0, 0.2);
+}
+
+.preference-candidate-copy {
+  min-width: 0;
+}
+
+.preference-candidate-kicker {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--warm);
+  font-size: 10.5px;
+  font-weight: 760;
+}
+
+.preference-candidate-copy strong {
+  display: block;
+  color: rgba(248, 255, 250, 0.96);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.preference-candidate-copy p {
+  margin-top: 7px;
+  color: rgba(248, 255, 250, 0.5);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.preference-decision-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.preference-decision {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(248, 255, 250, 0.14);
+  border-radius: 50%;
+  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+.preference-decision:hover,
+.preference-decision:focus-visible {
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.preference-decision.confirm {
+  border-color: rgba(86, 235, 142, 0.36);
+  background: rgba(86, 235, 142, 0.14);
+  color: var(--green);
+}
+
+.preference-decision.reject {
+  background: rgba(248, 255, 250, 0.06);
+  color: rgba(248, 255, 250, 0.62);
+}
+
+.preference-decision:disabled {
+  opacity: 0.45;
+}
+
+.preference-result,
+.preference-action-error {
+  grid-column: 1 / -1;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.preference-result {
+  color: var(--green);
+}
+
+.preference-action-error {
+  margin: 0;
+  color: var(--warm);
 }
 
 .dark-card.clickable {

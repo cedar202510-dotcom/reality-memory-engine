@@ -17,7 +17,7 @@ from app.main import create_app
 from app.memory.events import append_event
 from app.memory.projections import recompute_projection
 from app.memory.seed import get_default_household_id
-from app.models import Entity, MemoryCandidate, MemoryEvent, utcnow
+from app.models import Entity, MemoryCandidate, MemoryEvent, StateProjection, utcnow
 
 CONF = {"model": 0.9, "identity": 0.9, "spatial": 0.9, "temporal": 0.9, "policy": 1.0, "aggregate": 0.9}
 # 刚好卡在默认阈值 0.85 之下：这就是线索确认中心里那批候选的真实分布
@@ -58,10 +58,17 @@ async def _observed(db_session, entity: Entity, location: str, *, minutes_ago: i
     return event
 
 
-async def _candidate(db_session, payload: dict, *, confidence=None, status="PENDING") -> MemoryCandidate:
+async def _candidate(
+    db_session,
+    payload: dict,
+    *,
+    confidence=None,
+    status="PENDING",
+    event_type="OBJECT_OBSERVED_AT",
+) -> MemoryCandidate:
     c = MemoryCandidate(
         observation_ids=[],
-        event_type="OBJECT_OBSERVED_AT",
+        event_type=event_type,
         payload=payload,
         confidence=confidence or CONF_UNDER_GATE,
         status=status,
@@ -196,7 +203,7 @@ async def test_objects_located_only_drops_unlocated(db_session):
 
 @pytest.mark.asyncio
 async def test_clues_hide_candidates_with_nothing_to_confirm(db_session):
-    """没有位置的候选不是线索：确认它不会改变任何记忆。
+    """没有事实内容的候选不是线索；有效的偏好不要求带位置。
 
     这类候选大多是 where-is 找不到东西时留下的失败痕迹（payload 只有 object_text）。
     摆进确认中心，用户看到的是一排「充电器 / 位置未知 / 要确认吗？」——点了什么都不会变。
@@ -204,13 +211,18 @@ async def test_clues_hide_candidates_with_nothing_to_confirm(db_session):
     await _candidate(db_session, {"object_text": "座椅", "location": "桌子旁边"})
     await _candidate(db_session, {"object_text": "充电器"})           # 失败的查询
     await _candidate(db_session, {"object_text": "充电器"})
+    await _candidate(
+        db_session,
+        {"object_text": "胡辣汤", "preference": "不喜欢这家外卖的味道"},
+        event_type="PREFERENCE_STATED",
+    )
 
     async with _client(_app()) as client:
         body = (await client.get("/v1/memory/clues")).json()
 
-    assert body["total"] == 1
-    assert [c["object_text"] for c in body["clues"]] == ["座椅"]
-    assert body["clues"][0]["confidence"] == pytest.approx(0.8)
+    assert body["total"] == 2
+    assert {c["object_text"] for c in body["clues"]} == {"座椅", "胡辣汤"}
+    assert all(c["confidence"] == pytest.approx(0.8) for c in body["clues"])
 
 
 @pytest.mark.asyncio
@@ -237,6 +249,45 @@ async def test_confirming_a_clue_writes_the_event_the_gate_refused(db_session):
     assert event.confidence["aggregate"] == pytest.approx(0.8)
     assert event.confidence["user_confirmed"] == 1.0
     assert str(clue.id) in event.source_candidate_ids
+
+
+@pytest.mark.asyncio
+async def test_confirming_a_preference_clue_writes_a_confirmed_preference(db_session):
+    """偏好不需要位置；用户确认后直接成为偏好事实，并进入 preferences 投影。"""
+    clue = await _candidate(
+        db_session,
+        {
+            "object_text": "胡辣汤",
+            "preference": "不喜欢这家外卖的味道",
+            "sentiment": "DISLIKE",
+            "intensity": 0.8,
+        },
+        event_type="PREFERENCE_STATED",
+    )
+
+    async with _client(_app()) as client:
+        resp = await client.post(
+            f"/v1/memory/clues/{clue.id}/resolve",
+            json={"decision": "CONFIRM", "reason": "对，我不喜欢"},
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["projection"]["preference"] == "不喜欢这家外卖的味道"
+
+    event = await db_session.get(MemoryEvent, uuid.UUID(body["event_id"]))
+    assert event.event_type == "PREFERENCE_STATED"
+    assert event.payload["preference"] == "不喜欢这家外卖的味道"
+    assert event.confidence["aggregate"] == pytest.approx(0.8)
+    assert event.confidence["user_confirmed"] == 1.0
+
+    projection = await db_session.scalar(
+        select(StateProjection).where(
+            StateProjection.entity_id == event.entity_id,
+            StateProjection.projection_type == "preferences",
+        )
+    )
+    assert projection.state["preference"] == "不喜欢这家外卖的味道"
 
 
 @pytest.mark.asyncio

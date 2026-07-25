@@ -50,11 +50,23 @@ function eventLabel(type) {
  *  代价是布尔值没法显示：`has_straw: true` 只能渲染成「true」，那不是人话。宁可不显示，
  *  也不要为了凑一行字给每个键硬编一份中文标签——payload 的键是 VLM 现场生成的，编不完。 */
 function detailText(payload = {}, location) {
+  if (payload.preference) return String(payload.preference);
+  if (typeof payload.value === "string" || typeof payload.value === "number") {
+    return String(payload.value);
+  }
   const extras = Object.entries(payload)
     .filter(([k, v]) => !["location", "object_text", "field", "value", "reason"].includes(k) && v)
     .filter(([, v]) => typeof v !== "boolean")
     .map(([, v]) => (Array.isArray(v) ? v.join("、") : String(v)));
   return [location, ...extras].filter(Boolean).join(" · ");
+}
+
+function clueStatement(clue) {
+  if (clue.event_type === "PREFERENCE_STATED") {
+    const preference = clue.payload?.preference || clue.payload?.value || "";
+    return [clue.object_text, preference].filter(Boolean).join(" · ");
+  }
+  return [clue.object_text, clue.location ? `在${clue.location}` : ""].filter(Boolean).join(" ");
 }
 
 /** 把连着的、出自同一帧的事件并成一组。
@@ -414,6 +426,22 @@ const DEMO_TIMELINE_EVENTS = [
   },
 ];
 
+const DEMO_PREFERENCE_CLUE = {
+  candidate_id: "demo-preference-clue",
+  object_text: "胡辣汤",
+  event_type: "PREFERENCE_STATED",
+  payload: {
+    preference: "不喜欢这家外卖的味道",
+    sentiment: "DISLIKE",
+    intensity: 0.8,
+  },
+  confidence: 0.76,
+  status: "PENDING",
+  source: "perception",
+  created_at: demoTime(0, 12, 35),
+  demo: true,
+};
+
 function demoObjectTimeline(entityId) {
   const events = DEMO_TIMELINE_EVENTS
     .filter((event) => event.entity_id === entityId)
@@ -451,6 +479,7 @@ function timelineDay(date, events = []) {
     day: date.getDate(),
     weekday: date.toLocaleDateString("zh-CN", { weekday: "short" }),
     events,
+    preferenceClues: [],
   };
 }
 
@@ -870,14 +899,19 @@ function AgentHome() {
   );
 }
 
-/** 轨迹按天组织，卡片内仍展示后端已接受的真实事件。
+/** 轨迹按天组织：正式事件与待确认偏好共用一条时间轴。
  *
  *  同一来源帧会在这里合成一张卡；这只是展示聚合，不会改写后端的原子事件。
- *  真正等待确认的候选仍在确认中心，不能在事件流里再次“批准”已经成立的事实。 */
+ *  偏好候选可由人在流里确认或否认；已经成立的事件不会再次出现确认按钮。 */
 function TimelineView() {
-  const { setSelectedEntity, setShowClues, clueCount } = useOutletContext();
+  const { setSelectedEntity, setShowClues, clueCount, setClueCount } = useOutletContext();
   const [events, setEvents] = useState([]);
+  const [preferenceClues, setPreferenceClues] = useState([]);
   const [error, setError] = useState(null);
+  const [clueError, setClueError] = useState(null);
+  const [busyPreferenceId, setBusyPreferenceId] = useState(null);
+  const [preferenceActionErrors, setPreferenceActionErrors] = useState({});
+  const [demoPreferenceResult, setDemoPreferenceResult] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedDayId, setSelectedDayId] = useState("");
   const [scrubberOpen, setScrubberOpen] = useState(false);
@@ -893,12 +927,41 @@ function TimelineView() {
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    listClues()
+      .then(data => {
+        if (!alive) return;
+        setPreferenceClues(data.clues.filter(clue => clue.event_type === "PREFERENCE_STATED"));
+        setClueCount(data.total);
+        setClueError(null);
+      })
+      .catch(e => {
+        if (alive) setClueError(String(e.message || e));
+      });
+    return () => { alive = false; };
+  }, [setClueCount]);
+
   const isDemo = Boolean(error);
   const visibleEvents = isDemo ? DEMO_TIMELINE_EVENTS : events;
+  const visiblePreferenceClues = clueError ? [DEMO_PREFERENCE_CLUE] : preferenceClues;
   const timelineDays = useMemo(() => {
     const days = groupEventsByDay(visibleEvents);
+    const byId = new Map(days.map(day => [day.id, day]));
+    visiblePreferenceClues.forEach((clue) => {
+      const date = new Date(clue.created_at);
+      if (Number.isNaN(date.getTime())) return;
+      const id = localDayId(date);
+      if (!byId.has(id)) {
+        const day = timelineDay(date);
+        days.push(day);
+        byId.set(id, day);
+      }
+      byId.get(id).preferenceClues.push(clue);
+    });
+    days.sort((a, b) => b.id.localeCompare(a.id));
     return days.length > 0 ? days : [timelineDay(new Date())];
-  }, [visibleEvents]);
+  }, [visibleEvents, visiblePreferenceClues]);
 
   useEffect(() => {
     if (!timelineDays.some((day) => day.id === selectedDayId)) {
@@ -908,7 +971,57 @@ function TimelineView() {
 
   const selectedDay = timelineDays.find((day) => day.id === selectedDayId) || timelineDays[0];
   const selectedDayIndex = Math.max(0, timelineDays.findIndex((day) => day.id === selectedDay.id));
-  const selectedGroups = useMemo(() => groupByFrame(selectedDay.events), [selectedDay.events]);
+  const selectedItems = useMemo(() => {
+    const eventItems = groupByFrame(selectedDay.events).map(group => ({
+      kind: "event",
+      id: group.events[0].event_id,
+      time: group.events[0].event_time_from,
+      group,
+    }));
+    const clueItems = selectedDay.preferenceClues.map(clue => ({
+      kind: "preference",
+      id: clue.candidate_id,
+      time: clue.created_at,
+      clue,
+    }));
+    return [...eventItems, ...clueItems].sort(
+      (a, b) => new Date(b.time) - new Date(a.time)
+    );
+  }, [selectedDay.events, selectedDay.preferenceClues]);
+  const otherClueCount = clueCount === null
+    ? 0
+    : Math.max(clueCount - preferenceClues.length, 0);
+
+  const handlePreferenceDecision = async (clue, decision) => {
+    if (clue.demo) {
+      setDemoPreferenceResult(
+        decision === "CONFIRM"
+          ? "演示：确认后会沉淀为偏好事实"
+          : "演示：否认后不会写入记忆"
+      );
+      return;
+    }
+
+    setBusyPreferenceId(clue.candidate_id);
+    setPreferenceActionErrors(prev => ({ ...prev, [clue.candidate_id]: "" }));
+    try {
+      await resolveClue(clue.candidate_id, decision);
+      setPreferenceClues(prev => prev.filter(item => item.candidate_id !== clue.candidate_id));
+      setClueCount(current => current === null ? current : Math.max(current - 1, 0));
+      if (decision === "CONFIRM") {
+        const latest = await recentEvents(100);
+        setEvents(latest.events);
+        setError(null);
+      }
+    } catch (e) {
+      setPreferenceActionErrors(prev => ({
+        ...prev,
+        [clue.candidate_id]: `处理失败：${e.message || e}`,
+      }));
+    } finally {
+      setBusyPreferenceId(null);
+    }
+  };
 
   const selectDayFromY = (clientY) => {
     const rect = floatingScrubberRef.current?.getBoundingClientRect();
@@ -989,10 +1102,10 @@ function TimelineView() {
         </div>
       </header>
 
-      {clueCount > 0 && (
+      {otherClueCount > 0 && (
         <button className="timeline-clue-bar" onClick={() => setShowClues(true)}>
           <span className="status-dot"></span>
-          {clueCount} 条线索还没确认，它们不在下面这条流里
+          另有 {otherClueCount} 条位置线索等待确认
           <ChevronRight size={14} />
         </button>
       )}
@@ -1000,7 +1113,7 @@ function TimelineView() {
       <div className="timeline-container">
         {loading && <p className="timeline-hint">正在读记忆…</p>}
 
-        {!loading && !error && events.length === 0 && (
+        {!loading && !error && events.length === 0 && preferenceClues.length === 0 && (
           <p className="timeline-hint">还没有任何记忆事件。去「采集」页拍一张，感知跑完就会出现在这里。</p>
         )}
 
@@ -1013,7 +1126,70 @@ function TimelineView() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
           >
-            {selectedGroups.map((group, index) => {
+            {selectedItems.map((item, index) => {
+              if (item.kind === "preference") {
+                const clue = item.clue;
+                const actionError = preferenceActionErrors[clue.candidate_id];
+                const demoResult = clue.demo ? demoPreferenceResult : "";
+                return (
+                  <motion.div
+                    layout
+                    key={`preference-${clue.candidate_id}`}
+                    className="timeline-node preference-candidate-node"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.025, duration: 0.18 }}
+                  >
+                    <div className="node-time-badge">
+                      <span className="time-text">{clockText(clue.created_at)}</span>
+                      <span className="period-text">偏好线索</span>
+                    </div>
+                    <div className="node-bullet pending"></div>
+
+                    <div className="dark-card preference-candidate-card">
+                      <div className="preference-candidate-copy">
+                        <span className="preference-candidate-kicker">这项偏好准确吗？</span>
+                        <strong>{clueStatement(clue)}</strong>
+                        <p>
+                          置信度 {Math.round(clue.confidence * 100)}%
+                          <span> · 确认后记为事实</span>
+                        </p>
+                      </div>
+
+                      {demoResult ? (
+                        <span className="preference-result">{demoResult}</span>
+                      ) : (
+                        <div className="preference-decision-actions">
+                          <button
+                            type="button"
+                            className="preference-decision confirm"
+                            title="确认这项偏好"
+                            aria-label="确认这项偏好"
+                            disabled={busyPreferenceId === clue.candidate_id}
+                            onClick={() => handlePreferenceDecision(clue, "CONFIRM")}
+                          >
+                            <Check size={18} strokeWidth={2.4} />
+                          </button>
+                          <button
+                            type="button"
+                            className="preference-decision reject"
+                            title="这项偏好不准确"
+                            aria-label="这项偏好不准确"
+                            disabled={busyPreferenceId === clue.candidate_id}
+                            onClick={() => handlePreferenceDecision(clue, "REJECT")}
+                          >
+                            <X size={18} strokeWidth={2.4} />
+                          </button>
+                        </div>
+                      )}
+
+                      {actionError && <p className="preference-action-error">{actionError}</p>}
+                    </div>
+                  </motion.div>
+                );
+              }
+
+              const group = item.group;
               const head = group.events[0];
               const multi = group.events.length > 1;
               const single = multi ? null : head;
@@ -1372,7 +1548,9 @@ function CluesDrawer({ onClose, onCountChange }) {
     try {
       const res = await resolveClue(clue.candidate_id, decision);
       const note = decision === "CONFIRM"
-        ? `已记住：${clue.object_text}在${res.projection?.location || clue.location}`
+        ? clue.event_type === "PREFERENCE_STATED"
+          ? `已确认偏好：${res.projection?.preference || clue.payload?.preference || clue.payload?.value}`
+          : `已记住：${clue.object_text}在${res.projection?.location || clue.location}`
         : "已忽略，不写入记忆";
       setResolved(prev => {
         const next = { ...prev, [clue.candidate_id]: note };
@@ -1418,7 +1596,7 @@ function CluesDrawer({ onClose, onCountChange }) {
               const note = resolved[c.candidate_id];
               return (
                 <div key={c.candidate_id} className={`dark-clue-card ${note ? "done" : ""}`}>
-                  <h4>{c.object_text} 在 {c.location}</h4>
+                  <h4>{clueStatement(c)}</h4>
                   <p className="clue-meta">
                     {CLUE_SOURCE_LABEL[c.source] || c.source} · 置信度 {Math.round(c.confidence * 100)}%
                     {c.status === "CONFLICTED" && <em> · 与另一条记忆冲突</em>}
@@ -1431,7 +1609,7 @@ function CluesDrawer({ onClose, onCountChange }) {
                       className="clue-thumb"
                       src={evidenceUrl(c.frame_asset_id)}
                       alt={c.frame_caption || "线索来源画面"}
-                      caption={c.frame_caption || `${c.object_text} 在 ${c.location}`}
+                      caption={c.frame_caption || clueStatement(c)}
                       loading="lazy"
                     />
                   )}
@@ -1543,6 +1721,7 @@ function AppShell() {
           setSelectedEntity,
           setShowClues,
           clueCount,
+          setClueCount,
           agentSessionId,
           setAgentSessionId,
         }} />

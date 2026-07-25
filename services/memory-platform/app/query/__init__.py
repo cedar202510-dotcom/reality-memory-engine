@@ -1202,6 +1202,16 @@ async def _clue_frame(
     return frame, _evidence_alive(await _evidence_item_of(session, frame))
 
 
+def _candidate_has_confirmable_content(candidate: MemoryCandidate) -> bool:
+    """候选里必须有一项人能判断、确认后也会改变投影的内容。"""
+    payload = candidate.payload or {}
+    if payload.get("location"):
+        return True
+    if candidate.event_type == "PREFERENCE_STATED":
+        return bool(payload.get("preference") or payload.get("value"))
+    return False
+
+
 @router.get("/clues", response_model=MemoryCluesResponse)
 async def clues_endpoint(
     limit: int = Query(default=50, ge=1, le=200),
@@ -1217,14 +1227,20 @@ async def clues_endpoint(
     # 候选自己没有 household 列：已解析实体的按实体过滤，未解析的（entity_id 为空）
     # 属于本次摄入尚未落到实体的观察，一律归本家庭——单家庭部署下这是安全的近似。
     household_entity_ids = select(Entity.id).where(Entity.household_id == household_id)
-    # 必须有 location 才算「线索」。没有位置的候选确认了也没用：fold_events 只在
-    # payload.location 存在时才更新投影，所以确认它是个空操作。这类候选大多是
-    # where-is 找不到东西时留下的失败记录（payload 只有 object_text），把它们摆进
-    # 确认中心，用户看到的是一排「充电器 / 位置未知 / 要确认吗？」——无从下手，
-    # 点了也什么都不会变。它们作为「问过但没找到」的痕迹有价值，但不在这个界面里。
+    # 只有确认后能改变投影的候选才进入确认中心：
+    # - 位置候选必须有 location；
+    # - 偏好候选必须有 preference（兼容旧版 value）。
+    # 只有 object_text 的 where-is 失败痕迹仍然隐藏，因为人无法确认“位置未知”。
+    confirmable = MemoryCandidate.payload.has_key("location") | (  # noqa: W601 — JSONB ? 运算符
+        (MemoryCandidate.event_type == "PREFERENCE_STATED")
+        & (
+            MemoryCandidate.payload.has_key("preference")  # noqa: W601
+            | MemoryCandidate.payload.has_key("value")  # noqa: W601
+        )
+    )
     condition = (
         MemoryCandidate.status.in_(("PENDING", "CONFLICTED"))
-        & MemoryCandidate.payload.has_key("location")  # noqa: W601 — JSONB ? 运算符
+        & confirmable
     )
     scope = MemoryCandidate.entity_id.is_(None) | MemoryCandidate.entity_id.in_(
         household_entity_ids
@@ -1319,12 +1335,12 @@ async def resolve_clue_endpoint(
             candidate_id=candidate.id, status=candidate.status, entity_id=candidate.entity_id
         )
 
-    if not candidate.payload.get("location"):
-        # 没有位置就没有可确认的内容：升级后 fold 出来的投影跟现在一样，界面会显示
-        # 「已确认」但记忆没有任何变化。宁可明确报错，也不要给一个骗人的成功。
+    if not _candidate_has_confirmable_content(candidate):
+        # 没有位置或偏好内容时，升级后任何投影都不会改变。宁可明确报错，
+        # 也不要给一个“已确认”但事实没有变化的假成功。
         raise HTTPException(
             status_code=422,
-            detail="该候选没有位置信息，确认它不会改变任何记忆；只能忽略",
+            detail="该候选没有可确认的事实内容，确认它不会改变任何记忆；只能忽略",
         )
 
     # 观察时间：候选自己不存现象时间，从支撑观察里取，取不到才退回创建时间。
@@ -1369,13 +1385,22 @@ async def resolve_clue_endpoint(
             **({"grant_id": str(ctx.grant_id)} if ctx else {}),
         },
     )
+    await recompute_projection(session, entity_id=candidate.entity_id)
+    projection_type = (
+        "preferences" if candidate.event_type == "PREFERENCE_STATED" else "last_seen"
+    )
+    proj = await session.scalar(
+        select(StateProjection).where(
+            StateProjection.entity_id == candidate.entity_id,
+            StateProjection.projection_type == projection_type,
+        )
+    )
     await session.commit()
-    proj = await recompute_projection(session, entity_id=candidate.entity_id)
     return ClueResolveResponse(
         candidate_id=candidate.id,
         status=candidate.status,
         event_id=event.id,
         entity_id=candidate.entity_id,
-        projection=proj.state,
+        projection=(proj.state if proj else {}),
         rejected_sibling_ids=[s.id for s in siblings],
     )
