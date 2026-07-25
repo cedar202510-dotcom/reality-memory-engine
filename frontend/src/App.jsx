@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, Outlet, useNavigate, useLocation, useOutletContext, useSearchParams } from "react-router-dom";
 import { Mic, Keyboard, CircleDot, Milestone, Sparkles, X, Check, Coffee, Zap, MapPin, SlidersHorizontal, ChevronRight, Radio, ArrowLeft, Camera, User } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import "./styles.css";
 import TopologyGraph from "./TopologyGraph";
 import LiveView from "./LiveView";
 import CaptureConsole from "./CaptureConsole";
+import PresenceOrb from "./PresenceOrb";
+import MyPage from "./MyPage";
 import { whereIs } from "./api";
 
 // Mock Data for Context
@@ -124,20 +127,11 @@ function AgentHome() {
 
   return (
     <div className="page-view agent-page">
-      <div className="light-field-agent" aria-hidden="true">
-        <i className="beam one"></i>
-        <i className="beam two"></i>
-        <i className="beam three"></i>
+      <div style={{ position: "absolute", top: "40%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 0 }}>
+        <PresenceOrb state={listening ? "listening" : (isTyping || messages.some(m => m.type === "thinking")) ? "thinking" : "idle"} />
       </div>
 
-      <div className="orb-center">
-        <i className="ring r1"></i>
-        <i className="ring r2"></i>
-        <i className="ring r3"></i>
-        <span className="orb-wrap"><i className="orb"></i></span>
-      </div>
-
-      <header className="top">
+      <header className="top" style={{ zIndex: 10 }}>
         <div className="brand">
           <b>在场</b>
           <span>随时待命的现实记忆 Agent。</span>
@@ -145,14 +139,22 @@ function AgentHome() {
         <i className="enabled" aria-label="已开启"></i>
       </header>
 
-      <div className="dialogue" aria-live="polite">
-        {messages.map(msg => (
-          <div key={msg.id} className={`bubble ${msg.sender} ${msg.type === "thinking" ? "thinking" : ""}`}>
-            {msg.type === "thinking" ? <><i/><i/><i/></> : msg.text}
-            {/* 演示答案必须标出来：分不清真假的 demo 会毁掉可信度 */}
-            {msg.demo && <span className="bubble-demo">演示答案 · 后端未连接</span>}
-          </div>
-        ))}
+      <div className="dialogue" aria-live="polite" style={{ zIndex: 10 }}>
+        <AnimatePresence initial={false}>
+          {messages.map(msg => (
+            <motion.div 
+              key={msg.id} 
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.3, type: "spring", bounce: 0.4 }}
+              className={`bubble ${msg.sender} ${msg.type === "thinking" ? "thinking" : ""}`}
+            >
+              {msg.type === "thinking" ? <><i/><i/><i/></> : msg.text}
+              {/* 演示答案必须标出来：分不清真假的 demo 会毁掉可信度 */}
+              {msg.demo && <span className="bubble-demo">演示答案 · 后端未连接</span>}
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
 
       <button className="hint-pill" onClick={() => setShowClues(true)} style={{ opacity: isTyping ? 0 : 1 }}>
@@ -262,23 +264,6 @@ function GalaxyView() {
         </div>
       </header>
       <TopologyGraph onOpenItem={setSelectedObject}/>
-    </div>
-  );
-}
-
-function MyPage() {
-  return (
-    <div className="page-view my-page">
-      <header className="top">
-        <div className="brand">
-          <b>我的</b>
-          <span>设置与设备管理</span>
-        </div>
-      </header>
-      <div style={{ padding: "32px 24px", color: "var(--text-dim)", textAlign: "center", display: "flex", flexDirection: "column", gap: "12px", alignItems: "center", justifyContent: "center", height: "60vh" }}>
-        <User size={48} color="var(--dim)" />
-        <p>页面建设中...</p>
-      </div>
     </div>
   );
 }
