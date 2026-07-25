@@ -122,21 +122,29 @@ class DebugBackendUploader(
                     .put("http_status", response.status),
             )
         }.onFailure { error ->
+            val permanent = error is UploadHttpException &&
+                error.status in 400..499 &&
+                error.status !in setOf(408, 429)
             writeState(
                 candidate.uploadState,
                 JSONObject()
-                    .put("state", "RETRY_PENDING")
+                    .put("state", if (permanent) "PERMANENT_FAILURE" else "RETRY_PENDING")
                     .put("attempt_count", attempts)
                     .put("last_attempt_at", Instant.now().toString())
                     .put("endpoint", endpoint())
                     .put("last_error", describe(error)),
             )
             repository.appendRuntimeAudit(
-                "EVIDENCE_UPLOAD_FAILED",
+                if (permanent) {
+                    "EVIDENCE_UPLOAD_PERMANENT_FAILURE"
+                } else {
+                    "EVIDENCE_UPLOAD_FAILED"
+                },
                 JSONObject()
                     .put("evidence_item_id", candidate.evidenceId)
                     .put("capture_window_id", candidate.windowId)
                     .put("attempt_count", attempts)
+                    .put("http_status", (error as? UploadHttpException)?.status ?: JSONObject.NULL)
                     .put("error", describe(error)),
             )
         }
@@ -184,7 +192,9 @@ class DebugBackendUploader(
             val responseStream =
                 if (status in 200..299) connection.inputStream else connection.errorStream
             val body = responseStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            check(status in 200..299) { "HTTP $status: ${body.take(MAX_RESPONSE_CHARS)}" }
+            if (status !in 200..299) {
+                throw UploadHttpException(status, body.take(MAX_RESPONSE_CHARS))
+            }
             return UploadResponse(status, body)
         } finally {
             connection.disconnect()
@@ -221,7 +231,9 @@ class DebugBackendUploader(
         if (!file.exists()) return true
         return runCatching {
             val state = JSONObject(file.readText())
-            if (state.optString("state") == "UPLOADED") return@runCatching false
+            if (state.optString("state") in setOf("UPLOADED", "PERMANENT_FAILURE")) {
+                return@runCatching false
+            }
             val attempts = state.optInt("attempt_count", 0).coerceAtLeast(0)
             val lastAttempt = state.optString("last_attempt_at")
                 .takeIf(String::isNotBlank)
@@ -260,6 +272,11 @@ class DebugBackendUploader(
     )
 
     private data class UploadResponse(val status: Int, val body: String)
+
+    private class UploadHttpException(
+        val status: Int,
+        responseBody: String,
+    ) : IllegalStateException("HTTP $status: $responseBody")
 
     companion object {
         private const val RETRY_INTERVAL_MS = 15_000L
