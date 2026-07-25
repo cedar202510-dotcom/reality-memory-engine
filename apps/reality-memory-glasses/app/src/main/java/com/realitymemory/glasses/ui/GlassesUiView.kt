@@ -41,7 +41,7 @@ class GlassesUiView(context: Context) : View(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
+        canvas.drawColor(Color.BLACK)
         val scale = min(width / DESIGN_WIDTH, height / DESIGN_HEIGHT)
         val originX = (width - DESIGN_WIDTH * scale) / 2f
         val originY = (height - DESIGN_HEIGHT * scale) / 2f

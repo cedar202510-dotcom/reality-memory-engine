@@ -3,9 +3,16 @@
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowFullscreen">true</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:colorAccent">#00FF00</item>
+        <item name="android:colorBackground">#000000</item>
         <item name="android:navigationBarColor">#000000</item>
+        <item name="android:statusBarColor">#000000</item>
         <item name="android:windowBackground">#000000</item>
     </style>
 </resources>
