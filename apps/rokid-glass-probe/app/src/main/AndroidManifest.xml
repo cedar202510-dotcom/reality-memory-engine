@@ -17,8 +17,12 @@
         android:label="Reality Glass Probe"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
+        <!-- singleTop：App 已在前台时，am start 带 capture_once 这类 extra 才会走
+             onNewIntent。默认的 standard 模式下这条调试指令会被系统静默丢弃，
+             而眼镜的输入通道会拦截 adb input tap，intent extra 是唯一可靠的脚本触发方式。 -->
         <activity
             android:name=".MainActivity"
+            android:launchMode="singleTop"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

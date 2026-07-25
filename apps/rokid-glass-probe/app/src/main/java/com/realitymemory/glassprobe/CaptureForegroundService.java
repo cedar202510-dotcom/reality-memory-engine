@@ -9,12 +9,15 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Size;
 
 import androidx.annotation.NonNull;
 import androidx.camera.core.CameraSelector;
 import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageCapture;
 import androidx.camera.core.ImageCaptureException;
+import androidx.camera.core.resolutionselector.ResolutionSelector;
+import androidx.camera.core.resolutionselector.ResolutionStrategy;
 import androidx.camera.lifecycle.ProcessCameraProvider;
 import androidx.core.content.ContextCompat;
 import androidx.lifecycle.LifecycleService;
@@ -33,6 +36,7 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.nio.file.Files;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -50,6 +54,18 @@ public class CaptureForegroundService extends LifecycleService {
     private static final String CHANNEL_ID = "reality_glass_probe";
     private static final int NOTIFICATION_ID = 101;
     private static final long PERIODIC_INTERVAL_MS = 30_000L;
+
+    /**
+     * 拍照流分辨率上限。不设的话 CameraX 会挑传感器最大档 4032x3024（12MP），
+     * 单张 5.5MB / 约 2.4s；这里落到 2016x1512 后是 1.0MB / 约 1.3s。
+     * 采集探针每 30s 一张还要走上传，体积和延迟都按这个量级更合适，
+     * 12MP 的细节对后端的记忆检索没有额外价值。
+     */
+    private static final ResolutionSelector STILL_RESOLUTION = new ResolutionSelector.Builder()
+            .setResolutionStrategy(new ResolutionStrategy(
+                    new Size(1920, 1080),
+                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
+            .build();
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private ExecutorService cameraExecutor;
@@ -70,6 +86,10 @@ public class CaptureForegroundService extends LifecycleService {
     private PreviewStreamServer previewServer;
     private boolean previewActive = false;
     private boolean boundWithPreview = false;
+
+    // 相机绑定必须串行，见 bindCameraThen 注释
+    private boolean bindInFlight = false;
+    private final List<Runnable> pendingAfterBind = new java.util.ArrayList<>();
 
     private final Runnable periodicTick = new Runnable() {
         @Override
@@ -182,21 +202,44 @@ public class CaptureForegroundService extends LifecycleService {
         stopSelf();
     }
 
+    /**
+     * 绑定相机后执行 afterBind。所有状态只在主线程读写（调用方是 onStartCommand /
+     * 主线程 Handler，回调走 getMainExecutor），因此不需要额外加锁。
+     *
+     * 必须串行：bindToLifecycle 前的 unbindAll() 会关掉上一次绑定的 ImageCapture。
+     * 早期版本没有在途保护，App 启动时 CAPTURE_ONCE 与 1200ms 的自动 START_PREVIEW
+     * 会各起一次绑定，后完成的那次 unbindAll() 正好打断前一次的 takePicture，
+     * 报 ImageCapture code=3 "Camera is closed."，严重时相机 HAL 直接进入
+     * ERROR_CAMERA_DEVICE 后卡在 PENDING_OPEN 再也开不起来。
+     */
     private void bindCameraThen(Runnable afterBind) {
         // 预览开关变化时需要携带/去掉 ImageAnalysis 重新绑定
-        if (imageCapture != null && boundWithPreview == previewActive) {
+        if (imageCapture != null && boundWithPreview == previewActive && !bindInFlight) {
             afterBind.run();
             return;
         }
+        pendingAfterBind.add(afterBind);
+        if (bindInFlight) {
+            // 已有绑定在途；回调统一等它完成后 drain，避免并发 unbindAll 互相打断
+            return;
+        }
+        startBind();
+    }
+
+    private void startBind() {
+        bindInFlight = true;
+        // 快照本次要绑的形态：previewActive 可能在异步回调期间被改掉
+        final boolean wantPreview = previewActive;
         ListenableFuture<ProcessCameraProvider> providerFuture = ProcessCameraProvider.getInstance(this);
         providerFuture.addListener(() -> {
             try {
                 ProcessCameraProvider cameraProvider = providerFuture.get();
                 ImageCapture capture = new ImageCapture.Builder()
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                        .setResolutionSelector(STILL_RESOLUTION)
                         .build();
                 cameraProvider.unbindAll();
-                if (previewActive) {
+                if (wantPreview) {
                     ImageAnalysis analysis = new ImageAnalysis.Builder()
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                             .build();
@@ -210,14 +253,38 @@ public class CaptureForegroundService extends LifecycleService {
                     cameraProvider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, capture);
                 }
                 imageCapture = capture;
-                boundWithPreview = previewActive;
+                boundWithPreview = wantPreview;
                 ProbeLog.append(this, "CAMERA_BOUND",
-                        "CameraX bound to lifecycle, preview=" + previewActive);
-                afterBind.run();
+                        "CameraX bound to lifecycle, preview=" + wantPreview);
             } catch (Exception e) {
                 ProbeLog.append(this, "CAMERA_BIND_FAILED", e.getClass().getSimpleName() + ": " + e.getMessage());
+            } finally {
+                bindInFlight = false;
             }
+
+            // 绑定期间预览开关又变了：再绑一次，等待中的回调继续等最终形态
+            if (imageCapture != null && boundWithPreview != previewActive) {
+                startBind();
+                return;
+            }
+            drainPendingAfterBind();
         }, ContextCompat.getMainExecutor(this));
+    }
+
+    private void drainPendingAfterBind() {
+        List<Runnable> callbacks = new java.util.ArrayList<>(pendingAfterBind);
+        pendingAfterBind.clear();
+        if (imageCapture == null) {
+            // 绑定失败，回调无相机可用；丢弃并留痕，避免 takePicture 时 NPE
+            if (!callbacks.isEmpty()) {
+                ProbeLog.append(this, "CAMERA_BIND_DROPPED",
+                        "dropped " + callbacks.size() + " pending action(s); camera not bound");
+            }
+            return;
+        }
+        for (Runnable callback : callbacks) {
+            callback.run();
+        }
     }
 
     /** 开启电脑实时预览：本机起 MJPEG 服务器，相机加挂 ImageAnalysis 出帧。 */
@@ -254,6 +321,26 @@ public class CaptureForegroundService extends LifecycleService {
         });
     }
 
+    /**
+     * 拍照期间被摘掉的预览流在这里挂回去。takePicture 的回调跑在 cameraExecutor 上，
+     * 而绑定状态只在主线程读写，所以必须 post 回主线程。
+     * 期间用户可能已经手动 Stop Preview（previewServer 停了），这时不再自作主张恢复。
+     */
+    private void resumePreviewIfSuspended(boolean suspended) {
+        if (!suspended) {
+            return;
+        }
+        handler.post(() -> {
+            if (previewActive || previewServer == null || !previewServer.isRunning()) {
+                return;
+            }
+            previewActive = true;
+            ProbeLog.append(this, "PREVIEW_RESUMED", "reattach analysis after still capture");
+            bindCameraThen(() -> {
+            });
+        });
+    }
+
     private void captureOnce(String trigger) {
         if (paused) {
             ProbeLog.append(this, "CAPTURE_SKIPPED", "paused trigger=" + trigger);
@@ -264,13 +351,18 @@ public class CaptureForegroundService extends LifecycleService {
             return;
         }
 
-        // Rokid 相机 HAL 无法同时跑 ImageCapture 与 ImageAnalysis：预览开着时 takePicture
-        // 必定 ERROR_CAPTURE_FAILED(2)。拍照期间临时摘掉 ImageAnalysis，拍完再挂回去
-        // （预览服务器不停，观看者看到画面短暂静止约 2 秒——正好是快门语义）。
-        final boolean resumePreview = previewActive;
-        if (resumePreview) {
+        // 这颗 HAL 上「静态拍照请求 + ImageAnalysis 预览流」并存会把请求永久卡在
+        // in-flight 列表里（logcat 刷 "In-flight list too large"），既不回成功也不回失败，
+        // 而且整个相机会被拖死到必须重启设备。preview 单独跑没问题，纯拍照也没问题，
+        // 只有两者同时挂着才炸；历史日志里成功的 CAPTURED_LOCAL 无一例外都是 preview=false。
+        // 因此拍照期间先把预览流摘掉，拍完（无论成败）再挂回去。预览会短暂卡一下，
+        // 但这是让采集链路真正能出图的前提。
+        final boolean resumePreviewAfter = previewActive;
+        if (resumePreviewAfter) {
             previewActive = false;
+            ProbeLog.append(this, "PREVIEW_SUSPENDED", "detach analysis for still capture trigger=" + trigger);
         }
+
         bindCameraThen(() -> {
             File file = new File(getCacheDir(), "probe_" + System.currentTimeMillis() + ".jpg");
             ImageCapture.OutputFileOptions options = new ImageCapture.OutputFileOptions.Builder(file).build();
@@ -282,7 +374,6 @@ public class CaptureForegroundService extends LifecycleService {
                     long bytes = file.exists() ? file.length() : -1L;
                     PreviewStreamServer.recordEvent(
                             "photo_captured", "trigger=" + trigger + ", bytes=" + bytes);
-                    restorePreview(resumePreview);
                     if (collectorConfig.canUpload()) {
                         spoolFrame(file, trigger, startedAt);
                         ProbeLog.append(
@@ -298,34 +389,20 @@ public class CaptureForegroundService extends LifecycleService {
                                 "trigger=" + trigger + ", latency_ms=" + latencyMs + ", bytes=" + bytes + ", deleted=" + deleted
                         );
                     }
+                    resumePreviewIfSuspended(resumePreviewAfter);
                 }
 
                 @Override
                 public void onError(@NonNull ImageCaptureException exception) {
                     PreviewStreamServer.recordEvent(
                             "photo_failed", "trigger=" + trigger + ", code=" + exception.getImageCaptureError());
-                    restorePreview(resumePreview);
                     ProbeLog.append(
                             CaptureForegroundService.this,
                             "CAPTURE_FAILED",
                             "trigger=" + trigger + ", code=" + exception.getImageCaptureError() + ", message=" + exception.getMessage()
                     );
+                    resumePreviewIfSuspended(resumePreviewAfter);
                 }
-            });
-        });
-    }
-
-    /** 拍照结束后把 ImageAnalysis 挂回去恢复出帧；在主线程改 previewActive 并重绑。 */
-    private void restorePreview(boolean resumePreview) {
-        if (!resumePreview) {
-            return;
-        }
-        handler.post(() -> {
-            if (previewServer == null || !previewServer.isRunning()) {
-                return;   // 拍照期间用户关了预览，不要擅自开回来
-            }
-            previewActive = true;
-            bindCameraThen(() -> {
             });
         });
     }
