@@ -24,6 +24,7 @@ PRD 已覆盖完整产品设想，但把设备路径、数据契约、云端沉�
 | 数据调用 | Agent 如何安全使用记忆 | 账号授权、查询、订阅、纠正、遗忘、审计和 Demo | [03 Agent 调用架构](03-Agent-Access-Architecture.md) |
 | 设备接入 | 新设备如何接入后端 | Connector 三段式、设备注册、认证、版本、健康、接入清单 | [04 设备接入 Connector 架构](04-Device-Connector-Architecture.md) |
 | 端云通信 | 眼镜、手机和云端如何交换数据 | 设备身份、上行 Evidence、下行消息、中继和回执 | [05 设备与云端通信](05-Device-Cloud-Communication.md) |
+| 手环接入 Spike | 小米手环 10 如何低风险验证接入 | Gadgetbridge 边界、Android Collector、人体特征上行契约 | [06 Xiaomi Band Connector Spike](06-Xiaomi-Band-Connector-Spike.md) |
 
 这里的“网关”是一个逻辑角色，表示负责设备身份、策略、加密、重试和上传的边缘
 组件。它可以运行在眼镜、手机或未来家庭 Hub 上，不应永久等同于某个手机页面。

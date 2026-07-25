@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
@@ -18,6 +19,9 @@ import com.realitymemory.glasses.evidence.DebugBackendUploader
 import com.realitymemory.glasses.evidence.EvidenceRepository
 import com.realitymemory.glasses.interaction.ReminderPresenter
 import com.realitymemory.glasses.sensor.GlassSensorAdapter
+import com.realitymemory.glasses.wearable.HeartRateBroadcastCollector
+import com.realitymemory.glasses.wearable.HeartRateBroadcastSample
+import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicInteger
 
 class RealityRuntimeService : LifecycleService() {
@@ -29,6 +33,7 @@ class RealityRuntimeService : LifecycleService() {
     private lateinit var sensors: GlassSensorAdapter
     private lateinit var presenter: ReminderPresenter
     private lateinit var uploader: DebugBackendUploader
+    private lateinit var heartRateBroadcast: HeartRateBroadcastCollector
 
     private var state = SessionState.ARMED
     private var cameraReady = false
@@ -57,6 +62,11 @@ class RealityRuntimeService : LifecycleService() {
         camera = CameraCaptureAdapter(this, repository)
         audio = AudioCaptureAdapter(repository)
         presenter = ReminderPresenter(this)
+        heartRateBroadcast = HeartRateBroadcastCollector(
+            context = this,
+            onSample = { sample -> handler.post { recordHeartRateBroadcastSample(sample) } },
+            onStatus = { message -> handler.post { recordHeartRateBroadcastStatus(message) } },
+        )
         sensors = GlassSensorAdapter(this, repository) { motion ->
             if (state != SessionState.ACTIVE) return@GlassSensorAdapter
             val modalities = if (motion.intensity == "STRONG") {
@@ -77,8 +87,13 @@ class RealityRuntimeService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         ensureForeground()
-        ensureCameraPrepared()
-        when (intent?.action) {
+        val action = intent?.action
+        if (action != ACTION_START_HEART_RATE_BROADCAST_POC &&
+            action != ACTION_STOP_HEART_RATE_BROADCAST_POC
+        ) {
+            ensureCameraPrepared()
+        }
+        when (action) {
             ACTION_START_EXPLICIT -> startDisclosure("USER_EXPLICIT")
             ACTION_WEAR_CHANGED -> {
                 val worn = intent.getBooleanExtra(EXTRA_WORN, false)
@@ -96,6 +111,8 @@ class RealityRuntimeService : LifecycleService() {
                     ?: "提醒：你刚才记录的事情已经整理好了。",
             )
             ACTION_DISMISS_REMINDER -> dismissReminder()
+            ACTION_START_HEART_RATE_BROADCAST_POC -> startHeartRateBroadcastPoc()
+            ACTION_STOP_HEART_RATE_BROADCAST_POC -> heartRateBroadcast.stop()
         }
         return START_STICKY
     }
@@ -105,6 +122,7 @@ class RealityRuntimeService : LifecycleService() {
         sensors.shutdown()
         camera.shutdown()
         audio.shutdown()
+        heartRateBroadcast.stop()
         presenter.shutdown()
         repository.setEvidenceReadyListener(null)
         uploader.shutdown()
@@ -193,6 +211,38 @@ class RealityRuntimeService : LifecycleService() {
         if (state == SessionState.ACTIVE) {
             publish(state, "现实感知运行中", RuntimeDisplayKind.NONE)
         }
+    }
+
+    private fun startHeartRateBroadcastPoc() {
+        if (!hasBlePermissions()) {
+            recordHeartRateBroadcastStatus("缺少蓝牙扫描/连接权限")
+            return
+        }
+        heartRateBroadcast.start()
+    }
+
+    private fun recordHeartRateBroadcastStatus(message: String) {
+        repository.appendRuntimeAudit(
+            "HEART_RATE_BROADCAST_STATUS",
+            JSONObject().put("message", message),
+        )
+        publish(state, message, RuntimeDisplayKind.NONE)
+    }
+
+    private fun recordHeartRateBroadcastSample(sample: HeartRateBroadcastSample) {
+        repository.appendRuntimeAudit(
+            "HEART_RATE_BROADCAST_SAMPLE",
+            JSONObject()
+                .put("bpm", sample.bpm)
+                .put("peripheral_name", sample.peripheralName ?: JSONObject.NULL)
+                .put("peripheral_address", sample.peripheralAddress)
+                .put("rssi", sample.rssi ?: JSONObject.NULL)
+                .put("captured_at", sample.capturedAt.toString())
+                .put("monotonic_ns", sample.monotonicNs)
+                .put("raw_hex", sample.rawHex)
+                .put("adapter", "ble-heart-rate-service/android-poc"),
+        )
+        publish(state, "实时心率 ${sample.bpm} bpm", RuntimeDisplayKind.NONE)
     }
 
     private fun endSession(reason: String, announce: Boolean) {
@@ -306,6 +356,15 @@ class RealityRuntimeService : LifecycleService() {
             ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
 
+    private fun hasBlePermissions(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            (
+                ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) ==
+                    PackageManager.PERMISSION_GRANTED &&
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) ==
+                    PackageManager.PERMISSION_GRANTED
+                )
+
     private fun ensureCameraPrepared() {
         if (cameraReady || cameraPreparing) return
         if (
@@ -365,6 +424,10 @@ class RealityRuntimeService : LifecycleService() {
         const val ACTION_END_SESSION = "com.realitymemory.glasses.END_SESSION"
         const val ACTION_TEST_REMINDER = "com.realitymemory.glasses.TEST_REMINDER"
         const val ACTION_DISMISS_REMINDER = "com.realitymemory.glasses.DISMISS_REMINDER"
+        const val ACTION_START_HEART_RATE_BROADCAST_POC =
+            "com.realitymemory.glasses.START_HEART_RATE_BROADCAST_POC"
+        const val ACTION_STOP_HEART_RATE_BROADCAST_POC =
+            "com.realitymemory.glasses.STOP_HEART_RATE_BROADCAST_POC"
         const val EXTRA_WORN = "worn"
         const val EXTRA_WEAR_SOURCE = "wear_source"
         const val EXTRA_REMINDER_TEXT = "reminder_text"
