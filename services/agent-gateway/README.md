@@ -22,8 +22,9 @@
 
 ## API
 
-- `POST /v1/chat` — `{message, session_id?, delivery?}` →
-  `{session_id, reply, tool_trace, delivery?}`
+- `POST /v1/chat` —
+  `{message, session_id?, source?, response_channel?, correlation_id?, device_id?, delivery?}` →
+  `{session_id, reply, source, response_channel, correlation_id, tool_trace, delivery?}`
 - `POST /v1/proactive/check` — 拉取平台待投递信号，可选自动发到眼镜 →
   `{suggestions[], suppressed, deliveries[]}`
 - `POST /v1/signals/{id}/ack` — 用户确认提醒后回执(gateway 不代替用户 ack)
@@ -65,6 +66,38 @@ curl -X POST localhost:8200/v1/chat \
   }'
 ```
 
+### AIUI 对话
+
+Rokid AIUI 用户主动对话必须明确声明来源与返回通道：
+
+```bash
+curl -X POST localhost:8200/v1/chat \
+  -H 'Content-Type: application/json' \
+  -H "X-RealGit-Client-Token: $AIUI_CLIENT_TOKEN" \
+  -d '{
+    "message": "我的钥匙最后一次在哪里？",
+    "source": "ROKID_AIUI",
+    "response_channel": "AIUI_CONVERSATION",
+    "correlation_id": "aiui:test-turn"
+  }'
+```
+
+`AIUI_CONVERSATION` 表示回答由当前 AIUI 页面直接展示和播报。即使
+`GLASSES_AUTO_DELIVERY_ENABLED=true`，本次回答也不会再生成原生 `ANSWER`
+覆盖层。请求若同时携带 `delivery` 会返回 422，避免重复显示。
+
+可用回答通道：
+
+| 通道 | 含义 |
+| --- | --- |
+| `CALLER` | 只在 HTTP 响应中返回，适合 Web、手机或普通 API 调用 |
+| `AIUI_CONVERSATION` | 用户主动唤醒 AIUI 后，在 AIUI 对话中返回 |
+| `RV101_OVERLAY` | 写入原生眼镜 Runtime 的消息队列 |
+
+`source=ROKID_AIUI` 默认解析为 `AIUI_CONVERSATION`，但客户端仍应显式传入，便于
+审计。设置 `AIUI_CLIENT_TOKEN` 后，AIUI 请求必须通过
+`X-RealGit-Client-Token` 携带相同 token。静态 token 只适合早期联调。
+
 `LLM_PROVIDER=fake` 时无需任何 API key(工具循环由测试脚本驱动,见 `tests/`)。
 
 `delivery` 不是第二次人工下发：它只指定本次回答应该回到哪台眼镜。Agent Gateway
@@ -78,6 +111,7 @@ curl -X POST localhost:8200/v1/chat \
 GLASSES_AUTO_DELIVERY_ENABLED=true
 GLASSES_DEFAULT_DEVICE_ID=<RV101 device_id>
 GLASSES_DEFAULT_ALLOW_TTS=false
+AIUI_CLIENT_TOKEN=<早期联调 token>
 ```
 
 开启后，请求不传 `delivery` 也会自动投到默认眼镜。正式多终端产品应根据本次交互的

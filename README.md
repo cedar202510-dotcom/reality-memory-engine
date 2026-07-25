@@ -51,6 +51,8 @@ cp .claude/launch.json.example .claude/launch.json
   和必要时的数据中继。
 - `apps/reality-memory-glasses/`：正式 RV101 设备端 App，负责感知、隐私状态、
   本地短期队列、上行和提醒呈现。
+- `apps/reality-memory-aiui-agent/`：Rokid AIUI 用户主动对话入口；通过乐奇调起并
+  查询同一个 RealGit Agent，不承担后台主动提醒。
 - `apps/rokid-glass-probe/`：保留的 RV101 能力探针与排障基线，不是正式产品。
 - `apps/iflybuds-collector/`：蓝牙耳机（IFLYBUDS Air 2）的宿主侧 Collector，跑在电脑上，
   耳机只提供麦克风和扬声器，负责音频采集上行与语音提醒播报。
