@@ -5,63 +5,115 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import com.realitymemory.glasses.MainActivity
 import com.realitymemory.glasses.capture.AudioCaptureAdapter
 import com.realitymemory.glasses.capture.CameraCaptureAdapter
+import com.realitymemory.glasses.downlink.DeviceDownlinkClient
+import com.realitymemory.glasses.downlink.DownlinkPresentation
+import com.realitymemory.glasses.downlink.PresentationIntent
+import com.realitymemory.glasses.downlink.PresentationInteraction
 import com.realitymemory.glasses.evidence.DebugBackendUploader
 import com.realitymemory.glasses.evidence.EvidenceRepository
+import com.realitymemory.glasses.interaction.GlassesOverlayPresenter
 import com.realitymemory.glasses.interaction.ReminderPresenter
 import com.realitymemory.glasses.sensor.GlassSensorAdapter
 import com.realitymemory.glasses.wearable.HeartRateBroadcastCollector
 import com.realitymemory.glasses.wearable.HeartRateBroadcastSample
+import com.realitymemory.glasses.wearable.HeartRateEvidenceBuffer
+import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 class RealityRuntimeService : LifecycleService() {
     private val handler = Handler(Looper.getMainLooper())
+    private val wearStateExecutor = Executors.newSingleThreadExecutor()
 
     private lateinit var repository: EvidenceRepository
     private lateinit var camera: CameraCaptureAdapter
     private lateinit var audio: AudioCaptureAdapter
     private lateinit var sensors: GlassSensorAdapter
     private lateinit var presenter: ReminderPresenter
+    private lateinit var overlayPresenter: GlassesOverlayPresenter
     private lateinit var uploader: DebugBackendUploader
+    private lateinit var downlink: DeviceDownlinkClient
     private lateinit var heartRateBroadcast: HeartRateBroadcastCollector
+    private lateinit var heartRateEvidence: HeartRateEvidenceBuffer
+    private val wearStateReceiver: BroadcastReceiver = WearStateReceiver()
+    private val presentationInputReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val presentation = activePresentation
+            if (
+                intent?.action == ACTION_SPRITE_BUTTON_CLICK &&
+                presentation != null &&
+                presentation.interaction != PresentationInteraction.NONE
+            ) {
+                performPresentationPrimaryAction(presentation.messageId)
+                if (isOrderedBroadcast) abortBroadcast()
+            }
+        }
+    }
 
     private var state = SessionState.ARMED
     private var cameraReady = false
     private var cameraPreparing = false
     private var disclosureGeneration = 0
     private var reminderGeneration = 0
-
-    private val baselineCapture = object : Runnable {
-        override fun run() {
-            if (state == SessionState.ACTIVE) {
-                capture(
-                    signalKind = "DEBUG_TEST",
-                    modalities = setOf(CaptureModality.IMAGE, CaptureModality.SENSOR),
-                )
-                handler.postDelayed(this, BASELINE_CAPTURE_INTERVAL_MS)
-            }
-        }
-    }
+    private var wearDisclosureRequestGeneration = 0
+    private var wearDisclosureVisibleGeneration = 0
+    private var foregroundPromotionAudited = false
+    private val captureWindowBusy = AtomicBoolean(false)
+    private val pendingPresentations = ArrayDeque<DownlinkPresentation>()
+    private var activePresentation: DownlinkPresentation? = null
+    private var activePresentationVisible = false
+    private var presentationGeneration = 0
 
     override fun onCreate() {
         super.onCreate()
+        ContextCompat.registerReceiver(
+            this,
+            wearStateReceiver,
+            IntentFilter().apply {
+                addAction(WearStateReceiver.ACTION_TAKE_STATUS_CHANGED)
+                addAction(WearStateReceiver.ACTION_LEG_STATUS_CHANGED)
+            },
+            ContextCompat.RECEIVER_EXPORTED,
+        )
+        ContextCompat.registerReceiver(
+            this,
+            presentationInputReceiver,
+            IntentFilter(ACTION_SPRITE_BUTTON_CLICK).apply {
+                priority = IntentFilter.SYSTEM_HIGH_PRIORITY
+            },
+            ContextCompat.RECEIVER_EXPORTED,
+        )
         repository = EvidenceRepository(this)
         uploader = DebugBackendUploader(repository)
         repository.setEvidenceReadyListener { uploader.enqueue() }
         uploader.start()
         camera = CameraCaptureAdapter(this, repository)
-        audio = AudioCaptureAdapter(repository)
+        audio = AudioCaptureAdapter(this, repository)
         presenter = ReminderPresenter(this)
+        overlayPresenter = GlassesOverlayPresenter(this)
+        downlink = DeviceDownlinkClient(
+            context = this,
+            onPresentation = ::enqueuePresentation,
+            onAudit = repository::appendRuntimeAudit,
+        )
+        downlink.start()
+        heartRateEvidence = HeartRateEvidenceBuffer(repository)
         heartRateBroadcast = HeartRateBroadcastCollector(
             context = this,
             onSample = { sample -> handler.post { recordHeartRateBroadcastSample(sample) } },
@@ -69,12 +121,17 @@ class RealityRuntimeService : LifecycleService() {
         )
         sensors = GlassSensorAdapter(this, repository) { motion ->
             if (state != SessionState.ACTIVE) return@GlassSensorAdapter
-            val modalities = if (motion.intensity == "STRONG") {
-                setOf(CaptureModality.VIDEO, CaptureModality.AUDIO, CaptureModality.SENSOR)
-            } else {
-                setOf(CaptureModality.IMAGE, CaptureModality.AUDIO, CaptureModality.SENSOR)
-            }
-            capture("HEAD_MOTION_TRANSITION", modalities, motion)
+            capture(
+                signalKind = "HEAD_MOTION_TRANSITION",
+                modalities = setOf(
+                    CaptureModality.IMAGE,
+                    CaptureModality.VIDEO,
+                    CaptureModality.SENSOR,
+                ),
+                motion = motion,
+                useRokidSystemRecorder = true,
+                systemVideoDurationMs = MOTION_SYSTEM_VIDEO_DURATION_MS,
+            )
         }
         RuntimeStatusStore.publish(
             this,
@@ -82,55 +139,145 @@ class RealityRuntimeService : LifecycleService() {
             "等待佩戴",
             displayKind = RuntimeDisplayKind.NONE,
         )
+        reconcileCurrentWearState()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         ensureForeground()
-        val action = intent?.action
-        if (action != ACTION_START_HEART_RATE_BROADCAST_POC &&
-            action != ACTION_STOP_HEART_RATE_BROADCAST_POC
-        ) {
-            ensureCameraPrepared()
-        }
-        when (action) {
-            ACTION_START_EXPLICIT -> startDisclosure("USER_EXPLICIT")
+        when (intent?.action) {
+            ACTION_ARM_MONITOR -> publish(
+                SessionState.ARMED,
+                "等待佩戴",
+                RuntimeDisplayKind.NONE,
+            )
+            ACTION_START_EXPLICIT -> {
+                WearStateStore.setResumeSuppressed(this, false)
+                startDisclosure(
+                    intent.getStringExtra(EXTRA_START_REASON) ?: "USER_EXPLICIT",
+                )
+            }
             ACTION_WEAR_CHANGED -> {
                 val worn = intent.getBooleanExtra(EXTRA_WORN, false)
+                val source = intent.getStringExtra(EXTRA_WEAR_SOURCE) ?: "UNKNOWN"
+                WearStateStore.recordObservedState(this, worn)
+                WearStateStore.setResumeSuppressed(this, false)
+                repository.appendRuntimeAudit(
+                    "WEAR_STATE_RECEIVED",
+                    JSONObject()
+                        .put("worn", worn)
+                        .put("source", source)
+                        .put("runtime_state", state.name),
+                )
                 if (worn) {
                     startDisclosure("WEAR_CONFIRMED")
                 } else {
                     endSession("NOT_WORN", announce = false)
                 }
             }
-            ACTION_TOGGLE_PAUSE -> endSession("LEGACY_TOGGLE_CANCELLED", announce = true)
+            ACTION_TOGGLE_PAUSE -> {
+                WearStateStore.setResumeSuppressed(this, true)
+                endSession("LEGACY_TOGGLE_CANCELLED", announce = true)
+            }
             ACTION_REMEMBER_NOW -> rememberNow()
-            ACTION_END_SESSION -> endSession("USER_CLOSED_THIS_SESSION", announce = true)
+            ACTION_TEST_SYSTEM_VIDEO -> captureSystemVideoNow()
+            ACTION_END_SESSION -> {
+                WearStateStore.setResumeSuppressed(this, true)
+                endSession("USER_CLOSED_THIS_SESSION", announce = true)
+            }
             ACTION_TEST_REMINDER -> showReminder(
                 intent.getStringExtra(EXTRA_REMINDER_TEXT)
                     ?: "提醒：你刚才记录的事情已经整理好了。",
             )
             ACTION_DISMISS_REMINDER -> dismissReminder()
+            ACTION_REPORT_PRESENTATION_VISIBLE -> {
+                val messageId = intent.getStringExtra(EXTRA_MESSAGE_ID).orEmpty()
+                reportPresentationVisible(messageId)
+            }
+            ACTION_DISMISS_PRESENTATION -> {
+                val messageId = intent.getStringExtra(EXTRA_MESSAGE_ID).orEmpty()
+                performPresentationPrimaryAction(messageId)
+            }
             ACTION_START_HEART_RATE_BROADCAST_POC -> startHeartRateBroadcastPoc()
-            ACTION_STOP_HEART_RATE_BROADCAST_POC -> heartRateBroadcast.stop()
+            ACTION_STOP_HEART_RATE_BROADCAST_POC -> stopHeartRateBroadcastPoc()
+            ACTION_REPORT_WEAR_DISCLOSURE_VISIBLE -> {
+                wearDisclosureVisibleGeneration = wearDisclosureRequestGeneration
+                repository.appendRuntimeAudit(
+                    "WEAR_DISCLOSURE_UI_VISIBLE",
+                    JSONObject()
+                        .put("runtime_state", state.name)
+                        .put("request_generation", wearDisclosureVisibleGeneration),
+                )
+            }
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        runCatching { unregisterReceiver(wearStateReceiver) }
+        runCatching { unregisterReceiver(presentationInputReceiver) }
         sensors.shutdown()
         camera.shutdown()
         audio.shutdown()
         heartRateBroadcast.stop()
+        heartRateEvidence.shutdown()
         presenter.shutdown()
+        overlayPresenter.dismiss()
+        downlink.shutdown()
         repository.setEvidenceReadyListener(null)
         uploader.shutdown()
+        wearStateExecutor.shutdownNow()
         super.onDestroy()
     }
 
+    private fun reconcileCurrentWearState() {
+        val previousWorn = WearStateStore.lastObservedState(this)
+        val resumeSuppressed = WearStateStore.isResumeSuppressed(this)
+        wearStateExecutor.execute {
+            val currentWorn = WearStateStore.readCurrentRokidWearState()
+            handler.post {
+                repository.appendRuntimeAudit(
+                    "WEAR_STATE_RECONCILED",
+                    JSONObject()
+                        .put("current_worn", currentWorn ?: JSONObject.NULL)
+                        .put("previous_worn", previousWorn ?: JSONObject.NULL)
+                        .put("resume_suppressed", resumeSuppressed)
+                        .put("runtime_state", state.name),
+                )
+                if (currentWorn == null) return@post
+                WearStateStore.recordObservedState(this, currentWorn)
+                if (!currentWorn) {
+                    WearStateStore.setResumeSuppressed(this, false)
+                    if (state == SessionState.ACTIVE || state == SessionState.DISCLOSURE) {
+                        endSession("NOT_WORN_RECONCILED", announce = false)
+                    }
+                    return@post
+                }
+                if (
+                    !resumeSuppressed &&
+                    state != SessionState.ACTIVE &&
+                    state != SessionState.DISCLOSURE
+                ) {
+                    startDisclosure("WEAR_STATE_RECONCILED")
+                    requestWearDisclosureUi()
+                }
+            }
+        }
+    }
+
     private fun startDisclosure(startReason: String) {
-        if (state == SessionState.ACTIVE || state == SessionState.DISCLOSURE) return
+        repository.appendRuntimeAudit(
+            "RUNTIME_START_REQUESTED",
+            JSONObject()
+                .put("start_reason", startReason)
+                .put("runtime_state", state.name),
+        )
+        if (state == SessionState.ACTIVE) {
+            showDisclosureWhileActive()
+            return
+        }
+        if (state == SessionState.DISCLOSURE) return
         if (!hasCapturePermissions()) {
             repository.openSession(startReason)
             repository.updateSessionState(SessionState.BLOCKED)
@@ -138,6 +285,7 @@ class RealityRuntimeService : LifecycleService() {
             return
         }
         repository.openSession(startReason)
+        ensureCameraPrepared()
         state = SessionState.DISCLOSURE
         repository.updateSessionState(state)
         disclosureGeneration += 1
@@ -155,6 +303,29 @@ class RealityRuntimeService : LifecycleService() {
         }, DISCLOSURE_DELAY_MS)
     }
 
+    private fun showDisclosureWhileActive() {
+        disclosureGeneration += 1
+        val generation = disclosureGeneration
+        publish(
+            SessionState.ACTIVE,
+            "RealGit 已开启现实感知",
+            RuntimeDisplayKind.DISCLOSURE,
+        )
+        presenter.speak("RealGit 已开启现实感知。")
+        handler.postDelayed(
+            {
+                if (state == SessionState.ACTIVE && generation == disclosureGeneration) {
+                    publish(
+                        SessionState.ACTIVE,
+                        "现实感知运行中",
+                        RuntimeDisplayKind.NONE,
+                    )
+                }
+            },
+            DISCLOSURE_DELAY_MS,
+        )
+    }
+
     private fun activate(startReason: String) {
         if (!hasCapturePermissions()) {
             state = SessionState.BLOCKED
@@ -170,12 +341,8 @@ class RealityRuntimeService : LifecycleService() {
             if (sensorReady) "现实感知运行中" else "现实感知运行中，IMU 暂不可用",
             RuntimeDisplayKind.NONE,
         )
-        handler.removeCallbacks(baselineCapture)
-        handler.postDelayed(baselineCapture, BASELINE_CAPTURE_INTERVAL_MS)
-        capture(
-            signalKind = if (startReason == "WEAR_CONFIRMED") "WEAR_CONFIRMED" else "USER_EXPLICIT",
-            modalities = setOf(CaptureModality.IMAGE, CaptureModality.SENSOR),
-        )
+        downlink.setPresentationEnabled(true)
+        showNextPresentation()
     }
 
     private fun rememberNow() {
@@ -190,11 +357,26 @@ class RealityRuntimeService : LifecycleService() {
         )
     }
 
+    private fun captureSystemVideoNow() {
+        if (state != SessionState.ACTIVE) return
+        capture(
+            signalKind = "DEBUG_TEST",
+            modalities = setOf(
+                CaptureModality.IMAGE,
+                CaptureModality.VIDEO,
+                CaptureModality.SENSOR,
+            ),
+            useRokidSystemRecorder = true,
+            systemVideoDurationMs = DEBUG_SYSTEM_VIDEO_DURATION_MS,
+        )
+    }
+
     private fun showReminder(text: String) {
         if (state != SessionState.ACTIVE) return
         reminderGeneration += 1
         val generation = reminderGeneration
         publish(state, text, RuntimeDisplayKind.REMINDER)
+        openTransientUi()
         presenter.speak(text)
         handler.postDelayed(
             {
@@ -213,12 +395,258 @@ class RealityRuntimeService : LifecycleService() {
         }
     }
 
+    private fun enqueuePresentation(presentation: DownlinkPresentation) {
+        if (
+            activePresentation?.messageId == presentation.messageId ||
+            pendingPresentations.any { it.messageId == presentation.messageId }
+        ) {
+            return
+        }
+        pendingPresentations.addLast(presentation)
+        repository.appendRuntimeAudit(
+            "DOWNLINK_PRESENTATION_QUEUED",
+            JSONObject()
+                .put("message_id", presentation.messageId)
+                .put("intent", presentation.intent.name)
+                .put("priority", presentation.priority),
+        )
+        showNextPresentation()
+    }
+
+    private fun showNextPresentation() {
+        if (state != SessionState.ACTIVE || activePresentation != null) return
+        while (pendingPresentations.isNotEmpty()) {
+            val next = pendingPresentations.removeFirst()
+            if (next.expiresAtEpochMs <= System.currentTimeMillis()) {
+                downlink.sendReceipt(
+                    next.messageId,
+                    "EXPIRED",
+                    JSONObject().put("stage", "LOCAL_PRESENTATION_QUEUE"),
+                )
+                continue
+            }
+            activePresentation = next
+            activePresentationVisible = false
+            presentationGeneration += 1
+            val generation = presentationGeneration
+            if (!next.allowText) {
+                presentTtsOnly(next, generation)
+                return
+            }
+            val presentationStatus = RuntimeStatus(
+                state = state,
+                message = next.title,
+                lastEvidence = null,
+                displayKind = RuntimeDisplayKind.PRESENTATION,
+                presentation = next,
+            )
+            RuntimeStatusStore.publish(
+                this,
+                state,
+                next.title,
+                displayKind = RuntimeDisplayKind.PRESENTATION,
+                presentation = next,
+            )
+            updateNotification(next.title)
+            val visibleDurationMs = presentationDurationMs(next)
+            val overlayResult = overlayPresenter.show(
+                presentationStatus,
+                visibleDurationMs,
+                onVisible = {
+                    reportPresentationVisible(
+                        next.messageId,
+                        "SYSTEM_ALERT_WINDOW_OVERLAY",
+                    )
+                },
+                onPrimaryAction = {
+                    performPresentationPrimaryAction(next.messageId)
+                },
+            )
+            if (overlayResult.shown) {
+                repository.appendRuntimeAudit(
+                    "DOWNLINK_PRESENTATION_UI_REQUESTED",
+                    JSONObject()
+                        .put("message_id", next.messageId)
+                        .put("intent", next.intent.name)
+                        .put("strategy", "SYSTEM_ALERT_WINDOW_OVERLAY")
+                        .put("initially_interactive", overlayResult.initiallyInteractive)
+                        .put("wake_requested", overlayResult.wakeRequested),
+                )
+            } else {
+                requestPresentationUi(next, overlayResult.reason)
+            }
+            if (next.allowTts && !next.speechText.isNullOrBlank()) {
+                presenter.speak(next.speechText) { success, error ->
+                    if (success) {
+                        downlink.sendReceipt(
+                            next.messageId,
+                            "SPOKEN",
+                            JSONObject().put("tts_stage", "COMPLETED"),
+                        )
+                    } else {
+                        repository.appendRuntimeAudit(
+                            "DOWNLINK_TTS_FAILED",
+                            JSONObject()
+                                .put("message_id", next.messageId)
+                                .put("error", error ?: "UNKNOWN"),
+                        )
+                    }
+                }
+            }
+            handler.postDelayed(
+                {
+                    if (
+                        activePresentation?.messageId == next.messageId &&
+                        presentationGeneration == generation
+                    ) {
+                        if (activePresentationVisible) {
+                            dismissPresentation(next.messageId, "AUTO_TIMEOUT")
+                        } else {
+                            failPresentation(next, "VISUAL_UI_NOT_CONFIRMED")
+                        }
+                    }
+                },
+                visibleDurationMs,
+            )
+            return
+        }
+    }
+
+    private fun presentTtsOnly(
+        presentation: DownlinkPresentation,
+        generation: Int,
+    ) {
+        val speech = presentation.speechText
+        if (!presentation.allowTts || speech.isNullOrBlank()) {
+            failPresentation(presentation, "TTS_ONLY_MESSAGE_WITHOUT_SPEECH")
+            return
+        }
+        presenter.speak(speech) { success, error ->
+            if (
+                activePresentation?.messageId != presentation.messageId ||
+                presentationGeneration != generation
+            ) {
+                return@speak
+            }
+            if (success) {
+                downlink.sendReceipt(
+                    presentation.messageId,
+                    "SPOKEN",
+                    JSONObject().put("tts_stage", "COMPLETED"),
+                )
+                dismissPresentation(presentation.messageId, "TTS_COMPLETED")
+            } else {
+                failPresentation(presentation, error ?: "TTS_FAILED")
+            }
+        }
+    }
+
+    private fun failPresentation(
+        presentation: DownlinkPresentation,
+        reason: String,
+    ) {
+        presentationGeneration += 1
+        activePresentation = null
+        activePresentationVisible = false
+        overlayPresenter.dismiss()
+        getSystemService(NotificationManager::class.java)
+            .cancel(PRESENTATION_NOTIFICATION_ID)
+        downlink.sendReceipt(
+            presentation.messageId,
+            "FAILED",
+            JSONObject()
+                .put("stage", "PRESENTATION")
+                .put("error", reason),
+        )
+        repository.appendRuntimeAudit(
+            "DOWNLINK_PRESENTATION_FAILED",
+            JSONObject()
+                .put("message_id", presentation.messageId)
+                .put("error", reason),
+        )
+        handler.postDelayed({ showNextPresentation() }, PRESENTATION_GAP_MS)
+    }
+
+    private fun reportPresentationVisible(
+        messageId: String,
+        strategy: String = "ACTIVITY",
+    ) {
+        val current = activePresentation ?: return
+        if (current.messageId != messageId || activePresentationVisible) return
+        activePresentationVisible = true
+        downlink.sendReceipt(
+            messageId,
+            "PRESENTED",
+            JSONObject()
+                .put("display_kind", RuntimeDisplayKind.PRESENTATION.name)
+                .put("strategy", strategy)
+                .put(
+                    "fallback_intent",
+                    current.fallbackIntent ?: JSONObject.NULL,
+                ),
+        )
+        repository.appendRuntimeAudit(
+            "DOWNLINK_PRESENTATION_VISIBLE",
+            JSONObject()
+                .put("message_id", messageId)
+                .put("intent", current.intent.name),
+        )
+    }
+
+    private fun dismissPresentation(
+        messageId: String,
+        reason: String,
+    ) {
+        val current = activePresentation ?: return
+        if (messageId.isNotBlank() && current.messageId != messageId) return
+        presentationGeneration += 1
+        activePresentation = null
+        activePresentationVisible = false
+        overlayPresenter.dismiss()
+        getSystemService(NotificationManager::class.java)
+            .cancel(PRESENTATION_NOTIFICATION_ID)
+        downlink.sendReceipt(
+            current.messageId,
+            "DISMISSED",
+            JSONObject()
+                .put("reason", reason)
+                .put("interaction", current.interaction.name)
+                .put("action_id", current.actionId ?: JSONObject.NULL)
+                .put("user_action", reason == "PRIMARY_ACTION"),
+        )
+        if (state == SessionState.ACTIVE) {
+            publish(state, "现实感知运行中", RuntimeDisplayKind.NONE)
+        }
+        handler.postDelayed({ showNextPresentation() }, PRESENTATION_GAP_MS)
+    }
+
+    private fun performPresentationPrimaryAction(messageId: String) {
+        val current = activePresentation ?: return
+        if (messageId.isNotBlank() && current.messageId != messageId) return
+        if (current.interaction == PresentationInteraction.NONE) return
+
+        repository.appendRuntimeAudit(
+            "DOWNLINK_PRESENTATION_USER_ACTION",
+            JSONObject()
+                .put("message_id", current.messageId)
+                .put("interaction", current.interaction.name)
+                .put("action_id", current.actionId ?: JSONObject.NULL),
+        )
+        dismissPresentation(current.messageId, "PRIMARY_ACTION")
+    }
+
     private fun startHeartRateBroadcastPoc() {
         if (!hasBlePermissions()) {
             recordHeartRateBroadcastStatus("缺少蓝牙扫描/连接权限")
             return
         }
+        heartRateEvidence.start()
         heartRateBroadcast.start()
+    }
+
+    private fun stopHeartRateBroadcastPoc() {
+        heartRateBroadcast.stop()
+        heartRateEvidence.stop()
     }
 
     private fun recordHeartRateBroadcastStatus(message: String) {
@@ -226,7 +654,6 @@ class RealityRuntimeService : LifecycleService() {
             "HEART_RATE_BROADCAST_STATUS",
             JSONObject().put("message", message),
         )
-        publish(state, message, RuntimeDisplayKind.NONE)
     }
 
     private fun recordHeartRateBroadcastSample(sample: HeartRateBroadcastSample) {
@@ -242,17 +669,28 @@ class RealityRuntimeService : LifecycleService() {
                 .put("raw_hex", sample.rawHex)
                 .put("adapter", "ble-heart-rate-service/android-poc"),
         )
-        publish(state, "实时心率 ${sample.bpm} bpm", RuntimeDisplayKind.NONE)
+        heartRateEvidence.append(sample)
     }
 
     private fun endSession(reason: String, announce: Boolean) {
         disclosureGeneration += 1
         val endGeneration = disclosureGeneration
         reminderGeneration += 1
-        handler.removeCallbacks(baselineCapture)
-        sensors.stop()
+        presentationGeneration += 1
+        activePresentation?.let {
+            pendingPresentations.addFirst(it)
+            activePresentation = null
+        }
+        activePresentationVisible = false
+        overlayPresenter.dismiss()
+        getSystemService(NotificationManager::class.java)
+            .cancel(PRESENTATION_NOTIFICATION_ID)
+        sensors.stop(reason)
+        downlink.setPresentationEnabled(false)
         audio.stop()
-        camera.stopActiveRecording()
+        stopHeartRateBroadcastPoc()
+        camera.suspendCapture()
+        cameraReady = false
         repository.updateSessionState(SessionState.ENDED, reason)
         state = SessionState.ENDED
         if (announce) {
@@ -263,16 +701,24 @@ class RealityRuntimeService : LifecycleService() {
             )
             presenter.speak("本次现实感知已取消。")
         } else {
-            publish(state, "本次结束", RuntimeDisplayKind.NONE)
+            publish(
+                SessionState.ARMED,
+                "等待佩戴",
+                RuntimeDisplayKind.NONE,
+            )
+            return
         }
         handler.postDelayed(
             {
                 if (state == SessionState.ENDED && disclosureGeneration == endGeneration) {
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
+                    publish(
+                        SessionState.ARMED,
+                        "等待佩戴",
+                        RuntimeDisplayKind.NONE,
+                    )
                 }
             },
-            if (announce) CANCELLED_DISPLAY_MS else 0L,
+            CANCELLED_DISPLAY_MS,
         )
     }
 
@@ -281,11 +727,20 @@ class RealityRuntimeService : LifecycleService() {
         modalities: Set<CaptureModality>,
         motion: MotionTrigger? = null,
         cameraWaitAttempt: Int = 0,
+        useRokidSystemRecorder: Boolean = false,
+        systemVideoDurationMs: Long = MOTION_SYSTEM_VIDEO_DURATION_MS,
     ) {
         if (state != SessionState.ACTIVE) return
-        val needsCamera =
-            modalities.any { it == CaptureModality.IMAGE || it == CaptureModality.VIDEO }
-        if (!cameraReady && needsCamera) {
+        val systemVideoProvidesImage =
+            useRokidSystemRecorder &&
+                CaptureModality.VIDEO in modalities &&
+                CaptureModality.IMAGE in modalities
+        val needsAppCamera =
+            modalities.any {
+                it == CaptureModality.IMAGE && !systemVideoProvidesImage ||
+                    it == CaptureModality.VIDEO && !useRokidSystemRecorder
+            }
+        if (!cameraReady && needsAppCamera) {
             ensureCameraPrepared()
             if (cameraWaitAttempt < CAMERA_READY_MAX_ATTEMPTS) {
                 handler.postDelayed(
@@ -295,6 +750,8 @@ class RealityRuntimeService : LifecycleService() {
                             modalities = modalities,
                             motion = motion,
                             cameraWaitAttempt = cameraWaitAttempt + 1,
+                            useRokidSystemRecorder = useRokidSystemRecorder,
+                            systemVideoDurationMs = systemVideoDurationMs,
                         )
                     },
                     CAMERA_READY_RETRY_DELAY_MS,
@@ -302,23 +759,57 @@ class RealityRuntimeService : LifecycleService() {
                 return
             }
         }
+        if (!captureWindowBusy.compareAndSet(false, true)) {
+            repository.appendRuntimeAudit(
+                "CAPTURE_SKIPPED_BUSY",
+                JSONObject()
+                    .put("signal_kind", signalKind)
+                    .put(
+                        "requested_modalities",
+                        JSONArray(modalities.map { it.name }),
+                    )
+                    .put("reason", "ANOTHER_CAPTURE_WINDOW_IS_ACTIVE"),
+            )
+            return
+        }
         val window = repository.beginWindow(signalKind, modalities, motion)
-        val remaining = AtomicInteger(modalities.size)
+        val captureOperations = modalities.filterNot {
+            it == CaptureModality.IMAGE && systemVideoProvidesImage
+        }
+        if (captureOperations.isEmpty()) {
+            captureWindowBusy.set(false)
+            repository.finalizeWindow(window)
+            return
+        }
+        val remaining = AtomicInteger(captureOperations.size)
         val complete: (Boolean, String) -> Unit = { success, message ->
             if (success) {
                 RuntimeStatusStore.updateLastEvidence(this, window.captureWindowId)
             }
-            if (remaining.decrementAndGet() == 0) repository.finalizeWindow(window)
+            if (remaining.decrementAndGet() == 0) {
+                repository.finalizeWindow(window)
+                if (needsAppCamera) camera.suspendCapture()
+                captureWindowBusy.set(false)
+            }
         }
 
-        modalities.forEach { modality ->
+        captureOperations.forEach { modality ->
             when (modality) {
                 CaptureModality.IMAGE -> {
                     if (cameraReady) camera.captureImage(window, complete)
                     else markUnavailable(window, modality, complete)
                 }
                 CaptureModality.VIDEO -> {
-                    if (cameraReady) camera.captureShortVideo(window, onComplete = complete)
+                    if (useRokidSystemRecorder) {
+                        camera.captureRokidSystemVideo(
+                            window = window,
+                            durationMs = systemVideoDurationMs,
+                            deriveRepresentativeFrame = systemVideoProvidesImage,
+                            onComplete = complete,
+                        )
+                    } else if (cameraReady) {
+                        camera.captureShortVideo(window, onComplete = complete)
+                    }
                     else markUnavailable(window, modality, complete)
                 }
                 CaptureModality.AUDIO -> audio.capture(window, onComplete = complete)
@@ -406,12 +897,186 @@ class RealityRuntimeService : LifecycleService() {
                 NotificationManager.IMPORTANCE_LOW,
             ),
         )
-        startForeground(NOTIFICATION_ID, buildNotification("等待开始"))
+        manager.createNotificationChannel(
+            NotificationChannel(
+                ALERT_NOTIFICATION_CHANNEL,
+                "RealGit 提醒",
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            },
+        )
+        runCatching {
+            startForeground(NOTIFICATION_ID, buildNotification("等待开始"))
+        }.onSuccess {
+            if (!foregroundPromotionAudited) {
+                foregroundPromotionAudited = true
+                repository.appendRuntimeAudit(
+                    "FOREGROUND_SERVICE_PROMOTION_REQUESTED",
+                    JSONObject().put("runtime_state", state.name),
+                )
+            }
+        }.onFailure { error ->
+            repository.appendRuntimeAudit(
+                "FOREGROUND_SERVICE_PROMOTION_FAILED",
+                JSONObject()
+                    .put("runtime_state", state.name)
+                    .put("error", error.message ?: error.javaClass.simpleName),
+            )
+        }
     }
 
     private fun updateNotification(message: String) {
+        // Keep the notification bound to the foreground service on RV101.
+        startForeground(NOTIFICATION_ID, buildNotification(message))
+    }
+
+    private fun openTransientUi(
+        openedFromWear: Boolean = false,
+        openedFromPresentation: Boolean = false,
+    ) {
+        runCatching {
+            val intent = Intent(this, MainActivity::class.java)
+                .addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                )
+            if (openedFromWear) {
+                intent.putExtra(MainActivity.EXTRA_OPENED_FROM_WEAR, true)
+            }
+            if (openedFromPresentation) {
+                intent.putExtra(MainActivity.EXTRA_OPENED_FROM_PRESENTATION, true)
+            }
+            startActivity(intent)
+        }
+    }
+
+    private fun requestPresentationUi(
+        presentation: DownlinkPresentation,
+        overlayFailure: String?,
+    ) {
+        val openIntent = PendingIntent.getActivity(
+            this,
+            3,
+            Intent(this, MainActivity::class.java)
+                .addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                )
+                .putExtra(MainActivity.EXTRA_OPENED_FROM_PRESENTATION, true),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = Notification.Builder(this, ALERT_NOTIFICATION_CHANNEL)
+            .setContentTitle("RealGit")
+            .setContentText(presentation.title)
+            .setSmallIcon(android.R.drawable.presence_video_online)
+            .setCategory(Notification.CATEGORY_REMINDER)
+            .setPriority(Notification.PRIORITY_HIGH)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setContentIntent(openIntent)
+            .setFullScreenIntent(openIntent, true)
+            .setAutoCancel(true)
+            .build()
         getSystemService(NotificationManager::class.java)
-            .notify(NOTIFICATION_ID, buildNotification(message))
+            .notify(PRESENTATION_NOTIFICATION_ID, notification)
+        openTransientUi(openedFromPresentation = true)
+        repository.appendRuntimeAudit(
+            "DOWNLINK_PRESENTATION_UI_REQUESTED",
+            JSONObject()
+                .put("message_id", presentation.messageId)
+                .put("intent", presentation.intent.name)
+                .put("strategy", "FULL_SCREEN_NOTIFICATION_AND_ACTIVITY")
+                .put("overlay_failure", overlayFailure ?: JSONObject.NULL),
+        )
+    }
+
+    private fun presentationDurationMs(presentation: DownlinkPresentation): Long =
+        when {
+            presentation.interaction != PresentationInteraction.NONE -> 12_000L
+            presentation.intent == PresentationIntent.CONSUMABLE -> 6_000L
+            presentation.intent in setOf(
+                PresentationIntent.PRIVACY,
+                PresentationIntent.SYSTEM,
+            ) -> 12_000L
+            else -> 8_000L
+        }
+
+    private fun requestWearDisclosureUi() {
+        wearDisclosureRequestGeneration += 1
+        val requestGeneration = wearDisclosureRequestGeneration
+        repository.appendRuntimeAudit(
+            "WEAR_DISCLOSURE_UI_REQUESTED",
+            JSONObject()
+                .put("strategy", "FULL_SCREEN_NOTIFICATION_ACTIVITY_AND_TEXT_TOAST")
+                .put("request_generation", requestGeneration),
+        )
+        runCatching {
+            Toast.makeText(
+                applicationContext,
+                "RealGit 已开启现实感知",
+                Toast.LENGTH_LONG,
+            ).show()
+        }.onSuccess {
+            repository.appendRuntimeAudit(
+                "WEAR_DISCLOSURE_TEXT_FALLBACK_REQUESTED",
+                JSONObject().put("request_generation", requestGeneration),
+            )
+        }.onFailure { error ->
+            repository.appendRuntimeAudit(
+                "WEAR_DISCLOSURE_TEXT_FALLBACK_FAILED",
+                JSONObject()
+                    .put("request_generation", requestGeneration)
+                    .put("error", error.message ?: error.javaClass.simpleName),
+            )
+        }
+        val openIntent = PendingIntent.getActivity(
+            this,
+            1,
+            Intent(this, MainActivity::class.java)
+                .addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                )
+                .putExtra(MainActivity.EXTRA_OPENED_FROM_WEAR, true),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = Notification.Builder(this, ALERT_NOTIFICATION_CHANNEL)
+            .setContentTitle("RealGit")
+            .setContentText("已开启现实感知")
+            .setSmallIcon(android.R.drawable.presence_video_online)
+            .setCategory(Notification.CATEGORY_STATUS)
+            .setPriority(Notification.PRIORITY_HIGH)
+            .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setContentIntent(openIntent)
+            .setFullScreenIntent(openIntent, true)
+            .setAutoCancel(true)
+            .build()
+        getSystemService(NotificationManager::class.java)
+            .notify(WEAR_DISCLOSURE_NOTIFICATION_ID, notification)
+        handler.postDelayed(
+            { openTransientUi(openedFromWear = true) },
+            WEAR_DISCLOSURE_ACTIVITY_DELAY_MS,
+        )
+        handler.postDelayed(
+            {
+                if (wearDisclosureVisibleGeneration < requestGeneration) {
+                    repository.appendRuntimeAudit(
+                        "WEAR_DISCLOSURE_UI_NOT_CONFIRMED",
+                        JSONObject()
+                            .put("request_generation", requestGeneration)
+                            .put("runtime_state", state.name)
+                            .put(
+                                "reason",
+                                "BACKGROUND_ACTIVITY_OR_FULL_SCREEN_NOTIFICATION_NOT_SHOWN",
+                            ),
+                    )
+                }
+            },
+            WEAR_DISCLOSURE_CONFIRMATION_TIMEOUT_MS,
+        )
     }
 
     private fun buildNotification(message: String): Notification {
@@ -432,26 +1097,46 @@ class RealityRuntimeService : LifecycleService() {
 
     companion object {
         const val ACTION_START_EXPLICIT = "com.realitymemory.glasses.START_EXPLICIT"
+        const val ACTION_ARM_MONITOR = "com.realitymemory.glasses.ARM_MONITOR"
         const val ACTION_WEAR_CHANGED = "com.realitymemory.glasses.WEAR_CHANGED"
         const val ACTION_TOGGLE_PAUSE = "com.realitymemory.glasses.TOGGLE_PAUSE"
         const val ACTION_REMEMBER_NOW = "com.realitymemory.glasses.REMEMBER_NOW"
+        const val ACTION_TEST_SYSTEM_VIDEO =
+            "com.realitymemory.glasses.TEST_SYSTEM_VIDEO"
         const val ACTION_END_SESSION = "com.realitymemory.glasses.END_SESSION"
         const val ACTION_TEST_REMINDER = "com.realitymemory.glasses.TEST_REMINDER"
         const val ACTION_DISMISS_REMINDER = "com.realitymemory.glasses.DISMISS_REMINDER"
+        const val ACTION_REPORT_PRESENTATION_VISIBLE =
+            "com.realitymemory.glasses.REPORT_PRESENTATION_VISIBLE"
+        const val ACTION_DISMISS_PRESENTATION =
+            "com.realitymemory.glasses.DISMISS_PRESENTATION"
         const val ACTION_START_HEART_RATE_BROADCAST_POC =
             "com.realitymemory.glasses.START_HEART_RATE_BROADCAST_POC"
         const val ACTION_STOP_HEART_RATE_BROADCAST_POC =
             "com.realitymemory.glasses.STOP_HEART_RATE_BROADCAST_POC"
+        const val ACTION_REPORT_WEAR_DISCLOSURE_VISIBLE =
+            "com.realitymemory.glasses.REPORT_WEAR_DISCLOSURE_VISIBLE"
         const val EXTRA_WORN = "worn"
         const val EXTRA_WEAR_SOURCE = "wear_source"
         const val EXTRA_REMINDER_TEXT = "reminder_text"
+        const val EXTRA_START_REASON = "start_reason"
+        const val EXTRA_MESSAGE_ID = "message_id"
 
+        private const val ACTION_SPRITE_BUTTON_CLICK =
+            "com.android.action.ACTION_SPRITE_BUTTON_CLICK"
         private const val NOTIFICATION_CHANNEL = "reality_memory_runtime"
+        private const val ALERT_NOTIFICATION_CHANNEL = "reality_memory_alerts"
         private const val NOTIFICATION_ID = 501
+        private const val WEAR_DISCLOSURE_NOTIFICATION_ID = 502
+        private const val PRESENTATION_NOTIFICATION_ID = 503
         private const val DISCLOSURE_DELAY_MS = 5_000L
+        private const val WEAR_DISCLOSURE_ACTIVITY_DELAY_MS = 350L
+        private const val WEAR_DISCLOSURE_CONFIRMATION_TIMEOUT_MS = 2_500L
         private const val CANCELLED_DISPLAY_MS = 3_000L
-        private const val BASELINE_CAPTURE_INTERVAL_MS = 60_000L
         private const val REMINDER_DISPLAY_MS = 8_000L
+        private const val PRESENTATION_GAP_MS = 350L
+        private const val MOTION_SYSTEM_VIDEO_DURATION_MS = 3_000L
+        private const val DEBUG_SYSTEM_VIDEO_DURATION_MS = 5_000L
         private const val CAMERA_READY_RETRY_DELAY_MS = 150L
         private const val CAMERA_READY_MAX_ATTEMPTS = 20
     }

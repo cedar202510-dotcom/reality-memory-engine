@@ -63,7 +63,9 @@ class Device(Base, UUIDPK):
     household_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("households.id"), comment="所属家庭"
     )
-    kind: Mapped[str] = mapped_column(String(32), comment="设备类型：glasses/ring/phone")
+    kind: Mapped[str] = mapped_column(
+        String(32), comment="设备类型：glasses/ring/phone/earbuds（schemas.DEVICE_KINDS）"
+    )
     name: Mapped[str] = mapped_column(String(128), comment="设备名")
     # 控制面绑定：connector 靠这两列知道「命令该发给谁、怎么发」。
     # 一台眼镜上可能装探针也可能装正式 App，两者的 intent 契约不同，不能靠 kind 猜。
@@ -134,11 +136,20 @@ class EvidenceItem(Base, UUIDPK):
     encryption_key_id: Mapped[str | None] = mapped_column(
         String(128), nullable=True, comment="加密密钥 id 占位（v0 本地删除模拟 crypto-shredding）"
     )
+    # 视频抽帧：关键帧是自成一条的 image 证据（这样帧流水线一行不改就能吃），
+    # 靠这两列指回源视频并保留时间轴位置。顶层证据两列都为空。
+    parent_evidence_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("evidence_items.id"), nullable=True, comment="源证据（关键帧指回源视频）"
+    )
+    offset_seconds: Mapped[float | None] = mapped_column(
+        Float, nullable=True, comment="相对源证据起点的偏移秒数"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 Index("ix_evidence_ttl", EvidenceItem.ttl_until)
 Index("ix_evidence_created", EvidenceItem.created_at)
+Index("ix_evidence_parent", EvidenceItem.parent_evidence_item_id)
 
 
 # ---------------------------------------------------------------- 长期结构化表示
@@ -166,6 +177,77 @@ class FrameAsset(Base, UUIDPK):
     )
     quality: Mapped[dict] = mapped_column(JSONB, default=dict, comment="质量信息（分辨率/模糊度等）")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class FrameRegion(Base, UUIDPK):
+    """帧内区域：一张帧切出来的子图，各自存一份 CLIP 向量。
+
+    为什么帧级一个向量不够：CLIP 把整图缩到 224 再切 32x32 patch。4000px 宽的照片
+    缩放比 ~0.056，桌上 400px 的身份证只剩 22px——不到一个 patch，它在帧向量里的
+    贡献被地毯/窗帘/圈椅彻底淹没。换 prompt 或换更强的 VLM 都无解，因为模型压根
+    没看见。切成重叠子图各编一次，同一张身份证在瓦片里占比放大一个量级。
+
+    region_key 是切法的确定性标识（如 tile:1500:2,1），与 frame_asset_id 唯一：
+    重复入队/回填只会命中已有行，不会把同一块区域编码两遍。
+    """
+
+    __tablename__ = "frame_regions"
+    frame_asset_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("frame_assets.id", ondelete="CASCADE"), comment="所属帧"
+    )
+    region_key: Mapped[str] = mapped_column(
+        String(64), comment="切法的确定性标识（幂等键），如 tile:1500:2,1"
+    )
+    source: Mapped[str] = mapped_column(
+        String(16), default="tile", comment="区域来源：tile（切片）/ detect（检测框）"
+    )
+    bbox: Mapped[dict] = mapped_column(
+        JSONB, default=dict, comment="归一化坐标 {x,y,w,h} ∈ [0,1]，用于前端框选与裁图复现"
+    )
+    label: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, comment="区域标签（检测器给的物体名；切片为空）"
+    )
+    visual_embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(VISUAL_EMBEDDING_DIM), nullable=True, comment="该区域的 CLIP 图像向量"
+    )
+    crop_ref: Mapped[str | None] = mapped_column(
+        String(512),
+        nullable=True,
+        comment="裁切图落盘路径（不受证据 TTL 管辖；切片区域为空）",
+    )
+    score: Mapped[float | None] = mapped_column(
+        Float, nullable=True, comment="检测器置信度（切片区域为空）；同物品多图时按它择优"
+    )
+    ocr_text: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment="OCR 识别文本，**已脱敏**（source=ocr 的区域才有）。身份证号/卡号在写库前"
+        " 已换成〔身份证号〕这类占位符——原图 15 分钟后就删了，这里不能留明文 PII",
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+Index("ix_frame_regions_frame", FrameRegion.frame_asset_id)
+Index(
+    "ix_frame_regions_label",
+    FrameRegion.frame_asset_id,
+    FrameRegion.label,
+    postgresql_where=FrameRegion.label.is_not(None),
+)
+Index(
+    "uq_frame_regions_key",
+    FrameRegion.frame_asset_id,
+    FrameRegion.region_key,
+    unique=True,
+)
+# OCR 文本走 trgm 模糊 + ilike 包含，两者都吃 GIN trgm 索引
+Index(
+    "ix_frame_regions_ocr_trgm",
+    FrameRegion.ocr_text,
+    postgresql_using="gin",
+    postgresql_ops={"ocr_text": "gin_trgm_ops"},
+    postgresql_where=FrameRegion.ocr_text.is_not(None),
+)
 
 
 class AtomicObservation(Base, UUIDPK):
@@ -252,6 +334,14 @@ class Entity(Base, UUIDPK):
     )
     created_from: Mapped[str] = mapped_column(
         String(32), default="observation", comment="来源：observation/query/correction"
+    )
+    # 粗分类（schemas.ENTITY_CATEGORIES）。推断出来的，不是观察到的，所以要留来源：
+    # user 改过的绝不能被后续自动分类覆盖。
+    category: Mapped[str] = mapped_column(
+        String(32), default="UNCLASSIFIED", comment="PORTABLE/FIXTURE/PERSON/CONSUMABLE/UNCLASSIFIED"
+    )
+    category_source: Mapped[str] = mapped_column(
+        String(16), default="unset", comment="谁定的：llm/user/unset"
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

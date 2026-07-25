@@ -3,7 +3,7 @@
 > 文档版本：v0.1  
 > 更新日期：2026-07-25  
 > 负责范围：在不影响现有眼镜、戒指和 iOS 采集路径的前提下，验证是否能把
-> Gadgetbridge 的小米手环 10 采集能力抽成 Reality Memory 的人体特征 Collector。
+> Gadgetbridge 的小米手环 10 采集能力抽成 RealGit 的人体特征 Collector。
 
 ## 1. 结论
 
@@ -17,7 +17,7 @@ Memory 的事件并上传。最小风险路线是：
 Xiaomi Smart Band 10
   -> Android Band Collector Spike (BLE live/private-protocol connection)
   -> 本地 wearable_metrics stream + offline spool
-  -> Reality Memory SourceEnvelope / EvidenceItem
+  -> RealGit SourceEnvelope / EvidenceItem
   -> Memory Platform Ingest API
 ```
 

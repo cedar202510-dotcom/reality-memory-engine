@@ -18,6 +18,7 @@ from .capture_control import router as capture_control_router
 from .config import get_settings
 from .db import SessionLocal, ensure_extensions
 from .downlink import DeviceHub
+from .downlink import agent_router as agent_downlink_router
 from .downlink import router as downlink_router
 from .gateway import router as gateway_router
 from .llm import build_llm_client
@@ -80,6 +81,8 @@ def create_app(
     app.state.asr: Transcriber = (
         fake_asr if fake_asr is not None else build_transcriber(get_settings())
     )
+    # OCR 不挂在 app.state：识别器要加载权重，走 app/ocr 的进程内单例
+    # （与 detector 同样的理由），worker 里按需取，不一路当参数传。
     # 设备长连注册表随 app 实例走（不是模块全局），测试里每个 create_app 互不串扰
     app.state.device_hub = DeviceHub()
     app.state.adb_runner = adb_runner
@@ -89,6 +92,7 @@ def create_app(
     app.include_router(grants_router)
     app.include_router(signals_router)
     app.include_router(downlink_router)
+    app.include_router(agent_downlink_router)
     app.include_router(capture_control_router)
 
     @app.get("/healthz")

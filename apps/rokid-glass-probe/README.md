@@ -1,6 +1,6 @@
 # Reality Glass Probe
 
-这是 Reality Memory Engine 的第一阶段真机验证 App，直接作为 APK 运行在
+这是 RealGit 的第一阶段真机验证 App，直接作为 APK 运行在
 Rokid Glasses（RV101 / YodaOS-Sprite / Android 12 API 31）上。
 
 ## 先说清楚 SDK 选型

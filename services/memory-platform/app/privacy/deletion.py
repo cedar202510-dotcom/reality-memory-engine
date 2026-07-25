@@ -25,6 +25,7 @@ from ..models import (
     Entity,
     EvidenceItem,
     FrameAsset,
+    FrameRegion,
     MemoryCandidate,
     MemoryEvent,
     StateProjection,
@@ -124,6 +125,23 @@ async def execute_forget_recent(
     async def _frame() -> int:
         if not window_frame_ids:
             return 0
+        # 物件缩略图必须显式删文件。frame_regions 行会随 FrameAsset 级联删掉，但裁切图是
+        # 独立落盘的一份——它本来就设计成活得比证据 TTL 长，所以没人替它兜底。不删的话，
+        # 「遗忘」之后被遗忘物品的实拍图还原样躺在磁盘上，而且外部完全看不出来。
+        crop_refs = list(
+            (
+                await session.scalars(
+                    select(FrameRegion.crop_ref).where(
+                        FrameRegion.frame_asset_id.in_(window_frame_ids),
+                        FrameRegion.crop_ref.is_not(None),
+                    )
+                )
+            ).all()
+        )
+        for ref in crop_refs:
+            path = Path(ref)
+            if path.exists():
+                path.unlink()
         res = await session.execute(delete(FrameAsset).where(FrameAsset.id.in_(window_frame_ids)))
         return res.rowcount or 0
 

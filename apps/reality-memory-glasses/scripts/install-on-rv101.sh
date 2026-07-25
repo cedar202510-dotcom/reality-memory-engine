@@ -9,6 +9,8 @@ if command -v adb >/dev/null 2>&1; then
   adb_bin="$(command -v adb)"
 elif [[ -n "${ANDROID_HOME:-}" && -x "$ANDROID_HOME/platform-tools/adb" ]]; then
   adb_bin="$ANDROID_HOME/platform-tools/adb"
+elif [[ -x "$HOME/Library/Android/sdk/platform-tools/adb" ]]; then
+  adb_bin="$HOME/Library/Android/sdk/platform-tools/adb"
 else
   echo "未找到 adb。请安装 Android Platform-Tools，并把 adb 加入 PATH。" >&2
   exit 1
@@ -31,10 +33,14 @@ fi
 
 echo "正在安装：$apk_path"
 "$adb_bin" install -r "$apk_path"
+"$adb_bin" shell appops set com.realitymemory.glasses SYSTEM_ALERT_WINDOW allow
+echo "已为 Debug 联调启用短时提醒覆盖层权限。"
 "$adb_bin" reverse tcp:8765 tcp:8765
-echo "安装完成。正在启动 Reality Memory..."
+echo "安装完成。正在启动 RealGit..."
 "$adb_bin" shell am force-stop com.realitymemory.glasses
-"$adb_bin" shell monkey -p com.realitymemory.glasses 1 >/dev/null
+"$adb_bin" shell am start \
+  -n com.realitymemory.glasses/.MainActivity \
+  --es rme_start_reason DEVELOPMENT_INSTALL >/dev/null
 echo "已启动。实时日志命令："
 echo "  $adb_bin logcat --pid=\$($adb_bin shell pidof -s com.realitymemory.glasses)"
 echo "已建立电脑后端端口映射：眼镜 127.0.0.1:8765 -> 电脑 127.0.0.1:8765"

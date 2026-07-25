@@ -253,12 +253,23 @@
     }
 
     .message.line-layout {
+      position: relative;
       align-items: flex-start;
       min-height: 190px;
       padding-right: 46px;
       padding-left: 24px;
-      border-left: 2px solid var(--glass-green);
       text-align: left;
+    }
+
+    .message.line-layout::before {
+      position: absolute;
+      top: 15px;
+      bottom: auto;
+      left: 0;
+      width: 2px;
+      height: 120px;
+      background: var(--glass-green);
+      content: "";
     }
 
     .glass-icon {
@@ -420,6 +431,26 @@
     .message:not(.line-layout) .action-hint {
       right: 12px;
       bottom: 6px;
+    }
+
+    .message.line-layout .action-hint {
+      right: 0;
+      bottom: -10px;
+      flex-direction: row;
+      gap: 7px;
+      width: auto;
+      min-height: 30px;
+      padding: 0 11px;
+      border: 1.5px solid var(--glass-green);
+      border-radius: 4px;
+      font-size: clamp(8px, 2.1cqw, 10px);
+      font-weight: 600;
+      opacity: .86;
+    }
+
+    .message.line-layout .action-hint svg {
+      width: 14px;
+      height: 14px;
     }
 
     .action-hint[hidden] {
@@ -729,14 +760,14 @@
         <p class="kicker">RealGit · RV101 Glass UI Contract Study</p>
         <h1>单绿、低打扰的眼镜消息组件</h1>
       </div>
-      <p class="draft-note">佩戴告知、空白状态、取消和通用提醒已进入 Android 0.1.5；水纹感知、语义图标和消息契约是下一版预览，确认后再同步 APK。</p>
+      <p class="draft-note">佩戴告知、水纹感知、语义图标、明确业务动作和消息契约已进入 Android 0.1.7；右侧控制面板仍只用于电脑预览。</p>
     </header>
 
     <div class="workspace">
       <section class="stage" aria-labelledby="stage-title">
         <div class="stage-title">
           <h2 id="stage-title">眼镜实际输出画布</h2>
-          <span>黑色像素不发光，实际视觉上透明</span>
+          <span>纯黑独立显示层遮住首页；黑色像素在单绿光屏上不发光</span>
         </div>
 
         <div class="screen-rig">
@@ -761,7 +792,7 @@
                     <circle cx="12" cy="12" r="8.5"></circle>
                     <path d="m9 9 6 6m0-6-6 6"></path>
                   </svg>
-                  <span>单击</span>
+                  <span id="action-label">取消</span>
                 </div>
               </div>
 
@@ -795,7 +826,7 @@
                       <rect x="3" y="7" width="16" height="10" rx="2"></rect>
                       <path d="M21 10v4M6 12h4"></path>
                     </svg>
-                    <span>耗材</span>
+                    <span>采购</span>
                   </div>
                   <div class="icon-sample">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -854,7 +885,7 @@
             <button type="button" data-scene="answer" aria-pressed="false">Agent 普通回答</button>
             <button type="button" data-scene="reminder" aria-pressed="false">Agent 重要提醒</button>
             <button type="button" data-scene="task" aria-pressed="false">任务提醒</button>
-            <button type="button" data-scene="stock" aria-pressed="false">耗材提醒</button>
+            <button type="button" data-scene="stock" aria-pressed="false">采购提醒</button>
             <button type="button" data-scene="iconlab" aria-pressed="false">图标探索</button>
             <button type="button" data-scene="cancelled" aria-pressed="false">本次已取消</button>
             <button type="button" data-scene="privacy" aria-pressed="false">隐私状态</button>
@@ -924,11 +955,11 @@
             </div>
             <div class="intent-item">
               <dt>TASK</dt>
-              <dd>明确任务或时间节点；使用任务图标，单击表示知道了。</dd>
+              <dd>明确任务或时间节点；使用任务图标，单击表示完成。</dd>
             </div>
             <div class="intent-item">
               <dt>CONSUMABLE</dt>
-              <dd>耗材余量建议；使用耗材图标，默认只显示文字。</dd>
+              <dd>内部兼容枚举；用户侧统一显示为采购提醒，可加入采购清单。</dd>
             </div>
             <div class="intent-item">
               <dt>PRIVACY</dt>
@@ -982,11 +1013,10 @@
         icon: "answer",
         title: "钥匙上次在客厅茶几右侧",
         subtitle: "这是最近一次确认的位置",
-        action: "acknowledge",
         lineLayout: true,
         duration: "用户询问后显示，约 8 秒",
         voice: "按回答的 delivery_policy 决定",
-        interaction: "右下角单击确认；不生成虚构方向"
+        interaction: "无需操作，自动消失；不生成虚构方向"
       },
       reminder: {
         icon: "reminder",
@@ -994,28 +1024,29 @@
         subtitle: "十点的会议快开始了",
         action: "acknowledge",
         lineLayout: true,
-        duration: "约 8 秒或确认后消失",
+        duration: "约 12 秒，或确认后消失",
         voice: "高优先级时可播报短句",
-        interaction: "单击确认"
+        interaction: "单击“知道了”；不操作则自动消失"
       },
       task: {
         icon: "task",
         title: "记得把资料给小王",
         subtitle: "你已经到公司了",
-        action: "acknowledge",
+        action: "complete",
         lineLayout: true,
-        duration: "约 8 秒或确认后消失",
+        duration: "约 12 秒，或完成后消失",
         voice: "可播报更短版本",
-        interaction: "单击确认"
+        interaction: "单击“完成”，形成可审计用户动作"
       },
       stock: {
         icon: "stock",
         title: "洗衣液大约只够这次",
-        subtitle: "需要时可以加入采购清单",
+        subtitle: "采购提醒",
+        action: "add",
         lineLayout: true,
-        duration: "约 6 秒",
+        duration: "约 12 秒，或加入清单后消失",
         voice: "默认无",
-        interaction: "详情回手机查看"
+        interaction: "单击“加入采购清单”，不会自动购买"
       },
       iconlab: {
         gallery: true,
@@ -1064,8 +1095,8 @@
         </svg>`,
       stock: `
         <svg viewBox="0 0 24 24" aria-hidden="true">
-          <rect x="3" y="7" width="16" height="10" rx="2"></rect>
-          <path d="M21 10v4M6 12h4"></path>
+          <path d="M5 8h14l-1 12H6L5 8Z"></path>
+          <path d="M9 8a3 3 0 0 1 6 0M9 14h6M12 11v6"></path>
         </svg>`,
       cancelled: `
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1081,11 +1112,21 @@
 
     const actionIcons = {
       acknowledge: `
-        <circle cx="12" cy="12" r="8.5"></circle>
         <path d="m8.5 12.2 2.3 2.3 4.9-5"></path>`,
+      complete: `
+        <path d="m8.5 12.2 2.3 2.3 4.9-5"></path>`,
+      add: `
+        <path d="M12 7v10M7 12h10"></path>`,
       cancel: `
         <circle cx="12" cy="12" r="8.5"></circle>
         <path d="m9 9 6 6m0-6-6 6"></path>`
+    };
+
+    const actionLabels = {
+      cancel: "取消",
+      acknowledge: "知道了",
+      complete: "完成",
+      add: "加入采购清单"
     };
 
     const wearCopies = {
@@ -1112,6 +1153,7 @@
     const subtitle = document.querySelector("#glass-subtitle");
     const actionHint = document.querySelector("#action-hint");
     const actionIcon = document.querySelector("#action-icon");
+    const actionLabel = document.querySelector("#action-label");
     const duration = document.querySelector("#duration");
     const voice = document.querySelector("#voice");
     const interaction = document.querySelector("#interaction");
@@ -1139,11 +1181,9 @@
         icon.innerHTML = messageIcons[scene.icon] || "";
         actionHint.className = `action-hint ${scene.action || ""}`;
         actionHint.hidden = !scene.action;
-        actionHint.setAttribute(
-          "aria-label",
-          scene.action === "cancel" ? "单击取消本次" : "单击确认"
-        );
+        actionHint.setAttribute("aria-label", actionLabels[scene.action] || "");
         actionIcon.innerHTML = actionIcons[scene.action] || "";
+        actionLabel.textContent = actionLabels[scene.action] || "";
       }
 
       duration.textContent = scene.duration;

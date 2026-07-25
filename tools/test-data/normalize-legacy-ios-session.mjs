@@ -545,7 +545,7 @@ const manifest = {
     captureWindows: captureWindows.length,
   },
   contract: {
-    documentation: "docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md",
+    documentation: "docs/engineering/RealGit-Multimodal-Data-Contract-v1.0.md",
     schemas: "contracts/reality-memory/v1/",
   },
   limitations: [
@@ -560,7 +560,7 @@ await writeJson(path.join(destination, "manifest.json"), manifest);
 
 const readme = `# ${title}
 
-本数据集来自真实真机采集，包含原始导出和按 Reality Memory v1 契约转换后的输入。
+本数据集来自真实真机采集，包含原始导出和按 RealGit v1 契约转换后的输入。
 
 - \`raw/\`：手机 App 原始 \`session.json\`、媒体和戒指批次 NDJSON，不改写。
 - \`normalized/\`：采集会话、采集意图、采集窗口、采集尝试、来源信封和证据元数据。

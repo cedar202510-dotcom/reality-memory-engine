@@ -438,7 +438,7 @@ function startLiveBridge() {
   });
   liveBridge.bonjourProcess = spawn(
     "/usr/bin/dns-sd",
-    ["-R", "Reality Memory Debug Console", "_rme-debug._tcp", "local", String(DEFAULT_BRIDGE_PORT)],
+    ["-R", "RealGit Debug Console", "_rme-debug._tcp", "local", String(DEFAULT_BRIDGE_PORT)],
     { stdio: ["ignore", "ignore", "pipe"] },
   );
   liveBridge.bonjourProcess.stderr.on("data", (data) => {
@@ -820,7 +820,7 @@ const page = String.raw`<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Reality Memory Session Viewer</title>
+  <title>RealGit Session Viewer</title>
   <style>
     :root {
       --bg: #f6f7f8;
@@ -1382,7 +1382,7 @@ const page = String.raw`<!doctype html>
 <body>
   <header>
     <div>
-      <h1>Reality Memory 调试台</h1>
+      <h1>RealGit 调试台</h1>
       <div class="root" id="root"></div>
     </div>
     <div class="header-actions">
@@ -1398,7 +1398,7 @@ const page = String.raw`<!doctype html>
     <div class="live-status">
       <div>
         <div class="status-title"><span class="status-dot" id="liveStatusDot"></span><span id="liveStatusTitle">等待手机 App</span></div>
-        <div class="small" id="liveStatusDetail">电脑调试桥已启动，正在等待同一局域网内的 Reality Memory 手机 App。</div>
+        <div class="small" id="liveStatusDetail">电脑调试桥已启动，正在等待同一局域网内的 RealGit 手机 App。</div>
       </div>
       <div class="meta" id="liveCounters"></div>
     </div>
@@ -1611,7 +1611,7 @@ const page = String.raw`<!doctype html>
       $("liveStatusDetail").textContent = connected
         ? (snapshot?.phoneName || "iPhone") + " · " + (snapshot?.applicationState || "状态未知") +
           " · 最近数据 " + fmtTime(state.live.lastMessageAt)
-        : "请让手机与 Mac 位于同一局域网，并保持 Reality Memory App 打开。";
+        : "请让手机与 Mac 位于同一局域网，并保持 RealGit App 打开。";
       $("liveCounters").innerHTML =
         '<span class="pill">实时点 ' + esc(state.live?.ringSampleCount || 0) + '</span>' +
         '<span class="pill">实时媒体 ' + esc(state.live?.media?.length || 0) + '</span>';
@@ -2532,7 +2532,7 @@ startLiveBridge();
 rv101Adapter.start();
 
 server.listen(port, HOST, () => {
-  console.log(`Reality Memory Debug Console`);
+  console.log(`RealGit Debug Console`);
   console.log(`Root: ${captureRoot}`);
   console.log(`URL:  http://${HOST}:${port}`);
   console.log(``);

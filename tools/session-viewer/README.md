@@ -1,4 +1,4 @@
-# Reality Memory 调试台
+# RealGit 调试台
 
 电脑端开发辅助程序，用于实时观察戒指、手机中介和 Rokid 眼镜采集链路，也可以检查从手机沙盒拉取的历史 Session。它不是第二个用户 App；真正连接 CXR-L 眼镜和戒指的运行时仍在统一手机 App 中。
 
@@ -10,7 +10,7 @@
 tools/session-viewer/build-macos-app.sh
 ```
 
-桌面会出现 `Reality Memory Debug Console.app`。双击后程序会自动：
+桌面会出现 `RealGit Debug Console.app`。双击后程序会自动：
 
 - 启动本机调试服务
 - 通过 Bonjour 等待手机 App

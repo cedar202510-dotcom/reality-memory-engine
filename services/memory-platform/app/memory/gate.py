@@ -2,8 +2,11 @@
 
 v0 自动接受条件（简化版）：
   aggregate 置信度 ≥ 阈值(默认 0.85，可配) 且 无未决冲突 → ACCEPTED
-低于阈值 → 保持 PENDING（保留，查询通道 2 可用）
+低于阈值 → 保持 PENDING（保留，查询通道 2 可用，也是线索确认中心里等人拍板的那些）
 互斥（同一物体在同一时间段有两个不同位置的待定候选）→ CONFLICTED + conflict_set_id
+
+用户确认走 accept_candidate（同一实现，绕过阈值）——模型不能自己抬高置信度绕过门，
+但人可以直接拍板，这是两种不同的权威，不是同一条规则的两个参数。
 """
 from __future__ import annotations
 
@@ -14,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
-from ..models import MemoryCandidate, utcnow
+from ..models import MemoryCandidate, MemoryEvent, utcnow
 from .events import append_event, record_audit
 from .normalize import locations_compatible, names_alias_match
 from .resolver import resolve_entity
@@ -100,6 +103,40 @@ async def evaluate_candidate(
     if aggregate < settings.candidate_accept_threshold:
         return candidate  # 保持 PENDING
 
+    await accept_candidate(
+        session,
+        candidate=candidate,
+        household_id=household_id,
+        phenomenon_time=phenomenon_time,
+        observed_at=observed_at,
+        ingested_at=ingested_at,
+        object_embedding=object_embedding,
+        frame_visual_embedding=frame_visual_embedding,
+    )
+    return candidate
+
+
+async def accept_candidate(
+    session: AsyncSession,
+    *,
+    candidate: MemoryCandidate,
+    household_id: uuid.UUID,
+    phenomenon_time: datetime,
+    observed_at: datetime,
+    ingested_at: datetime | None = None,
+    object_embedding: list[float] | None = None,
+    frame_visual_embedding: list[float] | None = None,
+    actor: str = "system/candidate-gate",
+    confidence_overlay: dict | None = None,
+    audit_detail: dict | None = None,
+) -> MemoryEvent:
+    """把候选升级成事件——升级的唯一实现。
+
+    自动门（置信度过阈）和用户在线索确认中心点「确认」都走这里，所以两条路写出的
+    事件形状一致。区别只在调用方：自动门用默认 actor，用户确认传自己的 actor 和
+    confidence_overlay={"user_confirmed": 1.0}，让事件自己带上「这是人拍板的」。
+    调用方负责最终 commit 与投影重算。
+    """
     candidate.status = "ACCEPTED"
     candidate.resolved_at = utcnow()
 
@@ -114,6 +151,7 @@ async def evaluate_candidate(
     )
     candidate.entity_id = entity.id
 
+    confidence = {**(candidate.confidence or {}), **(confidence_overlay or {})}
     event = await append_event(
         session,
         entity_id=entity.id,
@@ -122,19 +160,20 @@ async def evaluate_candidate(
         event_time_from=phenomenon_time,
         observed_at=observed_at,
         ingested_at=ingested_at or utcnow(),
-        confidence=candidate.confidence,
+        confidence=confidence,
         source_candidate_ids=[str(candidate.id)],
     )
     await record_audit(
         session,
-        actor="system/candidate-gate",
+        actor=actor,
         action="event_accepted",
         target=f"event:{event.id}",
         detail={
             "candidate_id": str(candidate.id),
             "entity": entity.canonical_name,
             "event_type": candidate.event_type,
-            "aggregate": aggregate,
+            "aggregate": float(confidence.get("aggregate", 0.0)),
+            **(audit_detail or {}),
         },
     )
-    return candidate
+    return event

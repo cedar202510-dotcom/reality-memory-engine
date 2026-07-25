@@ -30,6 +30,7 @@ SCOPES_V1 = (
     "memory.query.activities",
     "memory.timeline.read",
     "memory.signal.subscribe",
+    "memory.device.message.send",
     "memory.correction.submit",
     "memory.forget.submit",
     "memory.audit.self.read",

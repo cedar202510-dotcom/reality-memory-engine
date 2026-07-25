@@ -6,12 +6,14 @@
 from __future__ import annotations
 
 import contextlib
+import uuid
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from .config import get_settings
+from .glasses_delivery import deliver_agent_reply, deliver_proactive_suggestions
 from .harness import run_turn
 from .llm import FakeChatLLM, build_chat_llm
 from .memory_client import MemoryClient
@@ -19,9 +21,15 @@ from .proactive import Suggestion, build_suggestions
 from .sessions import SessionStore
 
 
+class GlassesDeliveryTarget(BaseModel):
+    device_id: uuid.UUID | None = None
+    allow_tts: bool | None = None
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     session_id: str | None = None
+    delivery: GlassesDeliveryTarget | None = None
 
 
 class ToolTraceOut(BaseModel):
@@ -34,11 +42,17 @@ class ChatResponse(BaseModel):
     session_id: str
     reply: str
     tool_trace: list[ToolTraceOut] = Field(default_factory=list)
+    delivery: dict[str, Any] | None = None
+
+
+class ProactiveRequest(BaseModel):
+    delivery: GlassesDeliveryTarget | None = None
 
 
 class ProactiveResponse(BaseModel):
     suggestions: list[dict[str, Any]] = Field(default_factory=list)
     suppressed: int = 0
+    deliveries: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def create_app(
@@ -76,6 +90,30 @@ def create_app(
             user_message=req.message,
             max_tool_turns=settings.max_tool_turns,
         )
+        delivery_target = req.delivery
+        should_deliver = (
+            delivery_target is not None or settings.glasses_auto_delivery_enabled
+        )
+        delivery = None
+        if should_deliver:
+            outcome = await deliver_agent_reply(
+                app.state.memory,
+                reply=result.reply,
+                session_id=session.id,
+                requested_device_id=(
+                    str(delivery_target.device_id)
+                    if delivery_target and delivery_target.device_id
+                    else None
+                ),
+                configured_device_id=settings.glasses_default_device_id,
+                allow_tts=(
+                    delivery_target.allow_tts
+                    if delivery_target and delivery_target.allow_tts is not None
+                    else settings.glasses_default_allow_tts
+                ),
+                ttl_seconds=settings.glasses_answer_ttl_seconds,
+            )
+            delivery = outcome.to_dict()
         return ChatResponse(
             session_id=session.id,
             reply=result.reply,
@@ -83,10 +121,11 @@ def create_app(
                 ToolTraceOut(tool=t.tool, arguments=t.arguments, result=t.result)
                 for t in result.tool_trace
             ],
+            delivery=delivery,
         )
 
     @app.post("/v1/proactive/check", response_model=ProactiveResponse)
-    async def proactive_check() -> ProactiveResponse:
+    async def proactive_check(req: ProactiveRequest | None = None) -> ProactiveResponse:
         """拉取待投递信号并措辞成建议。只建议：购买/发消息等现实动作永远不做。"""
         data = await app.state.memory.list_signals()
         if "error" in data:
@@ -95,9 +134,33 @@ def create_app(
             data.get("signals", []),
             llm=app.state.llm if settings.proactive_llm_wording else None,
         )
+        delivery_target = req.delivery if req else None
+        should_deliver = (
+            delivery_target is not None or settings.glasses_auto_delivery_enabled
+        )
+        deliveries = []
+        if should_deliver:
+            outcomes = await deliver_proactive_suggestions(
+                app.state.memory,
+                suggestions=suggestions,
+                requested_device_id=(
+                    str(delivery_target.device_id)
+                    if delivery_target and delivery_target.device_id
+                    else None
+                ),
+                configured_device_id=settings.glasses_default_device_id,
+                allow_tts=(
+                    delivery_target.allow_tts
+                    if delivery_target and delivery_target.allow_tts is not None
+                    else settings.glasses_default_allow_tts
+                ),
+                ttl_seconds=settings.glasses_reminder_ttl_seconds,
+            )
+            deliveries = [outcome.to_dict() for outcome in outcomes]
         return ProactiveResponse(
             suggestions=[s.__dict__ for s in suggestions],
             suppressed=int(data.get("suppressed", 0)),
+            deliveries=deliveries,
         )
 
     @app.post("/v1/signals/{signal_id}/ack")

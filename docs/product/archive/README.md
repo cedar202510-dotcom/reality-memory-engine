@@ -3,7 +3,7 @@
 本目录保存已被替代的 PRD。它们用于追溯产品和架构演进，不作为当前开发依据。
 
 当前产品母版是
-[Reality Memory Engine PRD v1.3](../Reality-Memory-Engine-PRD-v1.3.md)。
+[RealGit PRD v1.3](../RealGit-PRD-v1.3.md)。
 
 | 文件 | 归档原因 |
 | --- | --- |

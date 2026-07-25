@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import Text, func, or_, select
+from sqlalchemy import Text, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
@@ -20,11 +20,13 @@ from ..llm.base import LLMClient
 from ..memory.gate import evaluate_candidate
 from ..memory.normalize import has_cjk, names_alias_match
 from ..memory.seed import get_default_household_id
+from ..perception import _to_data_url
 from ..models import (
     AudioAsset,
     Entity,
     EvidenceItem,
     FrameAsset,
+    FrameRegion,
     MemoryCandidate,
     MemoryEvent,
     StateProjection,
@@ -231,6 +233,45 @@ async def _retrieve_frames_text(
     return [(frame, float(sim)) for frame, sim in rows]
 
 
+async def _retrieve_frames_ocr(
+    session: AsyncSession, *, name: str, top_k: int
+) -> list[tuple[FrameAsset, float]]:
+    """OCR 路召回：帧上印着的字面量。包含命中给满分，否则退回 trgm 相似度。
+
+    为什么包含命中就给 1.0：这不是"描述里提到了身份证"，是身份证本人把
+    「居民身份证」这几个字印在了自己身上。字面量出现在画面里，是这条链路上
+    最硬的证据，比 caption 的转述和向量的近似都强。
+
+    一帧可能有多条 OCR 区域，按 max 上卷——与区域视觉向量同一套逻辑。
+    """
+    like = f"%{name}%"
+    similarity = func.word_similarity(name, FrameRegion.ocr_text)
+    score = func.max(
+        case((FrameRegion.ocr_text.ilike(like), 1.0), else_=similarity)
+    ).label("score")
+    rows = (
+        await session.execute(
+            select(FrameRegion.frame_asset_id, score)
+            .where(
+                FrameRegion.ocr_text.is_not(None),
+                (similarity > 0) | FrameRegion.ocr_text.ilike(like),
+            )
+            .group_by(FrameRegion.frame_asset_id)
+            .order_by(score.desc())
+            .limit(top_k)
+        )
+    ).all()
+    if not rows:
+        return []
+    by_id = {fid: float(s) for fid, s in rows}
+    frames = (
+        await session.scalars(select(FrameAsset).where(FrameAsset.id.in_(list(by_id))))
+    ).all()
+    return sorted(
+        ((f, by_id[f.id]) for f in frames), key=lambda kv: kv[1], reverse=True
+    )
+
+
 async def _retrieve_transcripts(
     session: AsyncSession, *, llm: LLMClient, name: str, top_k: int
 ) -> list[tuple[AudioAsset, float]]:
@@ -298,13 +339,26 @@ async def _recall_channel2(
     top_k: int,
     vision: VisionEncoder | None = None,
 ) -> tuple[list[FrameAsset], list[AudioAsset]]:
-    """通道 2 多路混合召回：帧文本路 + 视觉路（CLIP 跨模态）+ 语音转写路。
+    """通道 2 多路混合召回：帧文本路（caption+OCR）+ 视觉路（CLIP 跨模态）+ 语音转写路。
 
     三路分数各自归一化到 [0,1] 后按配置权重加权融合，合并去重取 top_k；
     按融合顺序拆回帧与语音两类资产。无视觉/转写命中时行为与旧版纯文本路一致。
     """
     settings = get_settings()
     text_hits = await _retrieve_frames_text(session, llm=llm, name=name, top_k=top_k)
+
+    # OCR 并入文本路取 max，而不是当第四路：caption 和 OCR 都是"这一帧的文字表示"，
+    # 同属一路。另起一路要重算 fuse_rankings 的权重分配（w_text 是剩余量），
+    # 那套逻辑是有测试的，不该为了加一个数据源就动它。
+    if settings.retrieval_ocr_search:
+        ocr_hits = await _retrieve_frames_ocr(session, name=name, top_k=top_k)
+        if ocr_hits:
+            merged = {f.id: (f, s) for f, s in text_hits}
+            for frame, score in ocr_hits:
+                prev = merged.get(frame.id)
+                if prev is None or score > prev[1]:
+                    merged[frame.id] = (frame, score)
+            text_hits = sorted(merged.values(), key=lambda kv: kv[1], reverse=True)[:top_k]
 
     visual_hits: list[tuple[FrameAsset, float]] = []
     if vision is not None:
@@ -315,6 +369,7 @@ async def _recall_channel2(
             query_text=name,
             top_k=settings.retrieval_visual_top_k,
             extra_query_texts=[english] if english else None,
+            include_regions=settings.retrieval_region_search,
         )
     transcript_hits = await _retrieve_transcripts(session, llm=llm, name=name, top_k=top_k)
 
@@ -361,7 +416,10 @@ async def _frame_data_url(session: AsyncSession, frame: FrameAsset) -> str | Non
         and Path(item.storage_ref).exists()
     ):
         return None
-    return "data:image/jpeg;base64," + base64.b64encode(Path(item.storage_ref).read_bytes()).decode()
+    # 复用感知侧的缩图逻辑：手机原图是 4284x5712，裸 base64 单张就 4MB+，
+    # 一个精判批次两张、最多三批——直接把原图丢给 VLM 既慢又容易超限。
+    # 顺带修掉 Content-Type：老数据里的 HEIC 不会再被贴上 image/jpeg。
+    return _to_data_url(item.storage_ref)
 
 
 async def _channel_deep_retrieval(
@@ -530,6 +588,11 @@ async def _channel_deep_retrieval(
         freshness=fresh,
         confidence=ans.confidence,
         answer_text=ans.answer_text or f"{name}{fresh or ''}，在{ans.location}。",
+        # 精判就是看着这一帧下的结论，把它一并交出来——界面上那张图和这句话必须是同一眼
+        frame_asset_id=chosen_frame.id if chosen_frame is not None else None,
+        evidence_available=(
+            evidence_alive_by_frame.get(chosen_frame.id, False) if chosen_frame is not None else False
+        ),
         timeline_url=(
             f"/v1/memory/objects/{candidate.entity_id}/timeline" if candidate.entity_id else None
         ),

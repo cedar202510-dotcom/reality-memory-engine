@@ -2,6 +2,7 @@
 
 topic 路由：
 - frame.process        → perception 帧处理（批内并发：VLM 调用是延迟大头）
+- frame.detect         → 物件检测 + 裁切缩略图（拿本帧抽出的物品名当 prompt）
 - audio.process        → perception 语音处理（ASR → 语义抽取，批内并发）
 - projection.recompute → 投影确定性重算（串行：避免同实体并发重算竞态）
 
@@ -28,11 +29,31 @@ from ..memory.projections import recompute_projection
 from ..models import AuditRecord, OutboxEvent, utcnow
 from ..perception import process_evidence_item
 from ..perception.audio import process_audio_item
+from ..perception.detect import TOPIC as DETECT_TOPIC
+from ..perception.ocr import TOPIC as OCR_TOPIC
+from ..perception.ocr import ocr_frame_asset
+from ..perception.detect import detect_frame_objects
+from ..perception.regions import TOPIC as REGIONIZE_TOPIC
+from ..perception.regions import regionize_frame_asset
+from ..perception.vectorize import TOPIC as VECTORIZE_TOPIC
+from ..perception.vectorize import vectorize_frame_asset
+from ..perception.video import process_video_item
 from ..privacy.ttl import sweep_expired_evidence
 from ..signals.rules import evaluate_signals_for_entity
 from ..vision.base import VisionEncoder
+from ..voice_delivery import deliver_pending_signals
 
-_HEAVY_TOPICS = {"frame.process", "audio.process"}  # 感知任务：VLM/ASR 调用，可并发
+# 感知任务：VLM/ASR/CLIP 调用，可并发
+# video.process 是其中最重的一个（N 次 VLM + 1 次 ASR），更要占信号量而不是串行阻塞
+_HEAVY_TOPICS = {
+    "frame.process",
+    "audio.process",
+    "video.process",
+    VECTORIZE_TOPIC,
+    REGIONIZE_TOPIC,
+    DETECT_TOPIC,
+    OCR_TOPIC,
+}
 
 
 async def _dispatch(
@@ -53,6 +74,39 @@ async def _dispatch(
                 llm=llm,
                 transcriber=asr,
             )
+    elif row.topic == "video.process":
+        # asr 缺席时仍然处理：没有语音不代表画面没价值，关键帧照样能沉淀观察
+        await process_video_item(
+            session,
+            evidence_item_id=uuid.UUID(str(row.payload["evidence_item_id"])),
+            llm=llm,
+            vision=vision,
+            transcriber=asr,
+        )
+    elif row.topic == VECTORIZE_TOPIC:
+        await vectorize_frame_asset(
+            session,
+            frame_asset_id=uuid.UUID(str(row.payload["frame_asset_id"])),
+            vision=vision,
+        )
+    elif row.topic == REGIONIZE_TOPIC:
+        await regionize_frame_asset(
+            session,
+            frame_asset_id=uuid.UUID(str(row.payload["frame_asset_id"])),
+            vision=vision,
+        )
+    elif row.topic == OCR_TOPIC:
+        # 识别器走进程内单例（权重只加载一次），不像 vision/asr 那样当参数传
+        await ocr_frame_asset(
+            session, frame_asset_id=uuid.UUID(str(row.payload["frame_asset_id"]))
+        )
+    elif row.topic == DETECT_TOPIC:
+        await detect_frame_objects(
+            session,
+            frame_asset_id=uuid.UUID(str(row.payload["frame_asset_id"])),
+            llm=llm,
+            vision=vision,
+        )
     elif row.topic == "projection.recompute":
         entity_id = uuid.UUID(str(row.payload["entity_id"]))
         await recompute_projection(session, entity_id=entity_id)
@@ -194,6 +248,27 @@ async def ttl_worker_loop(stop: asyncio.Event) -> None:
             await asyncio.wait_for(stop.wait(), timeout=settings.ttl_sweep_interval_seconds)
 
 
+async def voice_delivery_loop(llm: LLMClient, stop: asyncio.Event) -> None:
+    """把规则产出的信号投递成耳机播报（app/voice_delivery/）。
+
+    单开一个循环而不是挂在 outbox 上：这条链路的节奏由「现在适不适合打扰人」决定，
+    不由证据到达的节奏决定。安静时段跳过的信号会在窗口结束后被下一轮重新看到。
+    """
+    settings = get_settings()
+    if not settings.voice_delivery_enabled:
+        return
+    while not stop.is_set():
+        try:
+            async with SessionLocal() as session:
+                await deliver_pending_signals(session, llm=llm)
+        except Exception:  # noqa: BLE001 — 播报失败不该带走 worker，下一轮再试
+            pass
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(
+                stop.wait(), timeout=settings.voice_delivery_interval_seconds
+            )
+
+
 def start_workers(
     llm: LLMClient,
     *,
@@ -205,6 +280,7 @@ def start_workers(
     tasks = [
         asyncio.create_task(outbox_worker_loop(llm, stop, vision=vision, asr=asr)),
         asyncio.create_task(ttl_worker_loop(stop)),
+        asyncio.create_task(voice_delivery_loop(llm, stop)),
     ]
     return stop, tasks
 

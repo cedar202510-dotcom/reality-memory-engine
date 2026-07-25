@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { Box, RotateCcw, Search, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Box, RotateCcw, Search, X } from "lucide-react";
 import { apiUrl, objectGraph } from "./api";
 
 // 层的颜色只是分辨用的，没有语义（真实数据里没有「品类」这个维度）。
@@ -10,6 +10,14 @@ const PALETTE = ["#5fd7c0", "#69a8ff", "#f4c56a", "#ef8c94", "#b998ef", "#72c9e8
 const SINGLE_LAYER = "__single__";
 const UNKNOWN_LAYER = "__unknown__";
 
+/** 把 /objects 的返回投成三维图要的 {layers, nodes, relations}。
+ *
+ *  层 = 放了 2 件以上东西的位置，加上「单独存放」和「位置未知」两个兜底层。
+ *  不给每个位置都开一层：真实数据里一多半位置只有一件东西，全开出来图会被压成
+ *  十几张几乎空的平面，什么都看不出来。
+ *
+ *  边 = 同一位置内两两相连。这是用户选定的语义：连线代表「这些东西放在一起」，
+ *  不代表用途相关、也不代表先后顺序——所以是完全图，不是链。 */
 function deriveGraph(data) {
   if (!data) return { layers: [], nodes: [], relations: [] };
 
@@ -37,6 +45,7 @@ function deriveGraph(data) {
     thumb: apiUrl(n.thumb_url),
   }));
 
+  // 兜底层只在真的有成员时才加，否则图里会挂着空平面
   if (nodes.some(n => n.layer === SINGLE_LAYER)) {
     layers.push({ id: SINGLE_LAYER, label: "各自单独放着", color: "#8ea2c6" });
   }
@@ -85,6 +94,10 @@ function createTextSprite(text, color, small = false) {
   return sprite;
 }
 
+/** 实拍缩略图 → 圆形贴片。后端裁出来的就是正方形，这里只负责套圆 + 描边。
+ *
+ *  描边用所在层的颜色：套上照片之后，节点原来靠球体颜色传达的「在哪一层」就没了，
+ *  一圈色环把这个信息补回来，同时让深色照片不至于糊进深色背景里。 */
 function createThumbSprite(image, color, size) {
   const canvas = document.createElement("canvas");
   const side = 256;
@@ -109,6 +122,7 @@ function createThumbSprite(image, color, size) {
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }),
   );
+  // 贴片要盖住整个球，否则会看见球从照片边缘露出来一圈
   sprite.scale.set(size * 2.4, size * 2.4, 1);
   return sprite;
 }
@@ -121,6 +135,8 @@ function Scene({ layers, nodes, relations, activeLayer, focusId, onNode, onHover
   onNodeRef.current = onNode;
   onHoverRef.current = onHover;
 
+  // 依赖真实数据：第一次拿到 /objects 时重建整个场景。数据是异步来的，
+  // 空依赖数组会让场景永远停在「零个节点」。
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount || nodes.length === 0) return undefined;
@@ -138,228 +154,199 @@ function Scene({ layers, nodes, relations, activeLayer, focusId, onNode, onHover
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.04;
-    controls.maxDistance = 300;
-    controls.minDistance = 20;
-    controls.maxPolarAngle = Math.PI / 2 + 0.1;
+    controls.dampingFactor = 0.07;
+    controls.minDistance = 58;
+    controls.maxDistance = 235;
+    controls.target.set(0, 3, 0);
     controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.4;
+    controls.autoRotateSpeed = 0.24;
+    scene.add(new THREE.HemisphereLight("#dceaff", "#160b24", 2));
+    const light = new THREE.PointLight("#6de4c3", 75, 300);
+    light.position.set(45, 85, 70);
+    scene.add(light);
 
-    const layerPlanes = new Map();
-    const layerObjects = new THREE.Group();
-    scene.add(layerObjects);
-    
-    // The background mesh representing a layer's physical bound (the user wanted the "colored 3D backgrounds" preserved or brought back if missing)
-    layers.forEach((layer, i) => {
+    const root = new THREE.Group();
+    scene.add(root);
+    const layerGroups = new Map();
+    const nodeObjects = new Map();
+    const linkObjects = [];
+    const clickTargets = [];
+    let disposed = false;
+    const spacing = 15;
+    const top = ((layers.length - 1) * spacing) / 2;
+
+    layers.forEach((layer, layerIndex) => {
+      const group = new THREE.Group();
+      group.position.y = top - layerIndex * spacing;
       const plane = new THREE.Mesh(
         new THREE.PlaneGeometry(92, 62),
-        new THREE.MeshBasicMaterial({ color: layer.color, transparent: true, opacity: 0.04, side: THREE.DoubleSide, depthWrite: false })
+        new THREE.MeshBasicMaterial({ color: layer.color, transparent: true, opacity: 0.04, side: THREE.DoubleSide, depthWrite: false }),
       );
       plane.rotation.x = -Math.PI / 2;
-      plane.position.y = i * 26;
-      
+      group.add(plane);
       const grid = new THREE.GridHelper(92, 10, layer.color, layer.color);
       grid.scale.z = 0.67;
-      grid.material.opacity = 0.09;
       grid.material.transparent = true;
-      grid.position.y = plane.position.y;
-      
-      layerPlanes.set(layer.id, { y: plane.position.y, mesh: plane, grid });
-      layerObjects.add(plane);
-      layerObjects.add(grid);
+      grid.material.opacity = 0.09;
+      group.add(grid);
+      const label = createTextSprite(layer.label, layer.color, true);
+      label.position.set(-39, 2.1, -25);
+      group.add(label);
+      root.add(group);
+      layerGroups.set(layer.id, group);
     });
-
-    const nodeObjects = new Map();
-    const linkObjects = new THREE.Group();
-    scene.add(linkObjects);
-
-    const loader = new THREE.ImageLoader();
 
     nodes.forEach((node) => {
-      const layerPlane = layerPlanes.get(node.layer);
-      if (!layerPlane) return;
-      const angle = Math.random() * Math.PI * 2;
-      const radius = Math.random() * 32 + 4;
-      const position = new THREE.Vector3(Math.cos(angle) * radius, layerPlane.y + 3, Math.sin(angle) * radius);
-      
-      const group = new THREE.Group();
-      group.position.copy(position);
-      group.userData = { id: node.id, originalPosition: position.clone(), layer: node.layer };
-
-      const layerColor = layers.find(l => l.id === node.layer)?.color || "#ffffff";
-      
-      // Node sphere (fallback while loading or if no thumb)
-      const core = new THREE.Mesh(
-        new THREE.SphereGeometry(3, 32, 32),
-        new THREE.MeshBasicMaterial({ color: layerColor })
+      const layerIndex = Math.max(layers.findIndex((layer) => layer.id === node.layer), 0);
+      const peers = nodes.filter((entry) => entry.layer === node.layer);
+      const index = peers.findIndex((entry) => entry.id === node.id);
+      const angle = index / peers.length * Math.PI * 2 + layerIndex * 0.7;
+      const radius = peers.length === 2 ? 18 : 18 + (index % 2) * 9;
+      const position = new THREE.Vector3(
+        Math.cos(angle) * radius + (layerIndex % 2 ? 5 : -5),
+        top - layerIndex * spacing + 2.7,
+        Math.sin(angle) * radius * 0.72,
       );
-      
-      const halo = new THREE.Mesh(
-        new THREE.SphereGeometry(4.2, 32, 32),
-        new THREE.MeshBasicMaterial({ color: layerColor, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending, depthWrite: false })
-      );
-      
-      group.add(core);
-      group.add(halo);
+      const degree = relations.filter((relation) => relation.source === node.id || relation.target === node.id).length;
+      const size = 1.8 + Math.min(degree, 4) * 0.42;
+      const color = layers[layerIndex].color;
+      const material = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.78, roughness: 0.28, transparent: true });
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 22, 18), material);
+      mesh.position.copy(position);
+      mesh.userData.nodeId = node.id;
+      const halo = new THREE.Mesh(new THREE.SphereGeometry(size * 1.7, 16, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.09, depthWrite: false }));
+      mesh.add(halo);
+      const label = createTextSprite(node.name, "#f4f8ff", degree < 2);
+      label.position.set(0, size + 3.2, 0);
+      mesh.add(label);
+      root.add(mesh);
+      clickTargets.push(mesh);
+      const entry = { mesh, material, halo, label, position, node, thumb: null };
+      nodeObjects.set(node.id, entry);
 
-      // Label sprite
-      const labelSprite = createTextSprite(node.name, layerColor);
-      labelSprite.position.set(0, 7, 0);
-      group.add(labelSprite);
-      
-      // Subtitle sprite
-      const subSprite = createTextSprite(node.location, "#8b949e", true);
-      subSprite.position.set(0, -6, 0);
-      group.add(subSprite);
-
-      // Async load image
+      // 实拍图异步进来：不能进 useEffect 依赖，否则每张图加载完都要重建整个场景。
+      // 先显示纯色球，图到了再换成圆形贴片——加载失败/没有图就一直是球，
+      // 不放占位图（占位图会让「没拍到这件东西」看起来像「拍到了，长这样」）。
       if (node.thumb) {
-        loader.load(node.thumb, (img) => {
-           const sprite = createThumbSprite(img, layerColor, 3.2);
-           group.add(sprite);
-           core.visible = false;
-        });
+        const image = new Image();
+        image.onload = () => {
+          if (disposed) return;
+          const sprite = createThumbSprite(image, color, size);
+          sprite.material.opacity = material.opacity;
+          mesh.add(sprite);
+          entry.thumb = sprite;
+          // 球退成纯粹的点击靶：留着可见就会从贴片边缘露出一圈色环
+          material.opacity = 0;
+          material.depthWrite = false;
+        };
+        image.src = node.thumb;
       }
-
-      scene.add(group);
-      nodeObjects.set(node.id, group);
     });
 
-    const lineMaterial = new THREE.LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.1 });
     relations.forEach((relation) => {
       const source = nodeObjects.get(relation.source);
       const target = nodeObjects.get(relation.target);
-      if (source && target) {
-        const points = [];
-        const yOffset = relation.type === "cross" ? 8 : 1;
-        const midPoint = new THREE.Vector3().addVectors(source.position, target.position).multiplyScalar(0.5);
-        midPoint.y += yOffset;
-        points.push(source.position);
-        points.push(midPoint);
-        points.push(target.position);
-        const curve = new THREE.QuadraticBezierCurve3(...points);
-        const geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(20));
-        const line = new THREE.Line(geometry, lineMaterial.clone());
-        line.userData = { source: relation.source, target: relation.target, type: relation.type };
-        linkObjects.add(line);
-      }
+      if (!source || !target) return;
+      const midpoint = source.position.clone().add(target.position).multiplyScalar(0.5);
+      midpoint.y += 2;
+      midpoint.x += (source.position.z - target.position.z) * 0.12;
+      const curve = new THREE.QuadraticBezierCurve3(source.position, midpoint, target.position);
+      const material = new THREE.LineBasicMaterial({ color: "#74e4c4", transparent: true, opacity: 0.52 });
+      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(22)), material);
+      line.userData = { ...relation, baseOpacity: material.opacity };
+      root.add(line);
+      linkObjects.push(line);
     });
 
     const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-    let hoveredMesh = null;
-    let isDragging = false;
-
-    const getIntersect = (e) => {
+    const pointer = new THREE.Vector2(8, 8);
+    let hovered = null;
+    const updatePointer = (event) => {
       const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(mouse, camera);
-      const targets = Array.from(nodeObjects.values()).flatMap(g => g.children.filter(c => c.type === 'Mesh' || c.type === 'Sprite'));
-      const intersects = raycaster.intersectObjects(targets);
-      return intersects.length > 0 ? intersects[0].object.parent : null;
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     };
-
-    const handlePointerDown = () => { isDragging = false; };
-    const handlePointerMove = (e) => {
-      isDragging = true;
-      const group = getIntersect(e);
-      if (group !== hoveredMesh) {
-        if (hoveredMesh) hoveredMesh.children[1].scale.set(1, 1, 1);
-        if (group) group.children[1].scale.set(1.4, 1.4, 1.4);
-        hoveredMesh = group;
-        renderer.domElement.style.cursor = group ? "pointer" : "default";
-        onHoverRef.current(group ? group.userData.id : null);
-      }
+    const move = (event) => updatePointer(event);
+    const leave = () => pointer.set(8, 8);
+    const click = (event) => {
+      updatePointer(event);
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects(clickTargets, false)[0];
+      if (hit) onNodeRef.current(hit.object.userData.nodeId);
     };
-    const handlePointerUp = (e) => {
-      if (!isDragging) {
-        const group = getIntersect(e);
-        if (group) onNodeRef.current(group.userData.id);
-      }
-    };
-
-    mount.addEventListener("pointerdown", handlePointerDown);
-    mount.addEventListener("pointermove", handlePointerMove);
-    mount.addEventListener("pointerup", handlePointerUp);
-
+    renderer.domElement.addEventListener("pointermove", move);
+    renderer.domElement.addEventListener("pointerleave", leave);
+    renderer.domElement.addEventListener("click", click);
     const resize = () => {
-      if (!mount) return;
-      const width = mount.clientWidth;
-      const height = mount.clientHeight;
-      renderer.setSize(width, height);
+      const width = Math.max(mount.clientWidth, 1);
+      const height = Math.max(mount.clientHeight, 1);
+      renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
     };
-    const ro = new ResizeObserver(resize);
-    ro.observe(mount);
+    const observer = new ResizeObserver(resize);
+    observer.observe(mount);
     resize();
-
-    let reqId;
-    const animate = () => {
-      reqId = requestAnimationFrame(animate);
+    let frame;
+    const render = () => {
+      if (disposed) return;
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects(clickTargets, false)[0];
+      const next = hit?.object.userData.nodeId || null;
+      if (next !== hovered) { hovered = next; onHoverRef.current(next); }
       controls.update();
       renderer.render(scene, camera);
+      frame = requestAnimationFrame(render);
     };
-    animate();
-
-    apiRef.current = { camera, controls, nodeObjects, linkObjects, layerObjects, layerPlanes };
-
+    render();
+    apiRef.current = { camera, controls, nodeObjects, layerGroups, linkObjects };
     return () => {
-      ro.disconnect();
-      mount.removeEventListener("pointerdown", handlePointerDown);
-      mount.removeEventListener("pointermove", handlePointerMove);
-      mount.removeEventListener("pointerup", handlePointerUp);
-      cancelAnimationFrame(reqId);
+      disposed = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      renderer.domElement.removeEventListener("pointermove", move);
+      renderer.domElement.removeEventListener("pointerleave", leave);
+      renderer.domElement.removeEventListener("click", click);
+      controls.dispose();
+      scene.traverse((object) => {
+        object.geometry?.dispose();
+        object.material?.map?.dispose();
+        object.material?.dispose();
+      });
       renderer.dispose();
-      scene.clear();
-      if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
+      renderer.domElement.remove();
+      apiRef.current = null;
     };
   }, [layers, nodes, relations]);
 
   useEffect(() => {
     const api = apiRef.current;
     if (!api) return;
-    
-    // Only isolate nodes of the active layer, else show all
-    api.nodeObjects.forEach((group, id) => {
-      const isLayerMatch = activeLayer === "all" || group.userData.layer === activeLayer;
-      const isFocused = focusId === id;
-      const isRelated = focusId ? api.linkObjects.children.some(l => (l.userData.source === focusId && l.userData.target === id) || (l.userData.target === focusId && l.userData.source === id)) : false;
-      const isVisible = isLayerMatch || isFocused || isRelated;
-      
-      const targetOpacity = isVisible ? (focusId ? (isFocused || isRelated ? 1 : 0.15) : 1) : 0.05;
-      group.children.forEach((child) => {
-        if (child.material && child.material.opacity !== undefined) {
-          if (child === group.children[1]) {
-             child.material.opacity = targetOpacity * 0.15; // halo
-          } else {
-             child.material.opacity = targetOpacity;
-          }
-        }
-      });
-      group.position.y = THREE.MathUtils.lerp(group.position.y, isVisible ? group.userData.originalPosition.y : group.userData.originalPosition.y - 15, 0.1);
+    const connected = new Set([focusId]);
+    api.linkObjects.forEach((line) => {
+      if (line.userData.source === focusId) connected.add(line.userData.target);
+      if (line.userData.target === focusId) connected.add(line.userData.source);
     });
-
-    api.linkObjects.children.forEach((line) => {
-      const sourceGroup = api.nodeObjects.get(line.userData.source);
-      const targetGroup = api.nodeObjects.get(line.userData.target);
-      const isVisible = (activeLayer === "all" || (sourceGroup.userData.layer === activeLayer && targetGroup.userData.layer === activeLayer)) && 
-                        (!focusId || line.userData.source === focusId || line.userData.target === focusId);
-      line.material.opacity = THREE.MathUtils.lerp(line.material.opacity, isVisible ? (focusId ? 0.35 : 0.1) : 0, 0.1);
+    api.nodeObjects.forEach((entry, id) => {
+      const layerVisible = activeLayer === "all" || entry.node.layer === activeLayer;
+      const related = !focusId || connected.has(id);
+      entry.mesh.visible = layerVisible;
+      // 有实拍图时球本身是透明的点击靶，淡入淡出要作用在贴片上，
+      // 否则筛选一层会把别的层的球重新点亮成色块
+      entry.material.opacity = entry.thumb ? 0 : related ? 1 : 0.11;
+      if (entry.thumb) entry.thumb.material.opacity = related ? 1 : 0.13;
+      entry.label.material.opacity = related ? 1 : 0.13;
+      entry.halo.material.opacity = id === focusId ? 0.24 : related ? 0.09 : 0.01;
+      entry.mesh.scale.setScalar(id === focusId ? 1.3 : 1);
     });
-
-    api.layerObjects.children.forEach((obj) => {
-      if (obj.type === "Mesh") { // Plane
-         const layerId = Array.from(api.layerPlanes.entries()).find(([_, v]) => v.mesh === obj)?.[0];
-         obj.material.opacity = (activeLayer === "all" || activeLayer === layerId) ? 0.04 : 0.005;
-      }
-      if (obj.type === "LineSegments") { // GridHelper is LineSegments
-         const layerId = Array.from(api.layerPlanes.entries()).find(([_, v]) => v.grid === obj)?.[0];
-         if (layerId) {
-            obj.material.opacity = (activeLayer === "all" || activeLayer === layerId) ? 0.09 : 0.01;
-         }
-      }
+    api.layerGroups.forEach((group, id) => { group.visible = activeLayer === "all" || activeLayer === id; });
+    api.linkObjects.forEach((line) => {
+      const source = nodes.find((node) => node.id === line.userData.source);
+      const target = nodes.find((node) => node.id === line.userData.target);
+      const layerVisible = activeLayer === "all" || source?.layer === activeLayer || target?.layer === activeLayer;
+      const related = !focusId || line.userData.source === focusId || line.userData.target === focusId;
+      line.visible = layerVisible;
+      line.material.opacity = related ? Math.min(line.userData.baseOpacity * 1.45, 1) : line.userData.baseOpacity * 0.08;
     });
   }, [activeLayer, focusId, nodes]);
 
@@ -385,67 +372,6 @@ function Scene({ layers, nodes, relations, activeLayer, focusId, onNode, onHover
   return <div className="graph-webgl" ref={mountRef} aria-label="三维现实记忆拓扑图"/>;
 }
 
-const mockData = (() => {
-  const layerDefs = [
-    { id: "digital", label: "数码设备", color: "#5fd7c0" },
-    { id: "power", label: "电源线材", color: "#69a8ff" },
-    { id: "carry", label: "随身物品", color: "#f4c56a" },
-    { id: "daily", label: "居家日用", color: "#ef8c94" },
-    { id: "media", label: "影音娱乐", color: "#b998ef" },
-    { id: "study", label: "阅读工具", color: "#72c9e8" },
-  ];
-
-  const nodes = [
-    ["charger", "充电器", "power", "书房", "工作桌下方", "10:18"],
-    ["cable", "数据线", "power", "卧室", "床头柜抽屉", "周一"],
-    ["laptop", "笔记本电脑", "digital", "书房", "工作桌中央", "10:21"],
-    ["mouse", "鼠标", "digital", "书房", "工作桌右侧", "10:21"],
-    ["keyboard", "键盘", "digital", "书房", "工作桌中央", "10:21"],
-    ["drive", "移动硬盘", "digital", "书房", "左侧抽屉", "周二"],
-    ["headphones", "耳机", "digital", "书房", "显示器旁", "09:12"],
-    ["watch", "手表", "carry", "卧室", "床头柜上", "07:48"],
-    ["glasses", "眼镜", "carry", "卧室", "床头柜上", "07:51"],
-    ["wallet", "钱包", "carry", "玄关", "托盘左侧", "08:12"],
-    ["keys", "钥匙", "carry", "玄关", "玄关托盘", "08:12"],
-    ["access", "门禁卡", "carry", "玄关", "钱包夹层", "08:12"],
-    ["backpack", "背包", "carry", "玄关", "换鞋凳旁", "08:15"],
-    ["umbrella", "雨伞", "carry", "玄关", "入户门右侧", "周四"],
-    ["cup", "水杯", "daily", "书房", "工作桌右侧", "10:04"],
-    ["tissue", "纸巾盒", "daily", "客厅", "茶几上", "08:40"],
-    ["perfume", "香水", "daily", "卧室", "衣柜内侧", "周四"],
-    ["medicine", "药盒", "daily", "卧室", "床头柜第二层", "周四"],
-    ["remote", "遥控器", "media", "客厅", "沙发右侧", "昨晚"],
-    ["controller", "游戏手柄", "media", "客厅", "电视柜第二层", "周三"],
-    ["book", "《设计中的设计》", "study", "书房", "书架第二层", "昨晚"],
-    ["pen", "钢笔", "study", "书房", "笔筒里", "周四"],
-    ["scissors", "剪刀", "study", "书房", "工具抽屉", "周三"],
-  ].map(([id, name, layer, room, location, seen], i) => ({ 
-    id, name, layer, location: room + " " + location, seen,
-    eventCount: Math.floor(Math.random() * 10) + 1,
-    confidence: 0.8 + Math.random() * 0.2,
-    corrected: Math.random() > 0.8,
-    thumb: ""
-  }));
-
-  const relations = [
-    ["laptop", "keyboard", "配套使用", 3], ["laptop", "mouse", "配套使用", 3],
-    ["laptop", "charger", "供电", 3], ["laptop", "drive", "数据备份", 2],
-    ["laptop", "headphones", "音频输出", 2], ["charger", "cable", "组合收纳", 3],
-    ["remote", "controller", "客厅娱乐", 2], ["wallet", "access", "随身收纳", 3],
-    ["wallet", "keys", "共同携带", 2], ["wallet", "backpack", "出门携带", 2],
-    ["keys", "access", "进出家门", 3], ["umbrella", "backpack", "雨天出门", 2],
-    ["watch", "glasses", "晨间佩戴", 2], ["perfume", "glasses", "出门准备", 1],
-    ["medicine", "cup", "服药", 3], ["book", "pen", "阅读批注", 3],
-    ["scissors", "tissue", "日常整理", 1], ["cup", "laptop", "桌面相邻", 1],
-    ["tissue", "remote", "客厅同区", 1], ["cable", "drive", "数据连接", 2],
-  ].map(([source, target, label, weight]) => {
-    const sourceNode = nodes.find((node) => node.id === source);
-    const targetNode = nodes.find((node) => node.id === target);
-    return { source, target, label, weight, type: sourceNode.layer === targetNode.layer ? "same" : "cross" };
-  });
-
-  return { layers: layerDefs, nodes, relations };
-})();
 export default function TopologyGraph({ onOpenItem }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -453,8 +379,6 @@ export default function TopologyGraph({ onOpenItem }) {
   const [selectedId, setSelectedId] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
   const [query, setQuery] = useState("");
-  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
-  const [isLayerDropdownOpen, setIsLayerDropdownOpen] = useState(false);
   const [focusSignal, setFocusSignal] = useState({ id: null, tick: 0 });
   const [resetSignal, setResetSignal] = useState(0);
 
@@ -466,15 +390,9 @@ export default function TopologyGraph({ onOpenItem }) {
     return () => { alive = false; };
   }, []);
 
-  const { layers, nodes, relations } = useMemo(() => {
-    try {
-      if (error || !data) return mockData; // Fallback to mock data on error
-      return deriveGraph(data);
-    } catch {
-      return mockData;
-    }
-  }, [data, error]);
+  const { layers, nodes, relations } = useMemo(() => deriveGraph(data), [data]);
 
+  // 默认选中最近看到的那个（后端已按新鲜度排序），而不是写死某个物品
   useEffect(() => {
     if (!selectedId && nodes.length > 0) setSelectedId(nodes[0].id);
   }, [nodes, selectedId]);
@@ -495,93 +413,46 @@ export default function TopologyGraph({ onOpenItem }) {
   const results = query.trim()
     ? nodes.filter((node) => `${node.name}${node.location}`.includes(query.trim())).slice(0, 5)
     : [];
-
   const focusNode = (id) => {
     setSelectedId(id);
     setFocusSignal({ id, tick: Date.now() });
   };
 
-  const renderStage = () => {
-    if (error) {
-      // Allow fallback render but show toast
-    }
-    if (!data && !error) {
-      return <div className="graph-empty"><p>正在读物品分布…</p></div>;
-    }
-    if (nodes.length === 0) {
-      return <div className="graph-empty">
-        <p>还没有任何物品。</p>
-        <small>去「采集」页拍一张，感知跑完这里就会长出来。</small>
-      </div>;
-    }
-    return (
-      <>
-        <Scene layers={layers} nodes={nodes} relations={relations} activeLayer={activeLayer} focusId={hoveredId || (focusSignal.tick ? selectedId : null)} onNode={focusNode} onHover={setHoveredId} focusSignal={focusSignal} resetSignal={resetSignal}/>
-        <div className="graph-count">{nodes.length} 节点 · {relations.length} 关系</div>
-        
-        {selected && selectedLayer && (
-          <aside className="graph-inspector">
-            <div className="graph-node-title">
-              <span style={{ background: selectedLayer.color }}>
-                {selected.thumb ? <img src={selected.thumb} alt=""/> : <Box size={14}/>}
-              </span>
-              <div><small>{selectedLayer.label}</small><h2>{selected.name}</h2></div>
-              <button onClick={() => onOpenItem(selected.id)}>详情</button>
-            </div>
-            <p>{selected.location}<span>最后确认 {seenText(selected.seen)} · {selected.eventCount} 条事件{selected.corrected ? " · 你纠正过" : ""}</span></p>
-            <div className="graph-relations">
-              {related.slice(0, 3).map((relation) => 
-                <button key={`${relation.source}-${relation.target}`} onClick={() => focusNode(relation.node.id)}>
-                  <i className={relation.type}/><span>{relation.node.name}</span><small>{relation.label}</small>
-                </button>
-              )}
-            </div>
-          </aside>
-        )}
-      </>
-    );
-  };
+  if (error) {
+    return <div className="graph-shell"><div className="graph-empty">
+      <p>拿不到物品分布。</p>
+      <small>确认 memory-platform 在跑，且 <code>/api</code> 代理指向它。<br />{error}</small>
+    </div></div>;
+  }
+  if (!data) {
+    return <div className="graph-shell"><div className="graph-empty"><p>正在读物品分布…</p></div></div>;
+  }
+  if (nodes.length === 0) {
+    return <div className="graph-shell"><div className="graph-empty">
+      <p>还没有任何物品。</p>
+      <small>去「采集」页拍一张，感知跑完这里就会长出来。</small>
+    </div></div>;
+  }
 
   return <div className="graph-shell">
-    <div className="graph-layer-dropdown-container">
-      <div className={`layer-dropdown ${isLayerDropdownOpen ? 'open' : ''}`}>
-        <button className="layer-dropdown-toggle" onClick={() => setIsLayerDropdownOpen(!isLayerDropdownOpen)}>
-          <span className="layer-dropdown-label">
-            {activeLayer === "all" ? "全部层级" : layers.find(l => l.id === activeLayer)?.label || "全部层级"}
-          </span>
-          {isLayerDropdownOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        </button>
-        {isLayerDropdownOpen && (
-          <div className="layer-dropdown-menu">
-            <button className={activeLayer === "all" ? "active" : ""} onClick={() => { setActiveLayer("all"); setIsLayerDropdownOpen(false); }}>全部层级</button>
-            {layers.map((layer) => (
-              <button key={layer.id} className={activeLayer === layer.id ? "active" : ""} onClick={() => { setActiveLayer(layer.id); setIsLayerDropdownOpen(false); }}>
-                <i style={{ background: layer.color }}/>{layer.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-
     <div className="graph-toolbar">
-      <div className={`graph-search-container ${isSearchExpanded ? 'expanded' : ''}`} onClick={() => setIsSearchExpanded(true)}>
-        <span className="search-icon"><Search size={16}/></span>
-        <input className="search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索物品..." aria-label="搜索物品或位置" onBlur={() => { if(!query) setIsSearchExpanded(false); }} />
-        {query && <button className="clear-btn" onClick={(e) => { e.stopPropagation(); setQuery(""); setIsSearchExpanded(false); }} aria-label="清空搜索"><X size={13}/></button>}
-        {results.length > 0 && <span className="graph-results">{results.map((node) => <button key={node.id} onClick={(e) => { e.stopPropagation(); focusNode(node.id); setQuery(""); setIsSearchExpanded(false); }}><i style={{ background: (layers.find((layer) => layer.id === node.layer) || layers[0]).color }}/><b>{node.name}</b><small>{node.location}</small></button>)}</span>}
-      </div>
-      <button className="graph-reset" onClick={() => {
-        setResetSignal((value) => value + 1);
-        setActiveLayer("all");
-        setSelectedId(null);
-        setQuery("");
-        setIsSearchExpanded(false);
-      }} aria-label="复位视角"><RotateCcw size={15}/></button>
+      <label className="graph-search"><Search size={14}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索物品" aria-label="搜索物品"/>{query && <button onClick={() => setQuery("")} aria-label="清空搜索"><X size={13}/></button>}
+        {results.length > 0 && <span className="graph-results">{results.map((node) => <button key={node.id} onClick={() => { focusNode(node.id); setQuery(""); }}><i style={{ background: (layers.find((layer) => layer.id === node.layer) || layers[0]).color }}/><b>{node.name}</b><small>{node.location}</small></button>)}</span>}
+      </label>
+      {/* 「同层/跨层」在真实数据下没有意义了：所有连线都是同一位置内的，本来就只有一种 */}
+      <button className="graph-reset" onClick={() => setResetSignal((value) => value + 1)} aria-label="复位视角"><RotateCcw size={15}/></button>
     </div>
-    
+    <div className="graph-layer-strip"> <button className={activeLayer === "all" ? "active" : ""} onClick={() => setActiveLayer("all")}>全部</button>{layers.map((layer) => <button key={layer.id} className={activeLayer === layer.id ? "active" : ""} onClick={() => setActiveLayer(layer.id)}><i style={{ background: layer.color }}/>{layer.label}</button>)}</div>
     <div className="graph-stage">
-      {renderStage()}
+      <Scene layers={layers} nodes={nodes} relations={relations} activeLayer={activeLayer} focusId={hoveredId || (focusSignal.tick ? selectedId : null)} onNode={focusNode} onHover={setHoveredId} focusSignal={focusSignal} resetSignal={resetSignal}/>
+      <div className="graph-count">{nodes.length} 件物品 · {relations.length} 组同位关系</div>
+      {selected && selectedLayer && (
+        <aside className="graph-inspector">
+          <div className="graph-node-title"><span style={{ background: selectedLayer.color }}>{selected.thumb ? <img src={selected.thumb} alt=""/> : <Box size={14}/>}</span><div><small>{selectedLayer.label}</small><h2>{selected.name}</h2></div><button onClick={() => onOpenItem(selected.id)}>详情</button></div>
+          <p>{selected.location}<span>最后确认 {seenText(selected.seen)} · {selected.eventCount} 条事件{selected.corrected ? " · 你纠正过" : ""}</span></p>
+          <div className="graph-relations">{related.slice(0, 3).map((relation) => <button key={`${relation.source}-${relation.target}`} onClick={() => focusNode(relation.node.id)}><i className={relation.type}/><span>{relation.node.name}</span><small>{relation.label}</small></button>)}</div>
+        </aside>
+      )}
     </div>
   </div>;
 }

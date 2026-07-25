@@ -1,7 +1,7 @@
 # Reality Memory Engine 数据契约 Review v0.1
 
 > 历史审查记录。正式开发口径请使用
-> `docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md` 与
+> `docs/engineering/RealGit-Multimodal-Data-Contract-v1.0.md` 与
 > `contracts/reality-memory/v1/`。
 
 ## 结论

@@ -9,8 +9,9 @@ const execFileAsync = promisify(execFile);
 const PACKAGE_NAME = "com.realitymemory.glasses";
 const APP_DATA_ROOT = "files/reality-memory";
 const BACKEND_PORT = 8765;
+const AGENT_PORT = 8200;
 const MAX_ADB_BUFFER = 64 * 1024 * 1024;
-const POLL_INTERVAL_MS = 1_500;
+const POLL_INTERVAL_MS = 750;
 const DEVICE_REFRESH_INTERVAL_MS = 10_000;
 
 function unique(values) {
@@ -108,6 +109,8 @@ function parseSnapshotBundle(output) {
   let meta = {};
   let audit = [];
   let manifest = [];
+  let liveSensor = null;
+  let liveSensorLines = [];
   let currentFile = null;
   let currentLines = [];
   let section = null;
@@ -155,6 +158,11 @@ function parseSnapshotBundle(output) {
       section = "manifest";
       continue;
     }
+    if (line === "@@RME_LIVE_SENSOR@@") {
+      finishFile();
+      section = "live-sensor";
+      continue;
+    }
 
     if (section === "file" && currentFile) currentLines.push(line);
     else if (section === "meta" && line.trim()) {
@@ -167,13 +175,20 @@ function parseSnapshotBundle(output) {
       audit.push(line);
     } else if (section === "manifest") {
       manifest.push(line);
+    } else if (section === "live-sensor") {
+      liveSensorLines.push(line);
     }
   }
   finishFile();
 
   audit = parseJsonLines(audit.join("\n"));
   manifest = parseJsonLines(manifest.join("\n"));
-  return { meta, records, audit, manifest };
+  try {
+    liveSensor = JSON.parse(liveSensorLines.join("\n"));
+  } catch {
+    liveSensor = null;
+  }
+  return { meta, records, audit, manifest, liveSensor };
 }
 
 function recordBySchema(records, schemaRef) {
@@ -182,6 +197,47 @@ function recordBySchema(records, schemaRef) {
 
 function recordsBySchema(records, schemaRef) {
   return records.filter((record) => record.schema_ref === schemaRef);
+}
+
+function deriveHeartRate(audit) {
+  const samples = audit
+    .filter((item) => item.event === "HEART_RATE_BROADCAST_SAMPLE")
+    .sort((a, b) => String(a.occurred_at).localeCompare(String(b.occurred_at)));
+  const latestStatus = [...audit]
+    .reverse()
+    .find((item) => item.event === "HEART_RATE_BROADCAST_STATUS");
+  const latestBatch = [...audit]
+    .reverse()
+    .find((item) =>
+      item.event === "HEART_RATE_EVIDENCE_SUCCEEDED"
+      || item.event === "HEART_RATE_EVIDENCE_FAILED"
+    );
+  const intervals = samples.slice(1).map((sample, index) =>
+    new Date(sample.occurred_at).getTime() - new Date(samples[index].occurred_at).getTime()
+  ).filter((value) => Number.isFinite(value) && value >= 0);
+  const latest = samples.at(-1) || null;
+  return {
+    status: latestStatus?.detail?.message || "尚未启动心率广播测试",
+    latest: latest ? {
+      bpm: latest.detail?.bpm ?? null,
+      peripheralName: latest.detail?.peripheral_name ?? null,
+      peripheralAddress: latest.detail?.peripheral_address ?? null,
+      rssi: latest.detail?.rssi ?? null,
+      capturedAt: latest.detail?.captured_at || latest.occurred_at,
+      rawHex: latest.detail?.raw_hex ?? null,
+    } : null,
+    sampleCount: samples.length,
+    averageIntervalMs: intervals.length
+      ? intervals.reduce((sum, value) => sum + value, 0) / intervals.length
+      : null,
+    maxGapMs: intervals.length ? Math.max(...intervals) : null,
+    stable: intervals.length >= 2 && Math.max(...intervals) <= 5_000,
+    latestBatch: latestBatch ? {
+      succeeded: latestBatch.event === "HEART_RATE_EVIDENCE_SUCCEEDED",
+      occurredAt: latestBatch.occurred_at,
+      ...latestBatch.detail,
+    } : null,
+  };
 }
 
 function parsePackageInfo(output) {
@@ -240,6 +296,11 @@ function deriveSnapshot(bundle, previous) {
   const intent = recordBySchema(bundle.records, "rme.capture-intent.v1");
   const window = recordBySchema(bundle.records, "rme.capture-window.v1");
   const attempts = recordsBySchema(bundle.records, "rme.capture-attempt.v1")
+    .filter(
+      (item) =>
+        !window?.capture_window_id
+        || item.capture_window_id === window.capture_window_id,
+    )
     .sort((a, b) => String(a.requested_at).localeCompare(String(b.requested_at)));
   const evidence = recordsBySchema(bundle.records, "rme.evidence-item.v1");
   const uploads = bundle.records
@@ -270,6 +331,13 @@ function deriveSnapshot(bundle, previous) {
       };
     })
     .sort((a, b) => String(b.captured_at).localeCompare(String(a.captured_at)));
+  const latestAudio = media.find((item) => item.modality === "AUDIO") || null;
+  const latestSystemVideo = media.find(
+    (item) =>
+      item.modality === "VIDEO"
+      && item.media?.capture_mode === "ROKID_SYSTEM_RECORDING_SERVICE_NO_APP_PREVIEW",
+  ) || null;
+  const signalQuality = latestAudio?.media?.signal_quality || null;
 
   return {
     ...previous,
@@ -280,6 +348,30 @@ function deriveSnapshot(bundle, previous) {
     evidence,
     uploads,
     media,
+    liveSensor: bundle.liveSensor,
+    heartRate: deriveHeartRate(bundle.audit),
+    audioDiagnostics: {
+      directAudio: latestAudio
+        ? {
+            evidenceItemId: latestAudio.id,
+            capturedAt: latestAudio.captured_at,
+            captureMode: latestAudio.media?.capture_mode || null,
+            peakDbfs: signalQuality?.peak_dbfs ?? null,
+            rmsDbfs: signalQuality?.rms_dbfs ?? null,
+            likelySilent: signalQuality?.likely_silent ?? null,
+            systemSilenced: signalQuality?.system_silenced ?? null,
+          }
+        : null,
+      systemVideo: latestSystemVideo
+        ? {
+            evidenceItemId: latestSystemVideo.id,
+            capturedAt: latestSystemVideo.captured_at,
+            hasAudioTrack: latestSystemVideo.media?.has_audio_track ?? null,
+            durationMs: latestSystemVideo.duration_ms ?? null,
+            uploadState: latestSystemVideo.upload_state ?? null,
+          }
+        : null,
+    },
     audit: bundle.audit.slice(-100).reverse(),
     sessionPath: bundle.meta.session_path || null,
     windowPath: bundle.meta.window_path || null,
@@ -289,6 +381,7 @@ function deriveSnapshot(bundle, previous) {
 export function createRv101Adapter(options = {}) {
   const preferredSerial = options.serial || process.env.RME_RV101_SERIAL || null;
   const backendUrl = options.backendUrl || process.env.RME_BACKEND_URL || `http://127.0.0.1:${BACKEND_PORT}`;
+  const agentUrl = options.agentUrl || process.env.RME_AGENT_URL || `http://127.0.0.1:${AGENT_PORT}`;
   let adbPath = null;
   let selectedDevice = null;
   let pollTimer = null;
@@ -310,11 +403,25 @@ export function createRv101Adapter(options = {}) {
       versionName: null,
       versionCode: null,
       processId: null,
+      serviceRunning: false,
+      foregroundService: false,
+      activityForeground: false,
     },
+    worn: null,
     backend: {
       url: backendUrl,
       connected: false,
       detail: "尚未检查",
+    },
+    agent: {
+      url: agentUrl,
+      connected: false,
+      detail: "尚未检查",
+    },
+    pipeline: null,
+    audioDiagnostics: {
+      directAudio: null,
+      systemVideo: null,
     },
     session: null,
     intent: null,
@@ -323,6 +430,16 @@ export function createRv101Adapter(options = {}) {
     evidence: [],
     uploads: [],
     media: [],
+    liveSensor: null,
+    heartRate: {
+      status: "尚未启动心率广播测试",
+      latest: null,
+      sampleCount: 0,
+      averageIntervalMs: null,
+      maxGapMs: null,
+      stable: false,
+      latestBatch: null,
+    },
     audit: [],
     lastUpdatedAt: null,
     error: null,
@@ -361,15 +478,30 @@ export function createRv101Adapter(options = {}) {
         versionName: null,
         versionCode: null,
         processId: null,
+        serviceRunning: false,
+        foregroundService: false,
+        activityForeground: false,
       };
+      snapshot.worn = null;
       return;
     }
 
-    const [packageOutput, processOutput, modelOutput, androidOutput] = await Promise.all([
+    const [
+      packageOutput,
+      processOutput,
+      modelOutput,
+      androidOutput,
+      serviceOutput,
+      activityOutput,
+      wornOutput,
+    ] = await Promise.all([
       deviceAdb(["shell", "dumpsys", "package", PACKAGE_NAME]).catch(() => ""),
       deviceAdb(["shell", "pidof", PACKAGE_NAME]).catch(() => ""),
       deviceAdb(["shell", "getprop", "ro.product.model"]).catch(() => ""),
       deviceAdb(["shell", "getprop", "ro.build.version.release"]).catch(() => ""),
+      deviceAdb(["shell", "dumpsys", "activity", "services", PACKAGE_NAME]).catch(() => ""),
+      deviceAdb(["shell", "dumpsys", "activity", "activities"]).catch(() => ""),
+      deviceAdb(["shell", "getprop", "vendor.rkd.glasses.is_take_on"]).catch(() => ""),
     ]);
     snapshot.device = {
       ...selectedDevice,
@@ -380,7 +512,19 @@ export function createRv101Adapter(options = {}) {
       packageName: PACKAGE_NAME,
       ...parsePackageInfo(packageOutput),
       processId: processOutput.trim() || null,
+      serviceRunning: serviceOutput.includes("RealityRuntimeService"),
+      foregroundService:
+        serviceOutput.includes("RealityRuntimeService") &&
+        /\bisForeground=true\b/.test(serviceOutput),
+      activityForeground:
+        new RegExp(`topResumedActivity=.*${PACKAGE_NAME.replaceAll(".", "\\.")}`)
+          .test(activityOutput),
     };
+    snapshot.worn = wornOutput.trim() === "1"
+      ? true
+      : wornOutput.trim() === "0"
+        ? false
+        : null;
     await deviceAdb(["reverse", `tcp:${BACKEND_PORT}`, `tcp:${BACKEND_PORT}`]).catch(() => "");
   }
 
@@ -407,23 +551,84 @@ export function createRv101Adapter(options = {}) {
     }
   }
 
+  async function refreshAgent() {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1_200);
+    try {
+      const response = await fetch(`${agentUrl}/healthz`, { signal: controller.signal });
+      const body = await response.text();
+      snapshot.agent = {
+        url: agentUrl,
+        connected: response.ok,
+        status: response.status,
+        detail: body.slice(0, 300) || response.statusText,
+      };
+    } catch (error) {
+      snapshot.agent = {
+        url: agentUrl,
+        connected: false,
+        detail: error.name === "AbortError" ? "连接超时" : error.message,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  async function refreshPipeline() {
+    const sourceSessionId = snapshot.session?.capture_session_id;
+    if (!snapshot.backend.connected || !sourceSessionId) {
+      snapshot.pipeline = null;
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2_000);
+    try {
+      const url = new URL("/internal/v1/debug/pipeline", backendUrl);
+      url.searchParams.set("source_session_id", sourceSessionId);
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error(`沉淀状态接口 HTTP ${response.status}`);
+      }
+      snapshot.pipeline = await response.json();
+    } catch (error) {
+      snapshot.pipeline = {
+        source_session_id: sourceSessionId,
+        error: error.name === "AbortError" ? "读取沉淀状态超时" : error.message,
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async function readDeviceSnapshot() {
     const script = [
       `session=$(ls -td ${APP_DATA_ROOT}/outbox/ses_* 2>/dev/null | head -n 1)`,
       `window=$(ls -td "$session"/win_* 2>/dev/null | head -n 1)`,
+      `windows=$(ls -td "$session"/win_* 2>/dev/null | head -n 8)`,
       `printf '@@RME_META@@\\n'`,
       `printf '{"session_path":"%s","window_path":"%s"}\\n' "$session" "$window"`,
-      `for f in "$session/capture-session.json" "$window"/*.json; do`,
+      `for f in "$session/capture-session.json"; do`,
       `  if [ -f "$f" ]; then`,
       `    printf '@@RME_FILE@@%s\\n' "$f"`,
       `    cat "$f"`,
       `    printf '\\n@@RME_END_FILE@@\\n'`,
       `  fi`,
       `done`,
+      `for current_window in $windows; do`,
+      `  for f in "$current_window"/*.json; do`,
+      `    if [ -f "$f" ]; then`,
+      `      printf '@@RME_FILE@@%s\\n' "$f"`,
+      `      cat "$f"`,
+      `      printf '\\n@@RME_END_FILE@@\\n'`,
+      `    fi`,
+      `  done`,
+      `done`,
       `printf '@@RME_AUDIT@@\\n'`,
       `tail -n 120 ${APP_DATA_ROOT}/audit.ndjson 2>/dev/null`,
       `printf '@@RME_MANIFEST@@\\n'`,
       `tail -n 160 ${APP_DATA_ROOT}/debug-export/manifest.ndjson 2>/dev/null`,
+      `printf '@@RME_LIVE_SENSOR@@\\n'`,
+      `cat ${APP_DATA_ROOT}/runtime/live-sensor.json 2>/dev/null`,
     ].join("\n");
     const output = await runAs(["sh", "-c", script]);
     snapshot = deriveSnapshot(parseSnapshotBundle(output), snapshot);
@@ -443,9 +648,11 @@ export function createRv101Adapter(options = {}) {
         lastDeviceRefreshAt = now;
       }
       await refreshBackend();
+      await refreshAgent();
       if (selectedDevice && snapshot.app.installed) {
         await readDeviceSnapshot();
       }
+      await refreshPipeline();
       snapshot.error = null;
       snapshot.lastUpdatedAt = new Date().toISOString();
     } catch (error) {
@@ -525,6 +732,18 @@ export function createRv101Adapter(options = {}) {
           "remember_now",
         ]);
         break;
+      case "system_video":
+        await deviceAdb([
+          "shell",
+          "am",
+          "start",
+          "-n",
+          `${PACKAGE_NAME}/.MainActivity`,
+          "--es",
+          "rme_debug_command",
+          "system_video",
+        ]);
+        break;
       case "end_session":
         await deviceAdb([
           "shell",
@@ -539,6 +758,44 @@ export function createRv101Adapter(options = {}) {
         break;
       case "connect_backend":
         await deviceAdb(["reverse", `tcp:${BACKEND_PORT}`, `tcp:${BACKEND_PORT}`]);
+        break;
+      case "heart_rate_start":
+        await deviceAdb([
+          "shell",
+          "pm",
+          "grant",
+          PACKAGE_NAME,
+          "android.permission.BLUETOOTH_SCAN",
+        ]).catch(() => "");
+        await deviceAdb([
+          "shell",
+          "pm",
+          "grant",
+          PACKAGE_NAME,
+          "android.permission.BLUETOOTH_CONNECT",
+        ]).catch(() => "");
+        await deviceAdb([
+          "shell",
+          "am",
+          "start",
+          "-n",
+          `${PACKAGE_NAME}/.MainActivity`,
+          "--es",
+          "rme_debug_command",
+          "heart_rate_start",
+        ]);
+        break;
+      case "heart_rate_stop":
+        await deviceAdb([
+          "shell",
+          "am",
+          "start",
+          "-n",
+          `${PACKAGE_NAME}/.MainActivity`,
+          "--es",
+          "rme_debug_command",
+          "heart_rate_stop",
+        ]);
         break;
       default:
         throw new Error(`不支持的 RV101 调试命令：${name}`);

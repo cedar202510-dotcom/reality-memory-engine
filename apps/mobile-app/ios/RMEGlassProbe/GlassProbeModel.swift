@@ -254,7 +254,7 @@ final class GlassProbeModel: ObservableObject {
     init() {
         _ = CxrClient.initialize(
             mode: .customView,
-            options: .init(appDisplayName: "Reality Memory", pageName: nil)
+            options: .init(appDisplayName: "RealGit", pageName: nil)
         )
         client = CxrClient.shared
 
@@ -281,7 +281,7 @@ final class GlassProbeModel: ObservableObject {
         appendLog("正在请求相机与麦克风授权")
         client.auth.authenticate(
             scopes: [.microphone, .camera],
-            appName: "Reality Memory"
+            appName: "RealGit"
         ) { [weak self] result in
             DispatchQueue.main.async {
                 switch result {
@@ -2280,7 +2280,7 @@ final class GlassProbeModel: ObservableObject {
                         "id": "statusText",
                         "layout_width": "wrap_content",
                         "layout_height": "wrap_content",
-                        "text": "Reality Memory",
+                        "text": "RealGit",
                         "textColor": "#00FF00",
                         "textSize": "18sp",
                         "textStyle": "bold",

@@ -1994,7 +1994,15 @@ header.top {
   flex-direction: column;
   justify-content: flex-end;
   gap: 9px;
+  /* 对话区是一大块覆盖层，空白处必须能点透，否则它会挡住下面的光球和输入区 */
   pointer-events: none;
+}
+/* 但气泡里真的可点的东西要自己把事件收回来。少了这一句，「看这条记忆的轨迹」
+   和来源图就都是死的——看得见、点不动，比没有更糟。 */
+.bubble-trace,
+.bubble-shot {
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .agent-dialogue {
@@ -3158,6 +3166,13 @@ header.top {
   color: #07100e;
   box-shadow: 0 0 18px rgba(111,220,196,.22);
 }
+/* 有实拍图时整块换成照片：底色还在，图没加载出来之前不会闪成白块 */
+.graph-node-title > span img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
 .graph-node-title small { display: block; color: rgba(232,239,255,.46); font-size: 8px; }
 .graph-node-title h2 { margin-top: 2px; font-size: 15px; line-height: 1.1; }
 .graph-node-title > button {
@@ -3935,15 +3950,88 @@ header.top {
   .live-grid { grid-template-columns: 1fr; }
 }
 
-/* 演示答案标记：mock 与真实必须一眼可分 */
-.bubble-demo {
+/* 答案里的来源画面。不是缩略图而是整幅：这张图是答案的依据，用户要能直接认出
+   自己那张桌子，56px 的方块认不出来。点开走灯箱看原图。 */
+.bubble-shot {
   display: block;
-  margin-top: 8px;
+  width: 100%;
+  max-height: 190px;
+  margin-bottom: 9px;
+  border-radius: 11px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, .05);
+  border: 1px solid var(--bar-line);
+}
+
+/* 答案下面的小字：平台自己声明的局限、能力边界。它不是装饰，是答案的一部分 */
+.bubble-note {
+  display: block;
+  margin-top: 6px;
   font-size: 10px;
+  line-height: 1.5;
   letter-spacing: .04em;
   color: var(--warm);
   opacity: .85;
 }
+
+/* 答不出来要长得像答不出来：暖色边框，跟正常答案区分开 */
+.bubble.agent.error {
+  background: rgba(255, 176, 92, .12);
+  border-color: rgba(255, 176, 92, .3);
+}
+
+/* 麦克风权限、转写失败这类环境问题：属于工具本身的状态，不该混进对话流 */
+.composer-note {
+  position: absolute;
+  left: 50%;
+  bottom: 158px;
+  z-index: 30;
+  transform: translateX(-50%);
+  max-width: min(304px, calc(100% - 58px));
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--warm);
+  opacity: .9;
+  pointer-events: none;
+}
+
+/* 文字输入：占语音按钮那一格，高度与它一致，切换时布局不跳 */
+.text-input {
+  height: 54px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px;
+  align-items: center;
+  padding: 0 6px 0 16px;
+  border: 1px solid var(--bar-line);
+  border-radius: 19px;
+  background: var(--bar);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, .16), inset 0 0 0 1px rgba(255, 255, 255, .03);
+}
+.text-input input {
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: rgba(248, 255, 250, .95);
+  font-size: 14px;
+  font-family: inherit;
+}
+.text-input input:focus { outline: none; }
+.text-input input::placeholder { color: rgba(248, 255, 250, .34); }
+.text-input button {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(86, 235, 142, .18);
+  color: var(--green);
+}
+.text-input button:disabled { opacity: .3; }
+.voice:disabled { opacity: .62; }
 
 /* ============================================================
    桌面横屏布局（≥1024px）
@@ -4223,6 +4311,194 @@ header.top {
   .cap-actions { grid-template-columns: 1fr; }
   .cap-action.primary { grid-column: auto; }
 }
+
+/* ============================================================
+   采集媒体总览（Media Library）
+   ============================================================ */
+
+.media-panel { display: grid; gap: 18px; }
+
+.media-filters { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.media-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.media-chip {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(248, 255, 250, 0.07);
+  border: 1px solid var(--bar-line);
+  color: var(--muted);
+  font-size: 12px;
+}
+.media-chip:hover { color: var(--ink); }
+.media-chip.active { background: var(--green); border-color: var(--green); color: #06120c; font-weight: 620; }
+
+.media-filter-right { display: flex; align-items: center; gap: 14px; }
+.media-filter-right select {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(4, 8, 6, 0.55);
+  border: 1px solid var(--bar-line);
+  color: var(--ink);
+  font-size: 12px;
+  font-family: inherit;
+}
+.media-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.media-toggle input { accent-color: var(--green); }
+
+.media-group h3 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.media-group + .media-group { margin-top: 20px; }
+
+.media-grid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px;
+}
+.media-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(4, 8, 6, 0.42);
+  border: 1px solid var(--bar-line);
+}
+/* 过期条目压暗但不隐藏：它证明「采集确实发生过」，抹掉反而像数据丢了 */
+.media-card.expired { opacity: 0.62; }
+
+.media-body {
+  display: grid;
+  place-items: center;
+  min-height: 132px;
+  border-radius: 9px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.35);
+}
+.media-thumb, .media-video { width: 100%; height: 132px; object-fit: cover; display: block; }
+.media-audio { width: 100%; padding: 0 8px; }
+
+.media-gone { display: grid; gap: 5px; padding: 14px; text-align: center; }
+.media-gone span { font-size: 11.5px; color: var(--warm); }
+.media-gone small { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+.media-download {
+  display: flex; align-items: center; gap: 6px;
+  padding: 14px; text-align: center;
+  font-size: 11.5px; color: var(--muted); text-decoration: none;
+}
+.media-download:hover { color: var(--ink); }
+
+.media-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+.media-kind { display: inline-flex; align-items: center; gap: 4px; }
+.media-meta time { margin-left: auto; }
+.media-dur { padding: 1px 5px; border-radius: 4px; background: rgba(248, 255, 250, 0.1); }
+
+.media-text { font-size: 12px; line-height: 1.55; color: var(--ink); }
+.media-text.muted { color: var(--muted); font-size: 11.5px; }
+
+.media-more {
+  justify-self: center;
+  padding: 9px 20px;
+  border-radius: 999px;
+  background: rgba(248, 255, 250, 0.08);
+  border: 1px solid var(--bar-line);
+  color: var(--muted);
+  font-size: 12px;
+}
+.media-more:hover:not(:disabled) { color: var(--ink); }
+.media-more:disabled { opacity: 0.5; }
+
+/* ---------------------------------------------------------------- 真实记忆的状态表达
+ *
+ * 这一组样式全是为了让「不确定」看得见：置信度、被更新过、人确认过、原图已删除。
+ * 真实数据不像 mock 那样条条干净，界面必须能表达「这条记忆有多可信」。 */
+
+.timeline-hint {
+  padding: 14px 4px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.timeline-hint.error { color: var(--warm); }
+.timeline-hint small { display: block; margin-top: 6px; opacity: .8; font-size: 11px; }
+.timeline-hint code { font-family: ui-monospace, SFMono-Regular, monospace; }
+
+.timeline-clue-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--bar-line);
+  background: rgba(86, 235, 142, 0.07);
+  color: var(--ink);
+  font-size: 12px;
+  text-align: left;
+}
+.timeline-clue-bar svg { margin-left: auto; opacity: .6; }
+
+.card-badges { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.card-badges .status-note { margin-top: 0; }
+.status-note.confirmed { color: var(--green); }
+.conf-note {
+  margin-left: auto;
+  font-size: 10.5px;
+  letter-spacing: .03em;
+  color: var(--muted);
+  opacity: .75;
+}
+
+/* 被后续记忆取代的事件：压暗但不隐藏——历史不能凭空消失，但也不能跟当前事实等同 */
+.dark-card.superseded, .timeline-item.superseded { opacity: .5; }
+.timeline-item.superseded .action em { font-style: normal; color: var(--warm); font-size: 10.5px; }
+
+.detail.muted { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+.bubble-trace {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 10px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--green);
+  font-size: 11.5px;
+}
+
+.clue-meta { font-size: 11px; color: var(--muted); margin: 2px 0 8px; }
+.clue-meta em { font-style: normal; color: var(--warm); }
+.clue-thumb {
+  display: block;
+  width: 100%;
+  max-height: 150px;
+  object-fit: cover;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+.clue-caption { font-size: 11.5px; line-height: 1.55; color: var(--muted); margin-bottom: 10px; }
+.clue-caption em { font-style: normal; color: var(--warm); }
+.dark-clue-card.done { opacity: .55; }
+.clue-actions button:disabled { opacity: .5; }
+
+.graph-empty {
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  min-height: 320px;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+.graph-empty small { font-size: 11.5px; line-height: 1.6; opacity: .85; }
+
 /* 事件卡里的来源帧缩略图。刻意做小做方：上下文页是一条长列表，
  * 全宽大图会把 24 条事件拉成几屏，反而扫不动。 */
 .card-with-thumb { display: flex; gap: 12px; align-items: flex-start; }
@@ -4639,3 +4915,30 @@ header.top {
   color: #fff;
   font-weight: 500;
 }
+
+/* ---- 合并移植：新设计 Agent 页里的真实数据附属信息 ---- */
+/* 平台声明的局限/能力边界，跟在玻璃态回答下面 */
+.agent-answer-note {
+  display: block;
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.agent-answer-text.error .agent-answer-copy { color: var(--warm, #e8a07a); }
+/* 答出实体后给一条进轨迹的路 */
+.agent-trace-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 10px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--fg, #f2f4f8);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+.agent-trace-link:hover { background: rgba(255, 255, 255, 0.12); transform: translateY(-1px); }

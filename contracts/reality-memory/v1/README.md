@@ -1,7 +1,7 @@
-# Reality Memory v1 Contracts
+# RealGit v1 Contracts
 
 本文档目录是
-[`Reality-Memory-Multimodal-Data-Contract-v1.0.md`](../../../docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md)
+[`RealGit-Multimodal-Data-Contract-v1.0.md`](../../../docs/engineering/RealGit-Multimodal-Data-Contract-v1.0.md)
 对应的 JSON Schema。
 
 ## 所有对象
@@ -26,7 +26,7 @@
 
 本目录当前不包含云端下行 `DeviceMessage`、提醒业务载荷或投递回执。这些内容仍在
 review，不能用 `extensions` 绕过版本流程塞进现有 v1 对象。建议边界见
-[`docs/architecture/04-Device-Cloud-Communication.md`](../../../docs/architecture/04-Device-Cloud-Communication.md)。
+[`docs/architecture/04-Device-Cloud-Communication.md`](../../../docs/architecture/05-Device-Cloud-Communication.md)。
 
 ## 版本规则
 
