@@ -2850,9 +2850,12 @@ header.top {
 
 .preference-confidence {
   display: block;
-  margin-top: 7px;
-  color: rgba(248, 255, 250, 0.46);
+  margin-top: 8px;
+  color: var(--muted);
   font-size: 10.5px;
+  letter-spacing: .03em;
+  opacity: .75;
+  text-align: right;
 }
 
 .preference-confirm-row {
