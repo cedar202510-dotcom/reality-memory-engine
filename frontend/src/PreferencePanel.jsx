@@ -133,25 +133,11 @@ export default function PreferencePanel() {
   }, []);
 
   if (error) {
-    return (
-      <section className="pref-panel">
-        <div className="pref-panel-head">
-          <h3>喜好度</h3>
-        </div>
-        <p className="pref-error">读取失败：{error}</p>
-      </section>
-    );
+    return null;
   }
 
   if (!data) {
-    return (
-      <section className="pref-panel">
-        <div className="pref-panel-head">
-          <h3>喜好度</h3>
-        </div>
-        <p className="pref-loading">正在融合语音与画面…</p>
-      </section>
-    );
+    return null;
   }
 
   // 有结论的排在前面单独成卡；「只被看到过、从没被评价过」的压成一行计数。
