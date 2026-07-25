@@ -143,8 +143,8 @@ export default function LifeHome() {
             <Metric value="6.4" unit="k" label="活动" />
           </div>
           <div className="life-trend-meta">
-            <span>过去 12 小时活动强度</span>
-            <small>每柱 1 小时 · 手环</small>
+            <span>活动趋势</span>
+            <small>近 12 小时</small>
           </div>
           <div className="life-trend" aria-label="过去12小时活动强度，每根柱代表1小时，数据来自手环">
             {[26, 34, 30, 48, 62, 52, 72, 56, 68, 84, 58, 38].map((height, index) => (
