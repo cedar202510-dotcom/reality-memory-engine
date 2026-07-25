@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
     )
     private var transientDisplayShown = false
     private var visualShellClosing = false
+    private var lastReportedPresentationId: String? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -80,6 +81,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        refresh()
         maybeShowDebugReminder()
         maybeHandleDebugCommand()
         maybeReportWearDisclosureVisible()
@@ -161,6 +163,7 @@ class MainActivity : ComponentActivity() {
 
     private fun isAuxiliaryLaunch(): Boolean =
         intent?.getBooleanExtra(EXTRA_OPENED_FROM_WEAR, false) == true ||
+            intent?.getBooleanExtra(EXTRA_OPENED_FROM_PRESENTATION, false) == true ||
             hasPendingDebugCommand()
 
     private fun maybeReportWearDisclosureVisible() {
@@ -205,7 +208,22 @@ class MainActivity : ComponentActivity() {
         if (currentStatus.displayKind != RuntimeDisplayKind.NONE) {
             transientDisplayShown = true
         }
+        if (currentStatus.displayKind != RuntimeDisplayKind.PRESENTATION) {
+            lastReportedPresentationId = null
+        }
         glassesUi.render(currentStatus)
+        currentStatus.presentation?.messageId
+            ?.takeIf {
+                currentStatus.displayKind == RuntimeDisplayKind.PRESENTATION &&
+                    it != lastReportedPresentationId
+            }
+            ?.let { messageId ->
+                lastReportedPresentationId = messageId
+                sendRuntimeAction(
+                    RealityRuntimeService.ACTION_REPORT_PRESENTATION_VISIBLE,
+                    messageId = messageId,
+                )
+            }
         if (
             transientDisplayShown &&
             currentStatus.displayKind == RuntimeDisplayKind.NONE
@@ -225,10 +243,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleSingleClick() {
-        if (currentStatus.displayKind == RuntimeDisplayKind.REMINDER) {
-            sendRuntimeAction(RealityRuntimeService.ACTION_DISMISS_REMINDER)
-        } else {
-            cancelCurrentSession()
+        when (currentStatus.displayKind) {
+            RuntimeDisplayKind.REMINDER ->
+                sendRuntimeAction(RealityRuntimeService.ACTION_DISMISS_REMINDER)
+            RuntimeDisplayKind.PRESENTATION ->
+                sendRuntimeAction(
+                    RealityRuntimeService.ACTION_DISMISS_PRESENTATION,
+                    messageId = currentStatus.presentation?.messageId,
+                )
+            else -> cancelCurrentSession()
         }
     }
 
@@ -248,6 +271,7 @@ class MainActivity : ComponentActivity() {
         action: String,
         reminderText: String? = null,
         startReason: String? = null,
+        messageId: String? = null,
     ) {
         val serviceIntent = Intent(this, RealityRuntimeService::class.java).setAction(action)
         if (reminderText != null) {
@@ -255,6 +279,9 @@ class MainActivity : ComponentActivity() {
         }
         if (startReason != null) {
             serviceIntent.putExtra(RealityRuntimeService.EXTRA_START_REASON, startReason)
+        }
+        if (messageId != null) {
+            serviceIntent.putExtra(RealityRuntimeService.EXTRA_MESSAGE_ID, messageId)
         }
         ContextCompat.startForegroundService(this, serviceIntent)
     }
@@ -274,6 +301,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_OPENED_FROM_WEAR = "opened_from_wear"
+        const val EXTRA_OPENED_FROM_PRESENTATION = "opened_from_presentation"
         const val EXTRA_DEBUG_REMINDER_TEXT = "debug_reminder_text"
         const val EXTRA_DEBUG_COMMAND = "rme_debug_command"
         const val EXTRA_START_REASON = "rme_start_reason"

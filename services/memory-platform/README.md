@@ -131,6 +131,8 @@ iOS App 每次采集会话导出 `session.json`（采集清单）。上云时**�
 | POST/DELETE | `/v1/signal-subscriptions[/{id}]` | 信号订阅（类型/最低置信度/冷却/每日上限） |
 | GET | `/v1/signals` | 拉取待投递信号（过期不投递，抑制计数返回） |
 | POST | `/v1/signals/{id}/ack` | 信号回执 |
+| GET | `/v1/agent/devices` | Agent 按授权家庭读取可投递设备（需要 `memory.device.message.send`） |
+| POST | `/v1/agent/devices/{device_id}/messages` | Agent 向授权家庭内设备发送受约束消息 |
 | POST | `/internal/v1/devices/{device_id}/messages` | 下行：手动注入一条设备消息，在线则即时推送 |
 | GET | `/internal/v1/devices/{device_id}/inbox` | 下行：轮询兜底，返回未终态未过期消息 |
 | POST | `/internal/v1/devices/{device_id}/receipts` | 下行：投递回执（按 message_id + status 幂等） |
@@ -172,10 +174,11 @@ delivery_policy），但 `payload` 里提醒的主题、理由、按钮和措辞
 - **消息状态机**：`PENDING → SENT → RECEIVED → CLOSED`，或任意阶段超时 `EXPIRED`。
   `PRESENTED` / `SPOKEN` 只记时间戳不改状态；终态只认第一条回执。
 
-第一版触发源是**手动注入**：`POST .../messages` 由人或调试脚本调用，不接规则引擎
-也不接 Agent。把 `MemorySignal` 接到下行（`device_messages.signal_id` 已预留外键）
-属于下一步，需要先回答通信架构 §6 的开放问题——谁拥有提醒决定权、优先级与终端
-选择怎么定。
+人工调试仍可调用 `/internal/v1/.../messages`。正式 Agent 路径使用
+`/v1/agent/devices/{id}/messages`：要求 `memory.device.message.send` scope，校验目标
+设备属于同一授权家庭，并把审计操作者记录为 `agent:<client_id>`。Agent Gateway
+负责把回答和确定性信号映射成 `rme.glasses-presentation.v0`；模型不能生成样式、
+图标名、系统消息或隐私消息。
 
 ### 采集控制（capture_control + connectors）
 

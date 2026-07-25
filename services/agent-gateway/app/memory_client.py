@@ -86,5 +86,36 @@ class MemoryClient:
             },
         )
 
+    # ---- Agent → 设备下行 ----
+
+    async def list_agent_devices(self) -> dict[str, Any]:
+        """列出当前 grant 家庭里的设备；平台负责家庭隔离。"""
+        return await self._get("/v1/agent/devices")
+
+    async def send_glasses_presentation(
+        self,
+        *,
+        device_id: str,
+        payload: dict[str, Any],
+        priority: str,
+        allow_tts: bool,
+        ttl_seconds: int,
+    ) -> dict[str, Any]:
+        """发送受 `rme.glasses-presentation.v0` 约束的眼镜消息。"""
+        return await self._post(
+            f"/v1/agent/devices/{device_id}/messages",
+            json={
+                "message_type": "REMINDER_SIGNAL",
+                "payload_schema_ref": "rme.glasses-presentation.v0",
+                "priority": priority,
+                "ttl_seconds": ttl_seconds,
+                "delivery_policy": {
+                    "allow_text": True,
+                    "allow_tts": allow_tts,
+                },
+                "payload": payload,
+            },
+        )
+
     async def aclose(self) -> None:
         await self._http.aclose()

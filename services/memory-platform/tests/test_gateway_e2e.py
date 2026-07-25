@@ -19,7 +19,7 @@ from app.main import create_app
 from app.memory.events import append_event
 from app.memory.projections import recompute_projection
 from app.memory.seed import get_default_household_id
-from app.models import Entity, utcnow
+from app.models import Device, Entity, utcnow
 from app.signals.rules import evaluate_signals_for_entity
 
 # ---- 以独立包名加载 agent-gateway 的 app 包（两个服务都叫 app，不能直接 sys.path） ----
@@ -36,10 +36,19 @@ def _load_gateway():
         spec.loader.exec_module(module)
     from gwapp.harness import run_turn  # noqa: PLC0415
     from gwapp.llm import AssistantTurn, FakeChatLLM, ToolCall  # noqa: PLC0415
+    from gwapp.main import create_app as create_gateway_app  # noqa: PLC0415
     from gwapp.memory_client import MemoryClient  # noqa: PLC0415
     from gwapp.proactive import build_suggestions  # noqa: PLC0415
 
-    return run_turn, AssistantTurn, FakeChatLLM, ToolCall, MemoryClient, build_suggestions
+    return (
+        run_turn,
+        AssistantTurn,
+        FakeChatLLM,
+        ToolCall,
+        MemoryClient,
+        build_suggestions,
+        create_gateway_app,
+    )
 
 
 ADMIN = {"Authorization": "Bearer test-admin-token"}
@@ -59,7 +68,7 @@ async def _issue_grant(platform_app, scopes: list[str]) -> str:
 
 
 async def test_gateway_harness_against_real_platform(db_session):
-    run_turn, AssistantTurn, FakeChatLLM, ToolCall, MemoryClient, _ = _load_gateway()
+    run_turn, AssistantTurn, FakeChatLLM, ToolCall, MemoryClient, _, _ = _load_gateway()
 
     # 平台侧真实数据：手机在黑色圆凳（事件 → 投影）
     household_id = await get_default_household_id(db_session)
@@ -111,7 +120,7 @@ async def test_gateway_harness_against_real_platform(db_session):
 
 
 async def test_gateway_proactive_against_real_platform(db_session):
-    _, _, _, _, MemoryClient, build_suggestions = _load_gateway()
+    _, _, _, _, MemoryClient, build_suggestions, _ = _load_gateway()
 
     # 真实信号：洗衣液 LOW → 规则引擎生成
     household_id = await get_default_household_id(db_session)
@@ -154,3 +163,71 @@ async def test_gateway_proactive_against_real_platform(db_session):
     data = await memory.list_signals()
     assert data["signals"] == []
     await memory.aclose()
+
+
+async def test_agent_reply_reaches_real_platform_device_inbox(db_session):
+    (
+        _,
+        AssistantTurn,
+        FakeChatLLM,
+        _,
+        MemoryClient,
+        _,
+        create_gateway_app,
+    ) = _load_gateway()
+
+    household_id = await get_default_household_id(db_session)
+    glasses = Device(
+        household_id=household_id,
+        kind="glasses",
+        name="RealGit RV101 E2E",
+        runtime_package="com.realitymemory.glasses",
+        control_transport="inbox",
+    )
+    db_session.add(glasses)
+    await db_session.commit()
+
+    platform_app = create_app(fake_llm=FakeLLMClient(), with_workers=False)
+    token = await _issue_grant(
+        platform_app,
+        ["memory.query.objects", "memory.device.message.send"],
+    )
+    memory = MemoryClient(
+        base_url="http://platform",
+        token=token,
+        transport=ASGITransport(app=platform_app),
+    )
+    gateway_app = create_gateway_app(
+        fake_llm=FakeChatLLM(
+            script=[AssistantTurn(content="钥匙最后一次看到是在玄关柜。")]
+        ),
+        memory_client=memory,
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=gateway_app), base_url="http://gateway"
+    ) as gateway:
+        response = await gateway.post(
+            "/v1/chat",
+            json={
+                "message": "钥匙在哪里？",
+                "delivery": {"device_id": str(glasses.id)},
+            },
+        )
+    assert response.status_code == 200, response.text
+    delivered = response.json()["delivery"]
+    assert delivered["status"] == "QUEUED"
+    assert delivered["transport"] == "inbox"
+
+    async with AsyncClient(
+        transport=ASGITransport(app=platform_app), base_url="http://platform"
+    ) as platform:
+        inbox = await platform.get(f"/internal/v1/devices/{glasses.id}/inbox")
+        assert inbox.status_code == 200
+        messages = inbox.json()["messages"]
+        assert len(messages) == 1
+        message = messages[0]
+        assert message["message_id"] == delivered["message_id"]
+        assert message["payload"]["presentation"]["intent"] == "ANSWER"
+        assert message["payload"]["presentation"]["title"] == "钥匙最后一次看到是在玄关柜。"
+        assert message["payload"]["source"]["kind"] == "AGENT_REPLY"
