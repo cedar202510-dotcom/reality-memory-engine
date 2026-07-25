@@ -1,12 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Routes, Route, Navigate, Outlet, useNavigate, useLocation, useOutletContext, useSearchParams } from "react-router-dom";
-import { Mic, Keyboard, CircleDot, Milestone, Sparkles, X, Check, Coffee, Zap, MapPin, SlidersHorizontal, ChevronRight, Radio, ArrowLeft, Camera, Library } from "lucide-react";
+import { Mic, Keyboard, Send, Maximize2, X, Check, MapPin, SlidersHorizontal, ChevronRight, ArrowLeft } from "lucide-react";
+import { CirclesFour, Compass, Path, UserCircle, Camera, Database, Radio } from "@phosphor-icons/react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import "./styles.css";
 import TopologyGraph from "./TopologyGraph";
 import LiveView from "./LiveView";
 import CaptureConsole from "./CaptureConsole";
 import MediaLibrary from "./MediaLibrary";
 import PreferencePanel from "./PreferencePanel";
+import PresenceOrb from "./PresenceOrb";
+import MyPage from "./MyPage";
 import { LightboxProvider, PreviewImage } from "./ImageLightbox";
 import { whereIs, recentEvents, objectTimeline, listClues, resolveClue, evidenceUrl, apiUrl, transcribe } from "./api";
 
@@ -105,7 +109,10 @@ function AgentHome() {
   const [mode, setMode] = useState("voice");   // voice | text
   const [draft, setDraft] = useState("");
   const [notice, setNotice] = useState("");    // 麦克风/转写这类环境问题，不进对话流
+  const [previewMedia, setPreviewMedia] = useState(null);  // 答案来源画面的大图预览
   const recorderRef = useRef(null);
+  const textInputRef = useRef(null);
+  const reduceMotion = useReducedMotion();
   const busy = phase !== "idle" && phase !== "recording";
   // MediaRecorder 的 onstop 是在点「说完」那一刻的闭包里跑的，那时 phase 还是旧值。
   // 守卫要读当下的真值，不能读闭包快照，否则「录完自动提问」这条路能不能走通全凭巧合。
@@ -118,6 +125,16 @@ function AgentHome() {
     if (rec && rec.state !== "inactive") rec.stop();
     rec?.stream?.getTracks?.().forEach(t => t.stop());
   }, []);
+
+  // 大图预览开着时 Esc 关闭
+  useEffect(() => {
+    if (!previewMedia) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === "Escape") setPreviewMedia(null);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [previewMedia]);
 
   const handleAsk = async (raw) => {
     const text = (raw || "").trim();
@@ -218,117 +235,225 @@ function AgentHome() {
   const voiceLabel = { recording: "正在听…点一下说完", transcribing: "正在转文字…", asking: "正在翻记忆…" }[phase]
     || "轻点说话";
 
+  // 只显示最近这一轮问答：问句必须和答案待在一起，看不到问的是什么，答案就没有意义
+  const lastUser = [...messages].reverse().find(m => m.sender === "user");
+  const lastAgent = [...messages].reverse().find(m => m.sender === "agent" && m.type !== "thinking");
+  const thinking = isTyping || phase === "transcribing" || phase === "asking";
+  const hasAnswered = Boolean(lastUser);
+  // 答案出自的那张画面。用后端给的相对地址而不是自己拼 id：原图是否暴露由后端
+  // 按身份决定（owner 才给），前端拼 id 等于绕开那道判断。原图过了 TTL 就没有这一格，
+  // 但答案本身仍然成立——那时下面的 limitations 会说明这件事。
+  const answerMedia = lastAgent?.shot
+    ? [{ id: "evidence", url: lastAgent.shot, alt: "这个答案出自的画面" }]
+    : [];
+
+  const openKeyboard = () => {
+    setMode("text");
+    textInputRef.current?.focus({ preventScroll: true });
+    window.requestAnimationFrame(() => {
+      textInputRef.current?.focus({ preventScroll: true });
+    });
+  };
+
+  const closeKeyboard = () => {
+    setMode("voice");
+    textInputRef.current?.blur();
+  };
+
+  const handleTextSubmit = (event) => {
+    event.preventDefault();
+    const text = draft.trim();
+    if (!text || busy || phase === "recording") return;
+    setMode("voice");
+    textInputRef.current?.blur();
+    handleAsk(text);
+  };
+
   return (
     <div className="page-view agent-page">
-      <div className="light-field-agent" aria-hidden="true">
-        <i className="beam one"></i>
-        <i className="beam two"></i>
-        <i className="beam three"></i>
+      <div className="agent-orb-stage">
+        <PresenceOrb state={phase === "recording" ? "listening" : thinking ? "thinking" : "idle"} />
       </div>
 
-      <div className="orb-center">
-        <i className="ring r1"></i>
-        <i className="ring r2"></i>
-        <i className="ring r3"></i>
-        <span className="orb-wrap"><i className="orb"></i></span>
-      </div>
-
-      <header className="top">
+      <header className="top agent-top">
         <div className="brand">
-          <b>在场</b>
-          <span>随时待命的现实记忆 Agent。</span>
+          <b>顾问</b>
+          <span>你的专属现实顾问</span>
         </div>
         <i className="enabled" aria-label="已开启"></i>
       </header>
 
-      <div className="dialogue" aria-live="polite">
-        {messages.map(msg => (
-          <div
-            key={msg.id}
-            className={`bubble ${msg.sender} ${msg.type === "thinking" ? "thinking" : ""} ${msg.error ? "error" : ""}`}
+      {/* 数量是真的：它等于系统看到了东西但不敢当成事实的次数。写死成常数就把这个信号抹掉了 */}
+      {clueCount > 0 && (
+        <div className="memory-hint-wrap">
+          <motion.button
+            className="hint-pill"
+            onClick={() => setShowClues(true)}
+            initial={{ opacity: 0, transform: "translateY(-14px) scale(0.96)" }}
+            animate={{ opacity: 1, transform: "translateY(0px) scale(1)" }}
+            transition={{ type: "spring", duration: 0.42, bounce: 0.12 }}
           >
-            {/* 来源画面放在结论上面：先给看的，再给读的。原图过了 TTL 就没有这一格，
-                但答案本身仍然成立——那时下面的 limitations 会说明这件事 */}
-            {msg.shot && (
-              <PreviewImage
-                className="bubble-shot"
-                src={msg.shot}
-                alt="这个答案出自的画面"
-                caption={msg.text}
-              />
-            )}
-            {msg.type === "thinking" ? <><i/><i/><i/></> : msg.text}
+            <span className="status-dot"></span> {clueCount} 条记忆线索待确认
+          </motion.button>
+        </div>
+      )}
+
+      <div
+        className={`dialogue agent-dialogue ${thinking || phase === "recording" ? "is-asking" : ""} ${hasAnswered ? "has-answer" : ""}`}
+        aria-live="polite"
+      >
+        <div className="agent-center-text agent-greeting" aria-hidden={hasAnswered}>
+          {messages[0]?.text}
+        </div>
+        {hasAnswered && lastAgent && (
+          <div key={lastAgent.id} className={`agent-center-text agent-answer-text ${lastAgent.error ? "error" : ""}`}>
+            <span className="agent-answer-copy">{lastAgent.text}</span>
+            {answerMedia.map((media) => (
+              <button
+                key={media.id}
+                type="button"
+                className="agent-answer-media"
+                onClick={() => setPreviewMedia(media)}
+                aria-label="放大查看来源画面"
+              >
+                <img src={media.url} alt={media.alt} />
+                <span className="agent-media-zoom" aria-hidden="true">
+                  <Maximize2 size={13} strokeWidth={1.8} />
+                </span>
+              </button>
+            ))}
             {/* 平台声明的局限要原样转达，不能只把结论那句话拿出来显示 */}
-            {msg.limitations?.map((line, i) => (
-              <span key={i} className="bubble-note">{line}</span>
+            {lastAgent.limitations?.map((line, i) => (
+              <span key={i} className="agent-answer-note">{line}</span>
             ))}
             {/* 找不到时顺带说清楚能力边界：现在这一页只接了找物这一条查询通道 */}
-            {msg.outOfScope && (
-              <span className="bubble-note">我目前只答得了「东西在哪」，别的还不会。</span>
+            {lastAgent.outOfScope && (
+              <span className="agent-answer-note">我目前只答得了「东西在哪」，别的还不会。</span>
             )}
-            {msg.entityId && (
-              <button className="bubble-trace" onClick={() => setSelectedEntity(msg.entityId)}>
+            {/* 答出了具体实体就给一条进轨迹的路：答案只是结论，轨迹才是它的依据 */}
+            {lastAgent.entityId && (
+              <button className="agent-trace-link" onClick={() => setSelectedEntity(lastAgent.entityId)}>
                 看这条记忆的轨迹 <ChevronRight size={12} />
               </button>
             )}
           </div>
-        ))}
+        )}
       </div>
 
-      {/* 数量是真的：它等于系统看到了东西但不敢当成事实的次数。写死成常数就把这个信号抹掉了 */}
-      {clueCount > 0 && (
-        <button className="hint-pill" onClick={() => setShowClues(true)} style={{ opacity: isTyping ? 0 : 1 }}>
-          <span className="status-dot"></span> {clueCount} 条记忆线索待确认
-        </button>
-      )}
+      <div className="agent-user-lane" aria-live="polite">
+        <AnimatePresence>
+          {lastUser && (
+            <motion.div
+              key={lastUser.id}
+              initial={reduceMotion
+                ? { opacity: 0 }
+                : { opacity: 0, transform: "translateY(42px) scale(0.97)", filter: "blur(5px)" }}
+              animate={{ opacity: 1, transform: "translateY(0px) scale(1)", filter: "blur(0px)" }}
+              transition={reduceMotion ? { duration: 0.18 } : { type: "spring", duration: 0.32, bounce: 0.1 }}
+              className="agent-user-bubble"
+            >
+              {lastUser.text}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       {notice && <p className="composer-note">{notice}</p>}
 
-      <div className="composer" role="group" aria-label="提问">
-        {mode === "text" ? (
-          <form
-            className="text-input"
-            onSubmit={(e) => { e.preventDefault(); handleAsk(draft); }}
-          >
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="我的充电器在哪里？"
-              aria-label="输入问题"
-              autoFocus
-              disabled={busy}
-            />
-            <button type="submit" disabled={!draft.trim() || busy} aria-label="发送">
-              <ChevronRight size={18} />
-            </button>
-          </form>
-        ) : (
-          <button
-            className={`voice ${phase === "recording" ? "listening" : ""}`}
-            onClick={phase === "recording" ? stopRecording : startRecording}
-            disabled={busy}
-          >
-            {voiceLabel}
-          </button>
-        )}
+      <form
+        className={`composer composer--${mode}`}
+        role="group"
+        aria-label={mode === "text" ? "文字输入" : "语音输入"}
+        onSubmit={handleTextSubmit}
+      >
+        <button
+          type="button"
+          className={`voice ${phase === "recording" ? "listening" : ""}`}
+          onClick={phase === "recording" ? stopRecording : startRecording}
+          disabled={busy}
+        >
+          <span className="voice-label">{voiceLabel}</span>
+          <span className="voice-waveform" aria-hidden="true">
+            <i style={{ "--wave-height": "8px", "--wave-index": 1 }} />
+            <i style={{ "--wave-height": "14px", "--wave-index": 2 }} />
+            <i style={{ "--wave-height": "20px", "--wave-index": 3 }} />
+            <i style={{ "--wave-height": "11px", "--wave-index": 4 }} />
+            <i style={{ "--wave-height": "17px", "--wave-index": 5 }} />
+            <i style={{ "--wave-height": "7px", "--wave-index": 6 }} />
+          </span>
+        </button>
+
+        <input
+          ref={textInputRef}
+          className="text-entry"
+          type="text"
+          inputMode="text"
+          enterKeyHint="send"
+          autoComplete="off"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="我的充电器在哪里？"
+          aria-label="输入问题"
+          disabled={busy || phase === "recording"}
+        />
 
         <button
+          type={mode === "text" && draft.trim() ? "submit" : "button"}
           className="keyboard-toggle"
-          onClick={() => { setMode(m => (m === "text" ? "voice" : "text")); setNotice(""); }}
-          aria-label={mode === "text" ? "改用语音" : "改用文字"}
-          disabled={phase === "recording"}
+          onClick={mode === "voice" ? openKeyboard : draft.trim() ? undefined : closeKeyboard}
+          aria-label={
+            mode === "voice"
+              ? "切换到文字输入"
+              : draft.trim()
+                ? "发送"
+                : "切换到语音输入"
+          }
+          disabled={busy || phase === "recording"}
         >
-          {mode === "text" ? (
-            <Mic size={19} aria-hidden="true" />
+          {mode === "voice" ? (
+            <Keyboard size={20} strokeWidth={1.8} aria-hidden="true" />
+          ) : draft.trim() ? (
+            <Send size={18} strokeWidth={2} aria-hidden="true" />
           ) : (
-            <span className="keyboard-icon" aria-hidden="true">
-              <i></i><i></i><i></i><i></i>
-              <i></i><i></i><i></i><i></i>
-              <i></i><i></i><i></i><i></i>
-            </span>
+            <Mic size={19} strokeWidth={1.9} aria-hidden="true" />
           )}
         </button>
-      </div>
+      </form>
+
+      <AnimatePresence>
+        {previewMedia && (
+          <motion.div
+            className="media-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label="来源画面预览"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0.12 : 0.22 }}
+            onClick={() => setPreviewMedia(null)}
+          >
+            <motion.div
+              className="media-lightbox__content"
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: "scale(0.97)" }}
+              animate={{ opacity: 1, transform: "scale(1)" }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, transform: "scale(0.985)" }}
+              transition={{ type: "spring", duration: reduceMotion ? 0.16 : 0.38, bounce: 0.08 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="media-lightbox__close"
+                onClick={() => setPreviewMedia(null)}
+                aria-label="关闭图片预览"
+              >
+                <X size={19} />
+              </button>
+              <img src={previewMedia.url} alt={previewMedia.alt} />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -360,7 +485,7 @@ function TimelineView() {
     <div className="page-view timeline-page">
       <header className="top">
         <div className="brand">
-          <b>上下文</b>
+          <b>轨迹</b>
           <span>现实发生的流动切片</span>
         </div>
         <button className="icon-btn"><SlidersHorizontal size={18} /></button>
@@ -816,6 +941,7 @@ function AppShell() {
   };
   const setSelectedEntity = (id) => setParam("entity", id || null);
   const setShowClues = (open) => setParam("clues", open ? "1" : null);
+  const iconWeight = (tab) => (activeTab === tab ? "duotone" : "regular");
 
   return (
     <div className={`app-shell premium-dark mode-${activeTab}`}>
@@ -838,27 +964,32 @@ function AppShell() {
       <nav className="bottom-dock premium-dock">
         {/* 切页只带路径不带 query：抽屉状态属于上一页，跟过去就成了幽灵弹窗 */}
         <button className={`dock-item ${activeTab === 'agent' ? 'active' : ''}`} onClick={() => navigate("/agent")}>
-          <CircleDot size={20} />
-          <span>在场</span>
+          <Compass size={22} weight={iconWeight("agent")} />
+          <span>顾问</span>
         </button>
         <button className={`dock-item ${activeTab === 'timeline' ? 'active' : ''}`} onClick={() => navigate("/timeline")}>
-          <Milestone size={20} />
-          <span>上下文</span>
+          <Path size={22} weight={iconWeight("timeline")} />
+          <span>轨迹</span>
         </button>
         <button className={`dock-item ${activeTab === 'galaxy' ? 'active' : ''}`} onClick={() => navigate("/galaxy")}>
-          <Sparkles size={20} />
+          <CirclesFour size={22} weight={iconWeight("galaxy")} />
           <span>全览</span>
         </button>
+        <button className={`dock-item ${activeTab === 'my' ? 'active' : ''}`} onClick={() => navigate("/my")}>
+          <UserCircle size={22} weight={iconWeight("my")} />
+          <span>我的</span>
+        </button>
+        {/* 采集/数据/联调是桌面工作台入口，不占主 tab 高亮，但功能保留在 dock 上 */}
         <button className="dock-item" onClick={() => navigate("/capture")}>
-          <Camera size={20} />
+          <Camera size={20} weight="regular" />
           <span>采集</span>
         </button>
         <button className="dock-item" onClick={() => navigate("/media")}>
-          <Library size={20} />
+          <Database size={20} weight="regular" />
           <span>数据</span>
         </button>
         <button className="dock-item" onClick={() => navigate("/live")}>
-          <Radio size={20} />
+          <Radio size={20} weight="regular" />
           <span>联调</span>
         </button>
       </nav>
@@ -878,6 +1009,7 @@ function App() {
           <Route path="/agent" element={<AgentHome />} />
           <Route path="/timeline" element={<TimelineView />} />
           <Route path="/galaxy" element={<GalaxyView />} />
+          <Route path="/my" element={<MyPage />} />
         </Route>
         {/* 根路径和任何认不出的 URL 都落回在场页，刷新不会白屏 */}
         <Route path="*" element={<Navigate to="/agent" replace />} />
