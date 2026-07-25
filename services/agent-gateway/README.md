@@ -25,6 +25,8 @@
 - `POST /v1/chat` —
   `{message, session_id?, source?, response_channel?, correlation_id?, device_id?, delivery?}` →
   `{session_id, reply, source, response_channel, correlation_id, tool_trace, delivery?}`
+- `POST /v1/rokid/agent/sse` — Rokid 灵珠三方自定义智能体入口；校验 Bearer AK，
+  把平台消息转换为 RealGit 对话并返回 `message` / `done` SSE 事件
 - `POST /v1/proactive/check` — 拉取平台待投递信号，可选自动发到眼镜 →
   `{suggestions[], suppressed, deliveries[]}`
 - `POST /v1/signals/{id}/ack` — 用户确认提醒后回执(gateway 不代替用户 ack)
@@ -97,6 +99,26 @@ curl -X POST localhost:8200/v1/chat \
 `source=ROKID_AIUI` 默认解析为 `AIUI_CONVERSATION`，但客户端仍应显式传入，便于
 审计。设置 `AIUI_CLIENT_TOKEN` 后，AIUI 请求必须通过
 `X-RealGit-Client-Token` 携带相同 token。静态 token 只适合早期联调。
+
+### Rokid 三方智能体
+
+RealGit 的 Agent 在自己的云端运行，因此旧灵珠平台应选择
+`三方智能体 -> 自定义智能体`，SSE 地址填写：
+
+```text
+https://<Agent Gateway 域名>/v1/rokid/agent/sse
+```
+
+云端配置：
+
+```bash
+ROKID_AGENT_AK=<与灵珠平台一致的 Bearer AK>
+ROKID_AGENT_ID=<平台登记的 RealGit 智能体 ID>
+```
+
+`ROKID_AGENT_AK` 未设置时入口默认拒绝全部请求。第一阶段只选择文字入参；图片输入
+尚未接入视觉问答。完整部署与真机步骤见
+[Rokid 三方智能体云端与真机交接](../../docs/engineering/RealGit-Rokid-Third-Party-Agent-Handoff-v0.1.md)。
 
 `LLM_PROVIDER=fake` 时无需任何 API key(工具循环由测试脚本驱动,见 `tests/`)。
 

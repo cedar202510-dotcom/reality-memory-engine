@@ -1,6 +1,7 @@
 # RealGit 与 Rokid AIUI 智能体接入方案 v0.1
 
-> 状态：后端通道路由和最小 AIUI 工程已实现，待配置真实 HTTPS 域名、打包 AIX 和 Rokid 真机验收
+> 状态：AIUI 程序包、后端通道路由和三方智能体 SSE 适配已实现，待部署真实 HTTPS
+> 后端、平台登记、打包 AIX 和 Rokid 真机验收
 > 目标：在保留眼镜后台感知与主动提醒能力的同时，让用户通过乐奇系统语音入口直接询问 RealGit Agent
 
 ## 1. 结论
@@ -14,6 +15,14 @@ RealGit 眼镜采集 Runtime（Android APK）
 ```
 
 两个眼镜端运行组件属于同一个 RealGit 产品，共享用户、家庭、设备和会话身份，但承担不同职责。
+
+补充平台定位：RealGit 后端不是在灵珠内部搭建的 Agent，因此旧灵珠平台应选择
+`三方智能体 -> 自定义智能体`。AIUI/OAF 工程负责眼镜呈现，不会自动把外部后端变成
+“灵珠智能体”。
+
+新版 AIUI/OAF 直接调用 `/v1/chat`，旧灵珠三方智能体调用
+`/v1/rokid/agent/sse`。两者是共享同一 Agent Gateway 的并行适配器；在 Rokid 平台
+完成关联验证前，不假设 SSE 回答会自动进入 AIUI 自定义页面。
 
 ## 2. 眼镜采集 Runtime 保留的职责
 
@@ -131,13 +140,16 @@ AIUI 对话和系统带声录像可能竞争麦克风。第一阶段采用以下
 2. [已完成] 创建最小 AIUI 对话智能体源码。
 3. [已完成] 为 Agent Gateway 增加 `source`、`response_channel` 和
    `correlation_id`。
-4. [待配置] 填入真实 HTTPS 后端地址、用户鉴权方案并登记 Rokid 域名。
-5. [待打包] 使用 Rokid Craft 或官方 `aix pack` 生成 `.aix`。
-6. [待真机] 验证“乐奇 -> RealGit -> 后端记忆查询 -> AIUI 回答”。
-7. [待真机] 验证 AIUI 对话期间六轴持续、媒体采集延后和会话结束恢复。
+4. [已完成] 增加 `/v1/rokid/agent/sse`，适配灵珠三方自定义智能体的 Bearer AK、
+   文字请求和 `message` / `done` SSE 事件。
+5. [待配置] 部署真实 HTTPS 后端并在三方智能体入口登记 SSE 地址、Agent ID 和 AK。
+6. [待打包] 使用 Rokid Craft 或官方 `aix pack` 生成 `.aix`。
+7. [待真机] 验证“乐奇 -> RealGit -> 后端记忆查询 -> AIUI 回答”。
+8. [待真机] 验证 AIUI 对话期间六轴持续、媒体采集延后和会话结束恢复。
 
 实现位置：
 
 - `apps/reality-memory-aiui-agent/`
 - `services/agent-gateway/app/main.py`
 - [AIUI 双通道实现记录](RealGit-Rokid-AIUI-Dual-Channel-Change-v0.1.md)
+- [Rokid 三方智能体云端与真机交接](RealGit-Rokid-Third-Party-Agent-Handoff-v0.1.md)

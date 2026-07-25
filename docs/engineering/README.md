@@ -9,6 +9,7 @@
 | [`contracts/reality-memory/v1/`](../../contracts/reality-memory/v1/README.md) | 可机读 JSON Schema 和样例 | 当前正式契约 |
 | [Rokid AIUI 接入方案 v0.1](RealGit-Rokid-AIUI-Integration-Plan-v0.1.md) | 用户主动对话与原生主动提醒的职责拆分 | 实现中 |
 | [Rokid AIUI 双通道改动记录 v0.1](RealGit-Rokid-AIUI-Dual-Channel-Change-v0.1.md) | 已改代码、验证结果和真机待办 | 当前记录 |
+| [Rokid 三方智能体云端与真机交接 v0.1](RealGit-Rokid-Third-Party-Agent-Handoff-v0.1.md) | SSE 平台字段、云端配置和队友真机测试清单 | 当前交接 |
 
 具体部署边界和设备通信以 [`docs/architecture/`](../architecture/README.md) 为准。
 

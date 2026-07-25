@@ -12,6 +12,7 @@ from enum import StrEnum
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
 from .config import Settings, get_settings
@@ -20,6 +21,11 @@ from .harness import run_turn
 from .llm import FakeChatLLM, build_chat_llm
 from .memory_client import MemoryClient
 from .proactive import Suggestion, build_suggestions
+from .rokid_agent import (
+    RokidAgentRequest,
+    answer_payload,
+    sse_event,
+)
 from .sessions import SessionStore
 
 
@@ -32,6 +38,7 @@ class ChatSource(StrEnum):
     API = "API"
     WEB_APP = "WEB_APP"
     ROKID_AIUI = "ROKID_AIUI"
+    ROKID_THIRD_PARTY = "ROKID_THIRD_PARTY"
     RV101_NATIVE = "RV101_NATIVE"
 
 
@@ -52,11 +59,14 @@ class ChatRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_response_route(self) -> "ChatRequest":
-        if self.source == ChatSource.ROKID_AIUI:
+        if self.source in {
+            ChatSource.ROKID_AIUI,
+            ChatSource.ROKID_THIRD_PARTY,
+        }:
             if self.response_channel is None:
                 self.response_channel = ChatResponseChannel.AIUI_CONVERSATION
             elif self.response_channel != ChatResponseChannel.AIUI_CONVERSATION:
-                raise ValueError("ROKID_AIUI 对话只能通过 AIUI_CONVERSATION 返回")
+                raise ValueError("Rokid 对话只能通过 AIUI_CONVERSATION 返回")
 
         if self.delivery is not None:
             if self.response_channel is None:
@@ -125,23 +135,7 @@ def create_app(
         ttl_minutes=settings.session_ttl_minutes, max_sessions=settings.max_sessions
     )
 
-    @app.post("/v1/chat", response_model=ChatResponse)
-    async def chat(
-        req: ChatRequest,
-        x_realgit_client_token: str | None = Header(default=None),
-    ) -> ChatResponse:
-        if (
-            req.source == ChatSource.ROKID_AIUI
-            and settings.aiui_client_token
-            and (
-                x_realgit_client_token is None
-                or not secrets.compare_digest(
-                    x_realgit_client_token, settings.aiui_client_token
-                )
-            )
-        ):
-            raise HTTPException(status_code=401, detail="AIUI 客户端认证失败")
-
+    async def run_chat(req: ChatRequest) -> ChatResponse:
         session = app.state.sessions.get_or_create(req.session_id)
         result = await run_turn(
             llm=app.state.llm,
@@ -192,6 +186,87 @@ def create_app(
                 for t in result.tool_trace
             ],
             delivery=delivery,
+        )
+
+    @app.post("/v1/chat", response_model=ChatResponse)
+    async def chat(
+        req: ChatRequest,
+        x_realgit_client_token: str | None = Header(default=None),
+    ) -> ChatResponse:
+        if (
+            req.source == ChatSource.ROKID_AIUI
+            and settings.aiui_client_token
+            and (
+                x_realgit_client_token is None
+                or not secrets.compare_digest(
+                    x_realgit_client_token, settings.aiui_client_token
+                )
+            )
+        ):
+            raise HTTPException(status_code=401, detail="AIUI 客户端认证失败")
+        return await run_chat(req)
+
+    @app.post("/v1/rokid/agent/sse")
+    async def rokid_agent_sse(
+        req: RokidAgentRequest,
+        authorization: str | None = Header(default=None),
+    ) -> StreamingResponse:
+        """把灵珠三方智能体协议转换为 RealGit 内部对话契约。"""
+        expected_auth = (
+            f"Bearer {settings.rokid_agent_ak}" if settings.rokid_agent_ak else ""
+        )
+        if (
+            not expected_auth
+            or authorization is None
+            or not secrets.compare_digest(authorization, expected_auth)
+        ):
+            raise HTTPException(status_code=401, detail="Rokid 三方智能体鉴权失败")
+        if settings.rokid_agent_id and not secrets.compare_digest(
+            req.agent_id, settings.rokid_agent_id
+        ):
+            raise HTTPException(status_code=403, detail="Rokid 智能体 ID 不匹配")
+
+        message = req.latest_user_text()
+        if message is None:
+            raise HTTPException(
+                status_code=422,
+                detail="当前 RealGit 三方智能体只支持文字输入",
+            )
+
+        result = await run_chat(
+            ChatRequest(
+                message=message,
+                session_id=req.session_id(),
+                source=ChatSource.ROKID_THIRD_PARTY,
+                response_channel=ChatResponseChannel.AIUI_CONVERSATION,
+                correlation_id=f"rokid:{req.message_id}"[:128],
+            )
+        )
+        chunks = [
+            sse_event(
+                "message",
+                answer_payload(
+                    req,
+                    answer_stream=result.reply,
+                    is_finish=False,
+                ),
+            ),
+            sse_event(
+                "done",
+                answer_payload(
+                    req,
+                    answer_stream="",
+                    is_finish=True,
+                ),
+            ),
+        ]
+        return StreamingResponse(
+            iter(chunks),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     @app.post("/v1/proactive/check", response_model=ProactiveResponse)

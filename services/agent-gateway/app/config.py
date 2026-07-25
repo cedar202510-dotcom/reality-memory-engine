@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     # 静态 token 只用于早期联调，正式多用户版本需要用户级短期凭证。
     aiui_client_token: str = ""
 
+    # --- Rokid 灵珠三方智能体入口 ---
+    # ROKID_AGENT_AK 是灵珠调用本服务时使用的 Bearer 密钥，云端必须设置。
+    # ROKID_AGENT_ID 可选；设置后只接受平台中登记的这一个智能体。
+    rokid_agent_ak: str = ""
+    rokid_agent_id: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

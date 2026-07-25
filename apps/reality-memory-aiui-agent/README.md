@@ -3,6 +3,24 @@
 这是 RealGit 的用户主动对话入口，不替代
 `apps/reality-memory-glasses/` 原生采集与主动提醒 Runtime。
 
+## 平台类型
+
+本目录是依据新版 AIUI/OAF 规范编写的程序包，应在新版 AIUI Studio 中创建项目和
+测试。程序包通过 HTTPS 直接调用 RealGit `/v1/chat`。
+
+旧灵珠平台若要导入 RealGit 的外部后端，应选择
+`三方智能体 -> 自定义智能体`，并调用 `/v1/rokid/agent/sse`。这是另一条兼容路线，
+不是本程序包必须经过的前置层：
+
+```text
+新版路线：乐奇 / AIUI -> 本程序包 -> /v1/chat -> 定制页面
+旧版路线：乐奇 -> 三方智能体 SSE -> Agent Gateway -> 系统默认呈现
+```
+
+官方资料尚未证明三方 SSE 的回答会自动进入本程序包的自定义页面，所以两条路线应分别
+验收，不能描述成已经串联。完整说明见
+[Rokid 三方智能体云端与真机交接](../../docs/engineering/RealGit-Rokid-Third-Party-Agent-Handoff-v0.1.md)。
+
 ## 两条眼镜消息路径
 
 ```text
@@ -63,7 +81,8 @@ aix pack apps/reality-memory-aiui-agent \
   -o realgit-aiui-agent-v0.1.0.aix
 ```
 
-随后在 Rokid 灵珠平台创建 AIUI 智能体、上传 `.aix` 并进入真机调试。首轮测试话术：
+随后在新版 AIUI Studio 创建项目并上传 `.aix`。这一条测试路线直接调用 `/v1/chat`，
+不要求同时登记旧灵珠三方 SSE。首轮测试话术：
 
 ```text
 乐奇，问 RealGit，我的钥匙最后一次在哪里？
