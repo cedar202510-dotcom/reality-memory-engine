@@ -4226,7 +4226,7 @@ header.top {
 .agent-dock-label {
   position: absolute;
   left: 50%;
-  bottom: 0;
+  bottom: 2px;
   color: inherit;
   font-size: 10px;
   font-weight: 650;
