@@ -1158,13 +1158,15 @@ function TimelineView() {
 
                     <div className="dark-card preference-candidate-card">
                       <div className="preference-candidate-copy">
-                        <strong>{clue.object_text}</strong>
+                        <div className="preference-candidate-head">
+                          <strong>{clue.object_text}</strong>
+                          <span className="preference-confidence">
+                            置信度 {Math.round(clue.confidence * 100)}%
+                          </span>
+                        </div>
                         <p className="preference-statement">
                           {clue.payload?.preference || clue.payload?.value}
                         </p>
-                        <span className="preference-confidence">
-                          置信度 {Math.round(clue.confidence * 100)}%
-                        </span>
                       </div>
 
                       <div className="preference-confirm-row">
