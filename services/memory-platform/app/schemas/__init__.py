@@ -819,6 +819,7 @@ class ClueResolveResponse(BaseModel):
 # 不要把 REMINDER_SIGNAL 的 payload 当成已冻结的 v1 业务契约。
 
 DEVICE_MESSAGE_SCHEMA_REF = "rme.device-message.v0"
+GLASSES_PRESENTATION_SCHEMA_REF = "rme.glasses-presentation.v0"
 
 DEVICE_MESSAGE_TYPES = (
     "REMINDER_SIGNAL",          # 值得呈现的提醒
@@ -855,6 +856,60 @@ class DeliveryPolicy(BaseModel):
     allow_tts: bool = False
 
 
+class GlassesPresentationContent(BaseModel):
+    """眼镜本地固定组件需要的最小语义，不允许后端下发自由样式。"""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    intent: Literal[
+        "ANSWER",
+        "REMINDER",
+        "TASK",
+        "CONSUMABLE",
+        "PRIVACY",
+        "SYSTEM",
+    ]
+    title: str = Field(min_length=1, max_length=42)
+    body: str | None = Field(default=None, max_length=80)
+    speech_text: str | None = Field(default=None, max_length=100)
+    interaction: Literal["NONE", "DISMISS", "ACKNOWLEDGE"]
+
+
+class GlassesPresentationSource(BaseModel):
+    """产生消息的受约束来源；系统状态不能被普通 Agent 冒充。"""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    kind: Literal["AGENT_REPLY", "MEMORY_SIGNAL", "SYSTEM_POLICY"]
+    reference_id: str | None = Field(default=None, max_length=128)
+
+
+class GlassesPresentationPayload(BaseModel):
+    """`rme.glasses-presentation.v0` 业务载荷。"""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    presentation: GlassesPresentationContent
+    source: GlassesPresentationSource
+    correlation_id: str = Field(min_length=1, max_length=128)
+
+    @model_validator(mode="after")
+    def _source_may_emit_intent(self) -> GlassesPresentationPayload:
+        allowed_sources = {
+            "ANSWER": {"AGENT_REPLY"},
+            "REMINDER": {"AGENT_REPLY", "MEMORY_SIGNAL"},
+            "TASK": {"AGENT_REPLY", "MEMORY_SIGNAL"},
+            "CONSUMABLE": {"MEMORY_SIGNAL"},
+            "PRIVACY": {"SYSTEM_POLICY"},
+            "SYSTEM": {"SYSTEM_POLICY"},
+        }
+        intent = self.presentation.intent
+        source = self.source.kind
+        if source not in allowed_sources[intent]:
+            raise ValueError(f"{source} 不能生成 {intent} 眼镜消息")
+        return self
+
+
 class DeviceMessageCreateRequest(BaseModel):
     """手动注入一条下行消息（第一版触发源：不接规则也不接 Agent）。"""
 
@@ -872,6 +927,22 @@ class DeviceMessageCreateRequest(BaseModel):
             raise ValueError(
                 f"未知消息类型：{self.message_type}（可用：{list(DEVICE_MESSAGE_TYPES)}）"
             )
+        if self.payload_schema_ref == GLASSES_PRESENTATION_SCHEMA_REF:
+            if self.message_type != "REMINDER_SIGNAL":
+                raise ValueError(
+                    "rme.glasses-presentation.v0 当前只能使用 REMINDER_SIGNAL 外层类型"
+                )
+            presentation = GlassesPresentationPayload.model_validate(self.payload)
+            if not self.delivery_policy.allow_text and not self.delivery_policy.allow_tts:
+                raise ValueError("眼镜呈现消息必须至少允许文字或 TTS 之一")
+            if (
+                not self.delivery_policy.allow_text and
+                not presentation.presentation.speech_text
+            ):
+                raise ValueError("只允许 TTS 时必须提供 speech_text")
+            if not self.delivery_policy.allow_tts:
+                presentation.presentation.speech_text = None
+            self.payload = presentation.model_dump(mode="json", exclude_none=True)
         return self
 
 

@@ -296,3 +296,99 @@ async def test_tts_defaults_to_off(db_session):
         "allow_text": True,
         "allow_tts": False,
     }
+
+
+async def test_glasses_presentation_payload_is_validated_and_normalized(db_session):
+    app = _app()
+    device_id = await _device_id(db_session)
+
+    async with _client(app) as client:
+        created = await client.post(
+            f"/internal/v1/devices/{device_id}/messages",
+            json={
+                "message_type": "REMINDER_SIGNAL",
+                "payload_schema_ref": "rme.glasses-presentation.v0",
+                "payload": {
+                    "presentation": {
+                        "intent": "TASK",
+                        "title": "记得把资料给小王",
+                        "body": "你已经到公司了",
+                        "speech_text": "这段文字不应在 TTS 关闭时继续下发",
+                        "interaction": "ACKNOWLEDGE",
+                    },
+                    "source": {
+                        "kind": "MEMORY_SIGNAL",
+                        "reference_id": "signal-1",
+                    },
+                    "correlation_id": "turn-1",
+                },
+            },
+        )
+
+    assert created.status_code == 200
+    presentation = created.json()["message"]["payload"]["presentation"]
+    assert presentation["intent"] == "TASK"
+    assert "speech_text" not in presentation
+
+
+@pytest.mark.parametrize(
+    ("intent", "source_kind"),
+    [
+        ("PRIVACY", "AGENT_REPLY"),
+        ("CONSUMABLE", "AGENT_REPLY"),
+        ("ANSWER", "SYSTEM_POLICY"),
+    ],
+)
+async def test_glasses_presentation_rejects_spoofed_source(
+    db_session,
+    intent: str,
+    source_kind: str,
+):
+    app = _app()
+    device_id = await _device_id(db_session)
+
+    async with _client(app) as client:
+        response = await client.post(
+            f"/internal/v1/devices/{device_id}/messages",
+            json={
+                "message_type": "REMINDER_SIGNAL",
+                "payload_schema_ref": "rme.glasses-presentation.v0",
+                "payload": {
+                    "presentation": {
+                        "intent": intent,
+                        "title": "不应通过",
+                        "interaction": "NONE",
+                    },
+                    "source": {"kind": source_kind},
+                    "correlation_id": "invalid-source",
+                },
+            },
+        )
+
+    assert response.status_code == 422
+
+
+async def test_glasses_presentation_rejects_free_style_and_overflow(db_session):
+    app = _app()
+    device_id = await _device_id(db_session)
+
+    async with _client(app) as client:
+        response = await client.post(
+            f"/internal/v1/devices/{device_id}/messages",
+            json={
+                "message_type": "REMINDER_SIGNAL",
+                "payload_schema_ref": "rme.glasses-presentation.v0",
+                "payload": {
+                    "presentation": {
+                        "intent": "REMINDER",
+                        "title": "过长" * 30,
+                        "interaction": "ACKNOWLEDGE",
+                        "icon": "<svg>not allowed</svg>",
+                    },
+                    "source": {"kind": "MEMORY_SIGNAL"},
+                    "correlation_id": "invalid-style",
+                },
+            },
+        )
+
+    assert response.status_code == 422

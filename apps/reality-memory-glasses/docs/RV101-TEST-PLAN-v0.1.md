@@ -20,7 +20,7 @@
 
 ## 2. 测试前准备
 
-- 仓库已经检出 `codex/glasses-backend-integration` 分支；后端和脚本均从该分支运行，
+- 仓库已经检出 `codex/full-stack-integration` 分支；后端和脚本均从该分支运行，
   不要使用 `main` 或其他分支。
 - RV101 眼镜与 Rokid 专用开发线。
 - 手机 Rokid AI App 已连接眼镜，并打开“眼镜 ADB 调试”。
@@ -51,6 +51,9 @@ shasum -a 256 -c SHA256SUMS
 ```bash
 ./scripts/install-on-rv101.sh ./reality-memory-glasses-debug.apk
 ```
+
+该 Debug 安装脚本会通过 ADB 开启 `SYSTEM_ALERT_WINDOW`，用于验证后台消息的短时透明
+覆盖层。它不是相机、麦克风或后台采集权限，也不代表正式 APK 可以静默获得此权限。
 
 `adb install -r` 会保留同包名 App 的数据并覆盖安装。若出现
 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，说明眼镜上已有同包名但签名不同的 APK；
@@ -89,12 +92,22 @@ shasum -a 256 -c SHA256SUMS
 | T13 | App 已进入空白感知状态后，用 ADB 发送测试提醒 | 2 次 | 显示绿色提醒并播报 TTS；单击后只关闭提醒，不结束采集 |
 | T14 | 空白感知状态下单击，再继续移动 | 30 秒 | 会话为 `ENDED`；不再开始新采集 |
 | T15 | 断开开发线后触发一次采集，再接回并重建端口映射 | 1 次 | 先记录 `RETRY_PENDING`，恢复后变为 `UPLOADED`；后端不重复入库 |
+| T16 | 后端向眼镜下发固定展示消息 | 每种意图 1 次 | 约 3 秒内显示对应图标和文字；后端依次收到 `RECEIVED`、`PRESENTED`、`DISMISSED` 回执 |
 
 T13 命令：
 
 ```bash
 ./scripts/send-test-reminder.sh "记得把资料给小王"
 ```
+
+T16 优先使用正式后端和 `scripts/test-downlink-presentation.sh`。若联调电脑暂时没有
+PostgreSQL，可先运行下面的模拟器，只验证设备注册、消息拉取、眼镜展示和状态回执：
+
+```bash
+node ./scripts/fake-downlink-server.mjs REMINDER
+```
+
+模拟器明确拒绝采集证据上传，不会把真实图片、视频或音频误判为已入库。
 
 ## 4. 30 分钟稳定性补测
 

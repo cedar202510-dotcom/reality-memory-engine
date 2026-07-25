@@ -4,14 +4,21 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Typeface
 import android.os.SystemClock
 import android.view.View
+import com.realitymemory.glasses.downlink.DownlinkPresentation
+import com.realitymemory.glasses.downlink.PresentationIntent
+import com.realitymemory.glasses.downlink.PresentationInteraction
 import com.realitymemory.glasses.runtime.RuntimeDisplayKind
 import com.realitymemory.glasses.runtime.RuntimeStatus
 import kotlin.math.min
 
-class GlassesUiView(context: Context) : View(context) {
+class GlassesUiView(
+    context: Context,
+    transparentBackground: Boolean = false,
+) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = GLASS_GREEN
         strokeCap = Paint.Cap.ROUND
@@ -22,7 +29,7 @@ class GlassesUiView(context: Context) : View(context) {
     private var status = RuntimeStatusStoreDefaults.empty
 
     init {
-        setBackgroundColor(Color.BLACK)
+        setBackgroundColor(if (transparentBackground) Color.TRANSPARENT else Color.BLACK)
         isFocusable = true
         isClickable = true
         defaultFocusHighlightEnabled = false
@@ -32,8 +39,11 @@ class GlassesUiView(context: Context) : View(context) {
         status = newStatus
         contentDescription = when (newStatus.displayKind) {
             RuntimeDisplayKind.DISCLOSURE ->
-                "RealGit 已开启现实感知。正在为您整理现实记忆。单击取消本次。"
+                "RealGit 已开启现实感知。正在为您整理现实记忆。"
             RuntimeDisplayKind.REMINDER -> newStatus.message
+            RuntimeDisplayKind.PRESENTATION -> newStatus.presentation?.let {
+                listOfNotNull(it.title, it.body).joinToString("。")
+            }.orEmpty()
             RuntimeDisplayKind.CANCELLED -> "本次现实感知已取消。再次佩戴时重新开启。"
             RuntimeDisplayKind.BLOCKED -> newStatus.message
             RuntimeDisplayKind.NONE -> ""
@@ -54,6 +64,8 @@ class GlassesUiView(context: Context) : View(context) {
         when (status.displayKind) {
             RuntimeDisplayKind.DISCLOSURE -> drawDisclosure(canvas)
             RuntimeDisplayKind.REMINDER -> drawReminder(canvas, status.message)
+            RuntimeDisplayKind.PRESENTATION ->
+                status.presentation?.let { drawPresentation(canvas, it) }
             RuntimeDisplayKind.CANCELLED -> drawCancelled(canvas)
             RuntimeDisplayKind.BLOCKED -> drawBlocked(canvas, status.message)
             RuntimeDisplayKind.NONE -> Unit
@@ -66,37 +78,206 @@ class GlassesUiView(context: Context) : View(context) {
     }
 
     private fun drawDisclosure(canvas: Canvas) {
+        val phase = (SystemClock.uptimeMillis() % SENSING_PERIOD_MS).toFloat() /
+            SENSING_PERIOD_MS
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 1.5f
-        paint.alpha = 255
-        canvas.drawCircle(CENTER_X, 247f, 12f, paint)
+        paint.alpha = (180f * (1f - phase)).toInt().coerceIn(0, 180)
+        canvas.drawCircle(CENTER_X, 235f, 22f + phase * 18f, paint)
+        paint.alpha = 230
+        canvas.drawCircle(CENTER_X, 235f, 22f, paint)
 
         paint.style = Paint.Style.FILL
-        paint.alpha = if (SystemClock.uptimeMillis() % BLINK_PERIOD_MS < BLINK_ON_MS) 255 else 72
-        canvas.drawCircle(CENTER_X, 247f, 3f, paint)
+        val coreRadius = 2.7f + 0.8f * (1f - phase)
+        paint.alpha = (150 + 105 * (1f - phase)).toInt()
+        canvas.drawCircle(CENTER_X, 235f, coreRadius, paint)
         paint.alpha = 255
 
-        drawCenteredText(canvas, "RealGit 已开启现实感知", 286f, 17f, Typeface.BOLD)
-        drawCenteredText(canvas, "正在为您整理现实记忆", 319f, 12f, Typeface.NORMAL)
-        drawCenteredText(canvas, "单击取消本次", 358f, 11f, Typeface.NORMAL)
+        drawCenteredText(canvas, "RealGit 已开启现实感知", 292f, 17f, Typeface.BOLD)
+        drawCenteredText(canvas, "正在为您整理现实记忆", 325f, 12f, Typeface.NORMAL)
+        drawActionHint(canvas, "×")
     }
 
     private fun drawReminder(canvas: Canvas, message: String) {
+        drawMessageFrame(canvas)
+        drawAlertIcon(canvas)
+
+        val lines = wrapText(message, 17f, MESSAGE_TEXT_WIDTH, Typeface.BOLD)
+        lines.take(3).forEachIndexed { index, line ->
+            drawText(canvas, line, MESSAGE_X, 285f + index * 27f, 17f, Typeface.BOLD)
+        }
+        drawActionHint(canvas, "✓")
+    }
+
+    private fun drawPresentation(
+        canvas: Canvas,
+        presentation: DownlinkPresentation,
+    ) {
+        drawMessageFrame(canvas)
+        drawSemanticIcon(canvas, presentation.intent)
+
+        val titleLines = wrapText(
+            presentation.title,
+            17f,
+            MESSAGE_TEXT_WIDTH,
+            Typeface.BOLD,
+        ).take(2)
+        titleLines.forEachIndexed { index, line ->
+            drawText(canvas, line, MESSAGE_X, 285f + index * 27f, 17f, Typeface.BOLD)
+        }
+
+        presentation.body?.let { body ->
+            val bodyBaseline = 285f + titleLines.size * 27f + 7f
+            wrapText(body, 12f, MESSAGE_TEXT_WIDTH, Typeface.NORMAL)
+                .take(2)
+                .forEachIndexed { index, line ->
+                    drawText(
+                        canvas,
+                        line,
+                        MESSAGE_X,
+                        bodyBaseline + index * 19f,
+                        12f,
+                        Typeface.NORMAL,
+                    )
+                }
+        }
+
+        when (presentation.interaction) {
+            PresentationInteraction.ACKNOWLEDGE -> drawActionHint(canvas, "✓")
+            PresentationInteraction.DISMISS -> drawActionHint(canvas, "×")
+            PresentationInteraction.NONE -> Unit
+        }
+    }
+
+    private fun drawMessageFrame(canvas: Canvas) {
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2f
         paint.alpha = 255
-        canvas.drawLine(40f, 215f, 40f, 355f, paint)
-        canvas.drawCircle(76f, 235f, 12f, paint)
+        canvas.drawLine(40f, 215f, 40f, 385f, paint)
+    }
 
+    private fun drawAlertIcon(canvas: Canvas) {
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1.5f
+        canvas.drawCircle(ICON_X, ICON_Y, 12f, paint)
         paint.style = Paint.Style.FILL
-        paint.strokeWidth = 1f
-        drawCenteredGlyph(canvas, "!", 76f, 240f, 14f)
+        drawCenteredGlyph(canvas, "!", ICON_X, ICON_Y + 5f, 14f)
+    }
 
-        val lines = wrapText(message, 17f, 344f)
-        lines.take(3).forEachIndexed { index, line ->
-            drawText(canvas, line, 64f, 285f + index * 27f, 17f, Typeface.BOLD)
+    private fun drawSemanticIcon(
+        canvas: Canvas,
+        intent: PresentationIntent,
+    ) {
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1.5f
+        paint.alpha = 255
+        when (intent) {
+            PresentationIntent.ANSWER -> {
+                val star = Path().apply {
+                    moveTo(ICON_X, ICON_Y - 13f)
+                    lineTo(ICON_X + 3f, ICON_Y - 3f)
+                    lineTo(ICON_X + 13f, ICON_Y)
+                    lineTo(ICON_X + 3f, ICON_Y + 3f)
+                    lineTo(ICON_X, ICON_Y + 13f)
+                    lineTo(ICON_X - 3f, ICON_Y + 3f)
+                    lineTo(ICON_X - 13f, ICON_Y)
+                    lineTo(ICON_X - 3f, ICON_Y - 3f)
+                    close()
+                }
+                canvas.drawPath(star, paint)
+                canvas.drawCircle(ICON_X + 14f, ICON_Y + 13f, 2.2f, paint)
+            }
+            PresentationIntent.REMINDER,
+            PresentationIntent.SYSTEM,
+            -> drawAlertIcon(canvas)
+            PresentationIntent.TASK -> {
+                canvas.drawRoundRect(
+                    ICON_X - 11f,
+                    ICON_Y - 14f,
+                    ICON_X + 11f,
+                    ICON_Y + 14f,
+                    2f,
+                    2f,
+                    paint,
+                )
+                val check = Path().apply {
+                    moveTo(ICON_X - 6f, ICON_Y)
+                    lineTo(ICON_X - 1f, ICON_Y + 5f)
+                    lineTo(ICON_X + 7f, ICON_Y - 6f)
+                }
+                canvas.drawPath(check, paint)
+            }
+            PresentationIntent.CONSUMABLE -> {
+                canvas.drawRoundRect(
+                    ICON_X - 14f,
+                    ICON_Y - 8f,
+                    ICON_X + 11f,
+                    ICON_Y + 8f,
+                    2f,
+                    2f,
+                    paint,
+                )
+                canvas.drawLine(
+                    ICON_X + 14f,
+                    ICON_Y - 3f,
+                    ICON_X + 14f,
+                    ICON_Y + 3f,
+                    paint,
+                )
+                canvas.drawLine(
+                    ICON_X - 9f,
+                    ICON_Y,
+                    ICON_X - 3f,
+                    ICON_Y,
+                    paint,
+                )
+            }
+            PresentationIntent.PRIVACY -> {
+                val shield = Path().apply {
+                    moveTo(ICON_X, ICON_Y - 14f)
+                    lineTo(ICON_X + 11f, ICON_Y - 9f)
+                    lineTo(ICON_X + 10f, ICON_Y + 3f)
+                    cubicTo(
+                        ICON_X + 8f,
+                        ICON_Y + 10f,
+                        ICON_X + 3f,
+                        ICON_Y + 13f,
+                        ICON_X,
+                        ICON_Y + 15f,
+                    )
+                    cubicTo(
+                        ICON_X - 3f,
+                        ICON_Y + 13f,
+                        ICON_X - 8f,
+                        ICON_Y + 10f,
+                        ICON_X - 10f,
+                        ICON_Y + 3f,
+                    )
+                    lineTo(ICON_X - 11f, ICON_Y - 9f)
+                    close()
+                }
+                canvas.drawPath(shield, paint)
+                canvas.drawLine(
+                    ICON_X - 8f,
+                    ICON_Y + 9f,
+                    ICON_X + 8f,
+                    ICON_Y - 9f,
+                    paint,
+                )
+            }
         }
-        drawText(canvas, "单击知道了", 64f, 372f, 11f, Typeface.NORMAL)
+    }
+
+    private fun drawActionHint(canvas: Canvas, glyph: String) {
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1.5f
+        paint.alpha = 205
+        canvas.drawCircle(ACTION_X, ACTION_Y, 10f, paint)
+        paint.style = Paint.Style.FILL
+        drawCenteredGlyph(canvas, glyph, ACTION_X, ACTION_Y + 4f, 11f)
+        paint.alpha = 175
+        drawCenteredTextAt(canvas, "单击", ACTION_X, ACTION_Y + 29f, 9f, Typeface.NORMAL)
+        paint.alpha = 255
     }
 
     private fun drawCancelled(canvas: Canvas) {
@@ -109,7 +290,7 @@ class GlassesUiView(context: Context) : View(context) {
         drawCircleGlyph(canvas, "!", 247f)
         drawCenteredText(canvas, "现实感知暂未开启", 290f, 17f, Typeface.BOLD)
         val detail = message.ifBlank { "请检查相机和麦克风权限" }
-        wrapText(detail, 12f, 360f).take(2).forEachIndexed { index, line ->
+        wrapText(detail, 12f, 360f, Typeface.NORMAL).take(2).forEachIndexed { index, line ->
             drawCenteredText(canvas, line, 323f + index * 20f, 12f, Typeface.NORMAL)
         }
     }
@@ -145,6 +326,19 @@ class GlassesUiView(context: Context) : View(context) {
         canvas.drawText(value, CENTER_X - paint.measureText(value) / 2f, baselineY, paint)
     }
 
+    private fun drawCenteredTextAt(
+        canvas: Canvas,
+        value: String,
+        centerX: Float,
+        baselineY: Float,
+        size: Float,
+        style: Int,
+    ) {
+        val previousAlpha = paint.alpha
+        prepareText(size, style, previousAlpha)
+        canvas.drawText(value, centerX - paint.measureText(value) / 2f, baselineY, paint)
+    }
+
     private fun drawText(
         canvas: Canvas,
         value: String,
@@ -157,17 +351,26 @@ class GlassesUiView(context: Context) : View(context) {
         canvas.drawText(value, x, baselineY, paint)
     }
 
-    private fun prepareText(size: Float, style: Int) {
+    private fun prepareText(
+        size: Float,
+        style: Int,
+        alpha: Int = 255,
+    ) {
         paint.style = Paint.Style.FILL
         paint.color = GLASS_GREEN
-        paint.alpha = 255
+        paint.alpha = alpha
         paint.textSize = size
         paint.typeface = Typeface.create("sans-serif", style)
         paint.letterSpacing = 0f
     }
 
-    private fun wrapText(value: String, size: Float, maxWidth: Float): List<String> {
-        prepareText(size, Typeface.BOLD)
+    private fun wrapText(
+        value: String,
+        size: Float,
+        maxWidth: Float,
+        style: Int,
+    ): List<String> {
+        prepareText(size, style)
         if (paint.measureText(value) <= maxWidth) return listOf(value)
 
         val lines = mutableListOf<String>()
@@ -194,8 +397,13 @@ class GlassesUiView(context: Context) : View(context) {
         private const val DESIGN_WIDTH = 480f
         private const val DESIGN_HEIGHT = 640f
         private const val CENTER_X = DESIGN_WIDTH / 2f
-        private const val BLINK_PERIOD_MS = 1_600L
-        private const val BLINK_ON_MS = 928L
+        private const val ICON_X = 76f
+        private const val ICON_Y = 235f
+        private const val MESSAGE_X = 64f
+        private const val MESSAGE_TEXT_WIDTH = 300f
+        private const val ACTION_X = 420f
+        private const val ACTION_Y = 350f
+        private const val SENSING_PERIOD_MS = 2_400L
         private const val BLINK_REFRESH_MS = 100L
         private val GLASS_GREEN = Color.rgb(0, 255, 0)
     }

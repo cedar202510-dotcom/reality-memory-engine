@@ -118,7 +118,8 @@ Agent / 提醒决策
 确认动作：右下角固定 20 × 20 圆形勾选图标，下方弱化显示“单击”
 取消动作：右下角固定 20 × 20 圆形叉号图标，下方弱化显示“单击”
 颜色：#00FF00
-背景：#000000（不发光）
+后台提醒：透明系统覆盖层，不绘制全屏底色
+Activity 降级页：#000000（单绿光显示中不发光）
 ```
 
 佩戴告知是本地专用的居中组件：更大的感知圆环、向外扩散的单绿水纹、品牌文案和取消
@@ -134,7 +135,7 @@ Agent / 提醒决策
 | 状态 | 触发时机 |
 | --- | --- |
 | `RECEIVED` | 消息已落入眼镜本地队列并通过基础 Schema 校验 |
-| `PRESENTED` | 对应组件已经实际进入可见状态 |
+| `PRESENTED` | 覆盖层窗口已经附着并完成首帧，或 Activity 已确认渲染该消息 |
 | `SPOKEN` | TTS 实际完成，不是仅调用 `speak()` |
 | `DISMISSED` | 用户单击关闭 |
 | `EXPIRED` | 到达或排队期间过期，未呈现 |
@@ -163,12 +164,34 @@ Agent 只产生候选内容；提醒决策层负责确认是否值得下发、�
 - `REMINDER_SIGNAL` 的落库、WebSocket 推送、轮询补投与过期处理。
 - `allow_text` / `allow_tts` 投递限制。
 - `RECEIVED`、`PRESENTED`、`SPOKEN`、`DISMISSED`、`EXPIRED`、`FAILED` 回执。
+- `rme.glasses-presentation.v0` 的字段、来源组合、文字长度和自由样式拦截。
+
+当前眼镜 Debug APK 0.1.6 已实现：
+
+- 后端设备自注册与 `device_id` 持久化。
+- 佩戴感知期间每 3 秒轮询 inbox。
+- 本地图标映射、固定布局、文本长度保护、队列和 `message_id` 去重。
+- 后台消息使用短时透明 `SYSTEM_ALERT_WINDOW` 覆盖层，不需要让采集 Activity 常驻前台。
+- 收到、覆盖层首帧、TTS 完成、单击或超时关闭的回执；视觉层未确认时回
+  `FAILED/VISUAL_UI_NOT_CONFIRMED`，不伪报 `DISMISSED`。
+
+2026-07-25 RV101 真机已验证 HTTP 链路能够返回：
+
+```text
+RECEIVED -> PRESENTED -> DISMISSED
+```
+
+`dumpsys window` 同时确认 `RealGitPresentation` 为 `480×640`、透明格式、
+`TYPE_APPLICATION_OVERLAY`、`HAS_DRAWN`。RV101 的 `adb screencap` 不会合成单绿光
+HUD 的实际发光层，因此黑色抓图不能单独作为“未显示”的判据。
 
 当前仍缺：
 
-- 后端对 `rme.glasses-presentation.v0` 的专用 Schema 与来源组合校验。
-- Agent / 提醒决策层把自然语言结果转换成 `intent` 的受约束输出。
-- 眼镜端的下行消息消费者、本地图标映射、文本长度保护和回执上报。
-- 真机验证消息可见、TTS 完成时点、单击确认和离线重投。
+- Agent / 提醒决策层把自然语言结果自动转换成 `intent`。
+- WebSocket 低延迟客户端；当前先用 HTTP inbox 跑通，现有 WebSocket API 保留。
+- 设备令牌和“设备只能读取自己的消息”鉴权。
+- 正式版覆盖层授权引导或 Rokid 系统白名单；Debug 安装脚本当前通过 ADB 开启权限。
+- 真机人工确认各语义图标、TTS 完成时点、物理单击广播和离线补投。
 
-因此这份文档冻结的是下一步联调边界，不表示下行链路已经在眼镜 APK 中完成。
+因此这份文档已经对应可构建且完成一次消息闭环真机验证的 0.1.6 代码；后台轮询
+稳定性、TTS 时点、物理单击和离线补投仍必须按测试计划继续验证。
