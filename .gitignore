@@ -4,9 +4,13 @@
 # Editors
 .idea/
 .vscode/
-.claude/
 *.swp
 *.swo
+
+# Claude Code 本地配置：端口摆法和私有设置各人不同，只提交模板。
+# 用 .claude/* 而不是 .claude/：父目录被排除后，里面的文件再怎么 ! 也重新包不回来。
+.claude/*
+!.claude/launch.json.example
 
 # Logs and temporary files
 *.log

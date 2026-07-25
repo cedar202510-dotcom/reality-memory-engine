@@ -15,6 +15,16 @@ cd services/memory-platform && uvicorn app.main:app --port 8000
 cd frontend && npm install && npm run dev
 ```
 
+用 Claude Code 的话，两个服务的启动配置在 `.claude/launch.json`。该文件不进版本库
+（端口摆法各人不同，跟着仓库走只会互相覆盖），首次 clone 后自己复制一份：
+
+```bash
+cp .claude/launch.json.example .claude/launch.json
+```
+
+需要同时跑两套栈时（比如一套连采集用的 8010 后端），在模板里追加一条配置，用
+`RME_API_TARGET` 指向另一个后端、`--port` 换个前端端口即可。
+
 ## Rokid 视频流联调
 
 眼镜探针 App 开启「预览」后，它在眼镜本机 8090 端口起 MJPEG 服务
