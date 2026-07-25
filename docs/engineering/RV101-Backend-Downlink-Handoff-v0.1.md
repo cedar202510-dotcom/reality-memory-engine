@@ -16,16 +16,20 @@
 - RV101 已验证 `RECEIVED -> PRESENTED -> DISMISSED`；后台视觉层使用短时纯黑
   `SYSTEM_ALERT_WINDOW` 独立显示层，遮住 Rokid 首页，消息结束立即移除。
 - WebSocket API 已存在，但眼镜暂时使用 HTTP inbox，待真机确认后台网络后再降低延迟。
+- Agent Gateway 已把对话回答和主动建议信号转换成受约束的
+  `rme.glasses-presentation.v0` 消息，并通过独立 Agent scope 写入同一消息队列。
 - `/internal/v1` 当前依赖本机或可信内网，没有设备令牌，不能直接暴露到公网。
 
-因此当前可以用开发线和本机后端验证人工测试消息，但 Agent 结果自动转消息、生产设备
-鉴权以及正式版覆盖层授权或 Rokid 白名单仍未完成。
+因此代码层已经具备 Agent 结果自动下发；仍需在电脑后端、Agent Gateway 和 RV101
+同时运行时完成一次真实内容端到端验收。生产设备鉴权以及正式版覆盖层授权或 Rokid
+白名单仍未完成。
 
 ## 2. 完整链路
 
 ```text
 Agent 回答 / 提醒决策
-→ POST /internal/v1/devices/{device_id}/messages
+→ Agent Gateway 生成受约束呈现载荷
+→ POST /v1/agent/devices/{device_id}/messages
 → device_messages 落库
 → 眼镜 HTTP inbox 拉取（当前）/ WebSocket 实时推送（后续）
 → 眼镜按 intent 选择本地图标与固定组件
@@ -43,7 +47,15 @@ WebSocket 断开
 
 ## 3. 后端创建消息
 
-现有接口：
+Agent 正式调用接口：
+
+```http
+POST /v1/agent/devices/{device_id}/messages
+Authorization: Bearer <包含 memory.device.message.send 的 AgentGrant token>
+Content-Type: application/json
+```
+
+人工调试接口仍保留为：
 
 ```http
 POST /internal/v1/devices/{device_id}/messages
@@ -154,21 +166,23 @@ Content-Type: application/json
 }
 ```
 
-## 5. 后端需要实现
+## 5. 后端状态与后续工作
 
-已经完成 `GlassesPresentationPayload` Pydantic 校验。后端后续需要：
+已经完成：
 
-1. 把 Agent 回答或提醒信号转换成受约束载荷，再调用统一的消息创建服务；不要让模型直接
-   生成 HTML、SVG、坐标或颜色。
-2. 保持 `message_id` 至少一次投递和幂等回执语义。
-3. 消费带 `user_action=true` 的回执，按 `action_id` 幂等更新任务或采购清单；加入清单
+1. `GlassesPresentationPayload` Pydantic 校验。
+2. Agent 回答转换为 `ANSWER`；`LOW_CONSUMABLE` 信号转换为采购提醒；其它信号使用
+   受约束的提醒映射。
+3. Agent 专用 `memory.device.message.send` scope、家庭隔离与 `agent:<client_id>` 审计。
+4. Agent Gateway 发送失败时保留原回答，并在响应中返回中文可诊断错误。
+5. `message_id` 至少一次投递和幂等回执语义。
+
+后续需要：
+
+1. 消费带 `user_action=true` 的回执，按 `action_id` 幂等更新任务或采购清单；加入清单
    不得自动下单。
-4. 增加设备身份、短期 device token 和“设备只能读取自己的消息”校验。
-5. 多实例部署前把进程内 `DeviceHub` 替换为 Redis pub/sub 或配置粘性路由。
-
-短期联调可以直接调用现有 HTTP 创建接口。正式接入同一后端进程的 Agent / Signal
-Worker 时，应抽出共享的 `create_device_message()` 应用服务，避免服务内部绕 HTTP
-调用自己。
+2. 增加设备身份、短期 device token 和“设备只能读取自己的消息”校验。
+3. 多实例部署前把进程内 `DeviceHub` 替换为 Redis pub/sub 或配置粘性路由。
 
 ## 6. 眼镜端需要实现
 
@@ -230,6 +244,30 @@ cd apps/reality-memory-glasses
 ```bash
 ./scripts/test-downlink-presentation.sh http://127.0.0.1:8765 "" TASK
 ```
+
+## 10. 真实 Agent 下发入口
+
+记忆平台运行在 `8765`、Agent Gateway 运行在 `8200`，并给 Gateway 配置包含
+`memory.device.message.send` 的 token 后：
+
+```bash
+curl -X POST http://127.0.0.1:8200/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "message": "我的钥匙最后在哪里？",
+    "delivery": {
+      "device_id": "<RV101 device_id>",
+      "allow_tts": false
+    }
+  }'
+```
+
+这条请求中没有第二次人工消息注入。验收时必须同时保留：
+
+- Agent 响应中的 `delivery.message_id`；
+- 后端 `device_messages` 中同一编号的消息；
+- 眼镜 `DOWNLINK_RECEIPT_SENT` 的 `RECEIVED`、`PRESENTED` 和最终回执；
+- 后端审计中的 `actor=agent:<client_id>`。
 
 如果本机 PostgreSQL 暂未启动，可用不接收采集证据的最小模拟器验证眼镜链路：
 

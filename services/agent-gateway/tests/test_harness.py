@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 
 import httpx
 import pytest
@@ -166,6 +167,50 @@ async def test_chat_endpoint_and_session_continuity():
         assert any(m["role"] == "user" and "钥匙在哪" in str(m["content"]) for m in llm.calls[-1])
 
 
+async def test_chat_result_is_converted_and_sent_to_glasses():
+    device_id = str(uuid.uuid4())
+    captured: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == f"/v1/agent/devices/{device_id}/messages":
+            body = json.loads(request.content)
+            captured.append(body)
+            return httpx.Response(
+                200,
+                json={
+                    "message": {
+                        "message_id": str(uuid.uuid4()),
+                        "status": "PENDING",
+                    },
+                    "pushed_connections": 0,
+                },
+            )
+        return httpx.Response(404, json={"detail": "not found"})
+
+    llm = FakeChatLLM(script=[AssistantTurn(content="钥匙最后一次看到是在玄关柜。")])
+    app = create_app(fake_llm=llm, memory_client=_memory(handler))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gw") as client:
+        resp = await client.post(
+            "/v1/chat",
+            json={
+                "message": "钥匙在哪？",
+                "delivery": {"device_id": device_id, "allow_tts": False},
+            },
+        )
+
+    assert resp.status_code == 200
+    result = resp.json()
+    assert result["delivery"]["status"] == "QUEUED"
+    assert result["delivery"]["transport"] == "inbox"
+    assert len(captured) == 1
+    request = captured[0]
+    assert request["payload_schema_ref"] == "rme.glasses-presentation.v0"
+    assert request["payload"]["presentation"]["intent"] == "ANSWER"
+    assert request["payload"]["presentation"]["interaction"] == "NONE"
+    assert request["payload"]["source"]["kind"] == "AGENT_REPLY"
+    assert "style" not in request["payload"]
+
+
 async def test_proactive_check_templates():
     app = create_app(fake_llm=FakeChatLLM(), memory_client=_memory())
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gw") as client:
@@ -177,7 +222,61 @@ async def test_proactive_check_templates():
         s = body["suggestions"][0]
         assert s["signal_type"] == "LOW_CONSUMABLE"
         assert "洗衣液" in s["text"]
-        assert "吗" in s["text"]  # 只建议（问句），不执行
+    assert "吗" in s["text"]  # 只建议（问句），不执行
+
+
+async def test_proactive_result_is_sent_as_purchase_reminder():
+    device_id = str(uuid.uuid4())
+    captured: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/signals":
+            return httpx.Response(
+                200,
+                json={
+                    "signals": [
+                        {
+                            "id": "sig-low-detergent",
+                            "signal_type": "LOW_CONSUMABLE",
+                            "payload": {"entity_name": "洗衣液", "level": "LOW"},
+                            "confidence": 0.9,
+                        }
+                    ],
+                    "suppressed": 0,
+                },
+            )
+        if request.url.path == f"/v1/agent/devices/{device_id}/messages":
+            body = json.loads(request.content)
+            captured.append(body)
+            return httpx.Response(
+                200,
+                json={
+                    "message": {
+                        "message_id": str(uuid.uuid4()),
+                        "status": "PENDING",
+                    },
+                    "pushed_connections": 0,
+                },
+            )
+        return httpx.Response(404, json={"detail": "not found"})
+
+    app = create_app(fake_llm=FakeChatLLM(), memory_client=_memory(handler))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gw") as client:
+        resp = await client.post(
+            "/v1/proactive/check",
+            json={"delivery": {"device_id": device_id}},
+        )
+
+    assert resp.status_code == 200
+    result = resp.json()
+    assert result["deliveries"][0]["status"] == "QUEUED"
+    presentation = captured[0]["payload"]["presentation"]
+    assert presentation["intent"] == "CONSUMABLE"
+    assert presentation["interaction"]["type"] == "ADD_TO_SHOPPING_LIST"
+    assert captured[0]["payload"]["source"] == {
+        "kind": "MEMORY_SIGNAL",
+        "reference_id": "sig-low-detergent",
+    }
 
 
 def test_template_wording_missing_fields_fallback():

@@ -178,6 +178,8 @@ Agent 只产生候选内容；提醒决策层负责确认是否值得下发、�
 - `allow_text` / `allow_tts` 投递限制。
 - `RECEIVED`、`PRESENTED`、`SPOKEN`、`DISMISSED`、`EXPIRED`、`FAILED` 回执。
 - `rme.glasses-presentation.v0` 的字段、来源组合、文字长度和自由样式拦截。
+- Agent Gateway 自动把普通回答转换为 `ANSWER`，把低耗材信号转换为
+  `CONSUMABLE + ADD_TO_SHOPPING_LIST`，并通过受限 Agent scope 写入消息队列。
 
 当前眼镜 Debug APK 0.1.7 已实现：
 
@@ -200,7 +202,6 @@ HUD 的实际发光层，因此黑色抓图不能单独作为“未显示”的�
 
 当前仍缺：
 
-- Agent / 提醒决策层把自然语言结果自动转换成 `intent`。
 - WebSocket 低延迟客户端；当前先用 HTTP inbox 跑通，现有 WebSocket API 保留。
 - 设备令牌和“设备只能读取自己的消息”鉴权。
 - 正式版覆盖层授权引导或 Rokid 系统白名单；Debug 安装脚本当前通过 ADB 开启权限。

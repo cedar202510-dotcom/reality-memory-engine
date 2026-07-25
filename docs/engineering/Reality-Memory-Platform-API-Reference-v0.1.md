@@ -1,11 +1,13 @@
 # Reality Memory Platform API 参考 v0.1
 
 > 文档版本：v0.1
-> 文档日期：2026-07-24
+> 文档日期：2026-07-24（2026-07-26 补充 Agent → RV101 下行接口）
 > 适用服务：`services/memory-platform/`（FastAPI 模块化单体）
 > 文档用途：面向客户端开发者（iOS App / Rokid 眼镜端）的后端 HTTP API 参考
-> 验证状态：全部 9 个端点已于 2026-07-24 通过端到端冒烟测试（真实配置：LLM=kimi-coding k3、
+> 验证状态：首批 9 个端点已于 2026-07-24 通过端到端冒烟测试（真实配置：LLM=kimi-coding k3、
 > 视觉=本地 CLIP ViT-B-32、ASR=none），文中响应示例均摘自真实响应，仅做适度截断。
+> 2026-07-26 新增的 Agent → RV101 下行接口已通过网关单元测试和契约校验；真实 PostgreSQL
+> 跨服务测试与 RV101 真机闭环仍需在联调环境验收。
 
 ---
 
@@ -17,7 +19,9 @@ Memory Platform 是 Reality Memory Engine 的后端沉淀服务，负责接收�
 
 - **Base URL**：开发环境 `http://localhost:8765`（端口由启动命令决定；
   `uvicorn app.main:app --port <port>`，工作目录为 `services/memory-platform/`）。
-- **鉴权**：当前版本无鉴权，仅限本机 / 内网使用。
+- **鉴权**：`/internal/v1` 当前仍按本机 / 内网可信域使用；`/v1/agent/*` 必须携带
+  AgentGrant bearer token，并按 scope 和家庭域隔离。Agent token 无效返回 401，权限不足
+  返回 403。
 - **编码与时间**：请求 / 响应均为 JSON（ ingest 除外，见 §3.1）；时间字段为 UTC RFC 3339。
 - **异步架构提示**：`POST /internal/v1/envelopes` 是**同步落库 + 异步感知**。
   接口返回成功只代表信封与证据已落库并写入 outbox；感知由后台 worker 消费
@@ -45,6 +49,8 @@ Memory Platform 是 Reality Memory Engine 的后端沉淀服务，负责接收�
 | 11 | PATCH | `/internal/v1/devices/{device_id}/binding` | capture-control | 绑定眼镜 App 运行时与控制通道 |
 | 12 | POST | `/internal/v1/devices/{device_id}/capture-requests` | capture-control | 下发采集请求并分发到 connector |
 | 13 | GET | `/internal/v1/devices/{device_id}/capture-requests` | capture-control | 近期采集请求与设备回执 |
+| 14 | GET | `/v1/agent/devices` | agent-device-messages | Agent 读取其授权家庭内可投递设备 |
+| 15 | POST | `/v1/agent/devices/{device_id}/messages` | agent-device-messages | Agent 向指定 RV101 投递受约束呈现消息 |
 
 下行投递通道（`/internal/v1/devices/{id}/messages` `/inbox` `/receipts` `/stream`）与
 采集请求的载荷、状态机和 connector 语义见
@@ -105,7 +111,58 @@ curl -X POST http://localhost:8765/internal/v1/envelopes \
 ### 3.6 审计
 
 ingest、查询（where-is / scene-search）、纠正、遗忘都会写入审计记录
-（`GET /v1/memory/audit` 可查），actor 目前固定为 `device:<device_id>` 或 `user:owner`。
+（`GET /v1/memory/audit` 可查）。actor 按调用来源记录为 `device:<device_id>`、
+`user:owner` 或 `agent:<client_id>`。
+
+### 3.7 Agent → RV101 消息鉴权
+
+Agent Gateway 先由 owner 签发含 `memory.device.message.send` scope 的 AgentGrant，再携带
+`Authorization: Bearer <grant token>` 调用：
+
+- `GET /v1/agent/devices`：只返回 grant 授权家庭中的设备；
+- `POST /v1/agent/devices/{device_id}/messages`：目标必须属于授权家庭且类型为
+  `glasses`。
+
+已经签发的旧 grant 不会被静默扩权；如果其 scopes 中没有
+`memory.device.message.send`，需要由 owner 撤销并重新签发，然后更新 Agent Gateway 的
+`MEMORY_AGENT_TOKEN`。这是权限边界，不应通过代码自动补权。
+
+Agent 下发只接受 `message_type=REMINDER_SIGNAL` 和
+`payload_schema_ref=rme.glasses-presentation.v0`。来源只能是 `AGENT_REPLY` 或
+`MEMORY_SIGNAL`，不能伪造 `SYSTEM`、`PRIVACY` 或 `SYSTEM_POLICY` 消息；该接口也不能
+创建 `CAPTURE_REQUEST`，因此不会绕过眼镜本地策略远程打开相机或麦克风。
+
+示例：
+
+```bash
+curl -X POST \
+  http://localhost:8765/v1/agent/devices/<rv101-device-id>/messages \
+  -H "Authorization: Bearer $MEMORY_AGENT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message_type": "REMINDER_SIGNAL",
+    "payload_schema_ref": "rme.glasses-presentation.v0",
+    "priority": "NORMAL",
+    "ttl_seconds": 90,
+    "delivery_policy": {"allow_text": true, "allow_tts": false},
+    "payload": {
+      "presentation": {
+        "intent": "ANSWER",
+        "title": "钥匙最后一次出现在玄关柜上",
+        "interaction": "NONE"
+      },
+      "source": {
+        "kind": "AGENT_REPLY",
+        "reference_id": "session-123"
+      },
+      "correlation_id": "agent-turn-123"
+    }
+  }'
+```
+
+返回中的 `pushed_connections > 0` 表示创建时已通过 WebSocket 推送给在线设备；为 `0`
+仍表示消息已持久化，RV101 可以通过 inbox 轮询补取。真正呈现成功以设备提交
+`PRESENTED` 回执为准，接口返回 200 或 `QUEUED` 不能替代真机呈现验收。
 
 ---
 

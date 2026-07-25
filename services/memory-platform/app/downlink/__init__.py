@@ -15,8 +15,9 @@
 它是「请求」而不是「命令」：设备端做本地 PolicyCheck 后自行决定执行或拒绝，拒绝走
 REJECTED 回执。本模块只负责投递，语义与分发在 `app/capture_control/`。
 
-鉴权：沿用 `/internal/v1` 现状（本机/内网可信域，见 API-Reference §鉴权）。设备
-token 绑定与「设备只能读发给自己的消息」属于通信 review 范围，尚未实现。
+鉴权：设备 inbox/回执与人工调试入口沿用 `/internal/v1` 的本机/内网可信域；
+Agent 创建消息必须走 `/v1/agent/devices` 并持 `memory.device.message.send` scope。
+设备 token 绑定与「设备只能读发给自己的消息」属于通信 review 范围，尚未实现。
 """
 from __future__ import annotations
 
@@ -29,21 +30,26 @@ from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSo
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import GrantContext, require_grant
 from ..config import get_settings
 from ..db import SessionLocal, get_session
 from ..memory.events import record_audit
 from ..models import Device, DeviceDeliveryReceipt, DeviceMessage, utcnow
 from ..schemas import (
+    GLASSES_PRESENTATION_SCHEMA_REF,
     TERMINAL_RECEIPT_STATUSES,
     DeliveryReceiptIn,
     DeliveryReceiptOut,
     DeviceInboxResponse,
+    DeviceListResponse,
     DeviceMessageCreateRequest,
     DeviceMessageCreateResponse,
     DeviceMessageOut,
+    DeviceOut,
 )
 
 router = APIRouter(prefix="/internal/v1/devices", tags=["downlink"])
+agent_router = APIRouter(prefix="/v1/agent/devices", tags=["agent-device-messages"])
 
 # 关闭码：设备不存在（4000+ 为应用自定义区间，设备侧据此决定是否重连）
 WS_CLOSE_UNKNOWN_DEVICE = 4404
@@ -164,20 +170,17 @@ def _mark_sent(msg: DeviceMessage) -> None:
 # ---------------------------------------------------------------- 注入
 
 
-@router.post("/{device_id}/messages", response_model=DeviceMessageCreateResponse)
-async def create_device_message_endpoint(
-    device_id: uuid.UUID,
+async def _create_device_message(
+    *,
+    device: Device,
     req: DeviceMessageCreateRequest,
-    session: AsyncSession = Depends(get_session),
-    hub: DeviceHub = Depends(get_hub),
+    session: AsyncSession,
+    hub: DeviceHub,
+    actor: str,
+    audit_detail: dict | None = None,
 ) -> DeviceMessageCreateResponse:
-    """手动注入一条下行消息（第一版触发源）。
-
-    落库与推送是两件事：先提交，再尝试即时推送。设备离线时消息留在库里等 inbox
-    或重连补投——所以推送失败不是错误，`pushed_connections=0` 是正常返回。
-    """
+    """共用的设备消息创建路径；调用方负责鉴权和家庭边界。"""
     settings = get_settings()
-    device = await _load_device(session, device_id)
     ttl = req.ttl_seconds or settings.device_message_ttl_seconds
     msg = DeviceMessage(
         household_id=device.household_id,
@@ -194,7 +197,7 @@ async def create_device_message_endpoint(
     await session.flush()
     await record_audit(
         session,
-        actor="user:owner",
+        actor=actor,
         action="device_message_create",
         target=f"device_message:{msg.id}",
         detail={
@@ -202,6 +205,7 @@ async def create_device_message_endpoint(
             "message_type": msg.message_type,
             "allow_tts": msg.allow_tts,
             "ttl_seconds": ttl,
+            **(audit_detail or {}),
         },
     )
     await session.commit()
@@ -213,6 +217,83 @@ async def create_device_message_endpoint(
         await session.commit()
         envelope = DeviceMessageOut.of(msg)
     return DeviceMessageCreateResponse(message=envelope, pushed_connections=pushed)
+
+
+@router.post("/{device_id}/messages", response_model=DeviceMessageCreateResponse)
+async def create_device_message_endpoint(
+    device_id: uuid.UUID,
+    req: DeviceMessageCreateRequest,
+    session: AsyncSession = Depends(get_session),
+    hub: DeviceHub = Depends(get_hub),
+) -> DeviceMessageCreateResponse:
+    """人工调试入口；不带 Agent 身份，只允许本机或受控可信网络使用。"""
+    device = await _load_device(session, device_id)
+    return await _create_device_message(
+        device=device,
+        req=req,
+        session=session,
+        hub=hub,
+        actor="user:owner",
+        audit_detail={"source": "INTERNAL_DEBUG"},
+    )
+
+
+@agent_router.get("", response_model=DeviceListResponse)
+async def list_agent_devices_endpoint(
+    ctx: GrantContext = Depends(require_grant("memory.device.message.send")),
+    session: AsyncSession = Depends(get_session),
+) -> DeviceListResponse:
+    """返回当前 Agent 获准家庭中的设备，供它明确选择下发目标。"""
+    household_id = ctx.household_id()
+    devices = (
+        await session.scalars(
+            select(Device)
+            .where(Device.household_id == household_id)
+            .order_by(Device.name)
+        )
+    ).all()
+    return DeviceListResponse(devices=[DeviceOut.of(device) for device in devices])
+
+
+@agent_router.post("/{device_id}/messages", response_model=DeviceMessageCreateResponse)
+async def create_agent_device_message_endpoint(
+    device_id: uuid.UUID,
+    req: DeviceMessageCreateRequest,
+    ctx: GrantContext = Depends(require_grant("memory.device.message.send")),
+    session: AsyncSession = Depends(get_session),
+    hub: DeviceHub = Depends(get_hub),
+) -> DeviceMessageCreateResponse:
+    """Agent 受限下发入口：只能向其授权家庭中的已登记设备发送消息。"""
+    device = await _load_device(session, device_id)
+    ctx.require_household(device.household_id)
+    if device.kind != "glasses":
+        raise HTTPException(status_code=422, detail="当前 Agent 消息入口只允许投递到眼镜")
+    if (
+        req.message_type != "REMINDER_SIGNAL"
+        or req.payload_schema_ref != GLASSES_PRESENTATION_SCHEMA_REF
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Agent 只能发送受 rme.glasses-presentation.v0 约束的呈现消息",
+        )
+    source_kind = str((req.payload.get("source") or {}).get("kind", ""))
+    intent = str((req.payload.get("presentation") or {}).get("intent", ""))
+    if source_kind not in {"AGENT_REPLY", "MEMORY_SIGNAL"} or intent in {"PRIVACY", "SYSTEM"}:
+        raise HTTPException(
+            status_code=403,
+            detail="Agent 不允许伪造系统或隐私消息",
+        )
+    return await _create_device_message(
+        device=device,
+        req=req,
+        session=session,
+        hub=hub,
+        actor=ctx.actor,
+        audit_detail={
+            "source": "AGENT_GATEWAY",
+            "grant_id": str(ctx.grant_id),
+        },
+    )
 
 
 # ---------------------------------------------------------------- 轮询兜底

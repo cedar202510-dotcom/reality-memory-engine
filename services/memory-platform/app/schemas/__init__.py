@@ -940,7 +940,7 @@ class GlassesPresentationPayload(BaseModel):
 
 
 class DeviceMessageCreateRequest(BaseModel):
-    """手动注入一条下行消息（第一版触发源：不接规则也不接 Agent）。"""
+    """创建一条下行消息；人工调试与受限 Agent 入口共用此业务契约。"""
 
     message_type: str = "REMINDER_SIGNAL"
     payload: dict[str, Any] = Field(default_factory=dict)
