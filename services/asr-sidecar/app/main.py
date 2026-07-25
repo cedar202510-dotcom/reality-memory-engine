@@ -79,6 +79,29 @@ class TranscribeResponse(BaseModel):
     duration_seconds: float | None = None
 
 
+def _normalize(text: str) -> str:
+    """去掉空白与常见中英标点，用于判等；不改变返回给调用方的原文。"""
+    return "".join(
+        ch for ch in text if not ch.isspace() and ch not in "，。、,.!?！？；;：:“”\"'‘’（）()﹑"
+    )
+
+
+def _is_prompt_echo(text: str, initial_prompt: str | None) -> bool:
+    """判断转写是否只是把 initial_prompt 复读回来。
+
+    Whisper 在静音/不可辨音频上会直接复述 initial_prompt（已知幻觉模式）。
+    这类文本会被当成用户真实说过的话写入记忆，危害高于漏转写，因此必须丢弃。
+    """
+    if not initial_prompt:
+        return False
+    norm_text = _normalize(text)
+    if not norm_text:
+        return True
+    norm_prompt = _normalize(initial_prompt)
+    # 完全相等，或转写是提示词的子串（模型常只复读提示的后半段）
+    return norm_text == norm_prompt or (len(norm_text) >= 4 and norm_text in norm_prompt)
+
+
 async def _check_auth(authorization: str | None = Header(default=None)) -> None:
     """ASR_API_KEY 非空时要求 Bearer 认证；未配置则放行（本地/内网部署）。"""
     if API_KEY and authorization != f"Bearer {API_KEY}":
@@ -115,7 +138,7 @@ async def transcribe(req: TranscribeRequest) -> TranscribeResponse:
                 start=round(seg.start, 3), end=round(seg.end, 3), text=seg.text.strip()
             )
             for seg in segments_iter
-            if seg.text.strip()
+            if seg.text.strip() and not _is_prompt_echo(seg.text, initial_prompt)
         ]
     except Exception as exc:  # noqa: BLE001 - 解码失败（不支持的格式/损坏字节）→ 422
         raise HTTPException(
