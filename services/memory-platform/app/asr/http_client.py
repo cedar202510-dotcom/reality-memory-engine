@@ -15,10 +15,13 @@ Sidecar 契约（简洁 JSON，base64 传音频）：
 from __future__ import annotations
 
 import base64
+import logging
 
 import httpx
 
 from .base import TranscriptSegment
+
+logger = logging.getLogger(__name__)
 
 
 class HTTPTranscriber:
@@ -63,7 +66,21 @@ class HTTPTranscriber:
                 data = resp.json()
             segments = data.get("segments")
             if not isinstance(segments, list):
+                logger.warning(
+                    "ASR sidecar 响应里没有 segments 列表：keys=%s", list(data)[:8]
+                )
                 return None
             return [TranscriptSegment.model_validate(seg) for seg in segments]
-        except Exception:  # noqa: BLE001 - 网络/超时/契约问题一律降级
+        except Exception as exc:  # noqa: BLE001 - 网络/超时/契约问题一律降级
+            # 降级本身是对的（语音挂了不该阻塞整条流水线），但静默降级不对：
+            # 上游只看得到 audit 里一句 asr_unavailable，分不出「sidecar 没起」
+            # 「超时」还是「契约变了」，只能靠手工复现去猜。这行日志是唯一的线索。
+            logger.warning(
+                "ASR sidecar 调用失败，降级为无转写：%s: %s (url=%s, media_kind=%s, bytes=%d)",
+                type(exc).__name__,
+                exc,
+                f"{self._base_url}/transcribe",
+                media_kind,
+                len(audio_bytes),
+            )
             return None

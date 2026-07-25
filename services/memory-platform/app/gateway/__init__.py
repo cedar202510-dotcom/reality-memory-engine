@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..db import get_session
+from ..media import normalize_image
 from ..models import (
     AuditRecord,
     EvidenceItem,
@@ -213,18 +214,33 @@ async def _ingest_envelope(
     is_image = env.modality == "image"
     item_ids: list = []
     dup_ids: list = []
+    n_converted = 0
     for f in files:
         data = await f.read()
         if not data:
             continue
+        file_name = f.filename
         if is_image:
+            # HEIC/HEIF 在入库边界就转成 JPEG：落盘之后 phash/VLM/CLIP/前端四个消费者
+            # 各自解码，漏一个就是一种沉默的坏法（详见 app/media/images.py）。
+            normalized = normalize_image(
+                data,
+                filename=file_name,
+                jpeg_quality=settings.image_normalize_jpeg_quality,
+                max_side=settings.image_normalize_max_side,
+            )
+            data = normalized.data
+            file_name = normalized.filename
+            n_converted += 1 if normalized.converted else 0
+        if is_image and normalized.decodable:
             phash = compute_phash(data)
             match = next(
                 (e for e in recent if hamming_distance(phash, e.phash or 0) <= settings.phash_hamming_threshold),
                 None,
             )
         else:
-            # 音频、视频和传感器用内容摘要做精确去重（v0 暂复用 phash 列）。
+            # 音频、视频、传感器，以及解不开的「图片」：用内容摘要做精确去重
+            # （v0 暂复用 phash 列）。坏图不能让整个信封 500，证据先留住。
             phash = int.from_bytes(hashlib.sha256(data).digest()[:8], "big", signed=True)
             match = next((e for e in recent if e.phash == phash), None)
         if match is not None:
@@ -248,13 +264,17 @@ async def _ingest_envelope(
             "video": "video.mp4",
             "sensor": "sensor.ndjson",
         }.get(env.modality, "evidence.bin")
-        safe_name = Path(f.filename or default_name).name.replace("/", "_")
+        safe_name = Path(file_name or default_name).name.replace("/", "_")
         path = evidence_dir / f"{item.id}-{safe_name}"
         path.write_bytes(data)
         item.storage_ref = str(path)
         item_ids.append(item.id)
-        # 目前只有图片和音频有解析器；视频/传感器先可靠落盘，不误投图片解析器。
-        topic = {"image": "frame.process", "audio": "audio.process"}.get(env.modality)
+        # 传感器仍然只可靠落盘（没有解析器）；视频由 video.process 拆成关键帧+音轨。
+        topic = {
+            "image": "frame.process",
+            "audio": "audio.process",
+            "video": "video.process",
+        }.get(env.modality)
         if topic is not None:
             session.add(OutboxEvent(topic=topic, payload={"evidence_item_id": str(item.id)}))
 
@@ -263,7 +283,12 @@ async def _ingest_envelope(
             actor=f"device:{env.device_id}" if env.device_id else "device:unknown",
             action="ingest",
             target=f"envelope:{env.id}",
-            detail={"n_files": len(item_ids), "n_duplicates": len(dup_ids), "trigger": env.trigger},
+            detail={
+                "n_files": len(item_ids),
+                "n_duplicates": len(dup_ids),
+                "n_normalized": n_converted,
+                "trigger": env.trigger,
+            },
         )
     )
     await session.commit()

@@ -16,6 +16,7 @@
         android:allowBackup="false"
         android:label="Reality Glass Probe"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="${usesCleartextTraffic}"
         android:theme="@style/AppTheme">
         <!-- singleTop：App 已在前台时，am start 带 capture_once 这类 extra 才会走
              onNewIntent。默认的 standard 模式下这条调试指令会被系统静默丢弃，

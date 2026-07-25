@@ -9,7 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
     "@vitejs/plugin-react": "latest",
+    "framer-motion": "^12.42.2",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
