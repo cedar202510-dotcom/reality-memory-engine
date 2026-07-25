@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reality Agent 首页概念 v0.3</title>
+  <style>
+    :root {
+      --bg: #edf1ee;
+      --ink: #f1fff4;
+      --dim: rgba(241,255,244,.68);
+      --soft: rgba(241,255,244,.42);
+      --deep: #0d1914;
+      --deep-2: #172920;
+      --green: #7ee6a4;
+      --aqua: #76d9cb;
+      --warm: #d4a365;
+      --shadow: 0 34px 92px rgba(13,25,20,.36);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      letter-spacing: 0;
+      font-synthesis: none;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 18% 12%, rgba(126,230,164,.16), transparent 28%),
+        radial-gradient(circle at 86% 18%, rgba(118,217,203,.12), transparent 30%),
+        linear-gradient(180deg, #fafbf7 0%, var(--bg) 52%, #dfe8e1 100%);
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+    }
+
+    .stage {
+      width: min(1240px, 100%);
+      padding: 28px clamp(14px, 4vw, 48px) 48px;
+      display: grid;
+      grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
+      gap: clamp(24px, 5vw, 58px);
+      align-items: center;
+    }
+
+    .phone {
+      width: min(430px, 100%);
+      margin: 0 auto;
+      aspect-ratio: 390 / 844;
+      padding: 10px;
+      border-radius: 38px;
+      background: #101612;
+      box-shadow: var(--shadow);
+    }
+
+    .screen {
+      position: relative;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 30px;
+      background:
+        radial-gradient(circle at 50% 38%, rgba(126,230,164,.24), transparent 20%),
+        radial-gradient(circle at 70% 64%, rgba(118,217,203,.18), transparent 24%),
+        radial-gradient(circle at 28% 82%, rgba(212,163,101,.11), transparent 26%),
+        linear-gradient(152deg, #0c1813 0%, #182c22 54%, #0f1c17 100%);
+    }
+
+    .status {
+      height: 36px;
+      padding: 10px 18px 0;
+      display: flex;
+      justify-content: space-between;
+      position: relative;
+      z-index: 5;
+      color: rgba(241,255,244,.74);
+      font-size: 11px;
+      font-weight: 760;
+    }
+
+    .light {
+      position: absolute;
+      width: 280px;
+      height: 280px;
+      border-radius: 45% 55% 52% 48%;
+      filter: blur(13px);
+      opacity: .58;
+      mix-blend-mode: screen;
+      animation: drift 12s ease-in-out infinite alternate;
+    }
+
+    .light.one {
+      left: -68px;
+      top: 132px;
+      background: radial-gradient(circle, rgba(126,230,164,.76), transparent 64%);
+    }
+
+    .light.two {
+      right: -84px;
+      top: 210px;
+      background: radial-gradient(circle, rgba(118,217,203,.54), transparent 66%);
+      animation-delay: -3.2s;
+    }
+
+    .light.three {
+      left: 68px;
+      bottom: 38px;
+      background: radial-gradient(circle, rgba(212,163,101,.28), transparent 66%);
+      animation-delay: -6.2s;
+    }
+
+    @keyframes drift {
+      0% { transform: translate3d(-8px, 10px, 0) rotate(0deg) scale(.96); }
+      100% { transform: translate3d(18px, -18px, 0) rotate(18deg) scale(1.08); }
+    }
+
+    .top-copy {
+      position: relative;
+      z-index: 4;
+      padding: 22px 24px 0;
+    }
+
+    .product {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 36px;
+    }
+
+    .product-name {
+      display: block;
+      font-size: 13px;
+      font-weight: 720;
+      color: rgba(241,255,244,.76);
+    }
+
+    .live {
+      min-height: 28px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.11);
+      color: rgba(241,255,244,.78);
+      font-size: 11px;
+      font-weight: 720;
+    }
+
+    .live i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 6px rgba(126,230,164,.12);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 42px;
+      line-height: 1.02;
+      font-weight: 760;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 12px 0 0;
+      max-width: 300px;
+      color: var(--dim);
+      font-size: 13px;
+      line-height: 1.68;
+    }
+
+    .presence {
+      position: absolute;
+      left: 50%;
+      top: 44%;
+      width: 202px;
+      height: 202px;
+      transform: translate(-50%, -50%);
+    }
+
+    .presence-ring {
+      position: absolute;
+      inset: 0;
+      border: 1px solid rgba(241,255,244,.18);
+      border-radius: 50%;
+      animation: breathe 4.6s ease-in-out infinite;
+    }
+
+    .presence-ring.two {
+      inset: 31px;
+      animation-delay: .5s;
+    }
+
+    .presence-ring.three {
+      inset: 62px;
+      border-color: rgba(126,230,164,.3);
+      animation-delay: 1s;
+    }
+
+    @keyframes breathe {
+      0%, 100% { opacity: .34; transform: scale(.94); }
+      50% { opacity: .95; transform: scale(1.07); }
+    }
+
+    .presence-core {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 82px;
+      height: 82px;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 44% 38%, rgba(255,255,255,.68), transparent 11%),
+        radial-gradient(circle, rgba(126,230,164,.24), rgba(241,255,244,.08) 58%, transparent 62%);
+      border: 1px solid rgba(241,255,244,.24);
+      box-shadow:
+        0 0 36px rgba(126,230,164,.24),
+        inset 0 0 32px rgba(241,255,244,.08);
+      backdrop-filter: blur(12px);
+    }
+
+    .presence-core::before,
+    .presence-core::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+    }
+
+    .presence-core::before {
+      width: 32px;
+      height: 32px;
+      left: 17px;
+      top: 18px;
+      border: 1px solid rgba(241,255,244,.5);
+      border-right-color: transparent;
+      border-bottom-color: transparent;
+      transform: rotate(-22deg);
+    }
+
+    .presence-core::after {
+      right: 20px;
+      bottom: 20px;
+      width: 9px;
+      height: 9px;
+      background: var(--green);
+      box-shadow: 0 0 18px rgba(126,230,164,.74);
+    }
+
+    .state-line {
+      position: absolute;
+      left: 28px;
+      right: 28px;
+      bottom: 146px;
+      z-index: 4;
+      text-align: center;
+    }
+
+    .state-line b,
+    .state-line span {
+      display: block;
+    }
+
+    .state-line b {
+      font-size: 17px;
+      line-height: 1.35;
+      font-weight: 680;
+    }
+
+    .state-line span {
+      margin-top: 7px;
+      color: var(--dim);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .voice-panel {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 22px;
+      z-index: 5;
+      display: grid;
+      gap: 10px;
+    }
+
+    .primary-voice {
+      min-height: 64px;
+      display: grid;
+      grid-template-columns: 46px minmax(0, 1fr);
+      align-items: center;
+      gap: 12px;
+      padding: 9px 14px 9px 9px;
+      border: 0;
+      border-radius: 21px;
+      background: rgba(247,255,249,.94);
+      color: #12221b;
+      text-align: left;
+      box-shadow: 0 18px 52px rgba(0,0,0,.24);
+    }
+
+    .mic {
+      width: 46px;
+      height: 46px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: #12221b;
+    }
+
+    .mic::before {
+      content: "";
+      width: 13px;
+      height: 20px;
+      border: 2px solid rgba(247,255,249,.94);
+      border-radius: 999px;
+    }
+
+    .mic::after {
+      content: "";
+      position: absolute;
+      width: 18px;
+      height: 10px;
+      border-bottom: 2px solid rgba(247,255,249,.94);
+      border-radius: 0 0 999px 999px;
+      transform: translateY(8px);
+    }
+
+    .primary-voice b,
+    .primary-voice span {
+      display: block;
+    }
+
+    .primary-voice b {
+      font-size: 14px;
+      font-weight: 720;
+    }
+
+    .primary-voice span {
+      margin-top: 4px;
+      color: #637068;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .secondary-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .secondary-actions button {
+      min-height: 42px;
+      border: 1px solid rgba(241,255,244,.13);
+      border-radius: 15px;
+      background: rgba(255,255,255,.08);
+      color: rgba(241,255,244,.76);
+      font-size: 12px;
+      font-weight: 680;
+      backdrop-filter: blur(12px);
+    }
+
+    .notes {
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      padding: 22px;
+      border: 1px solid rgba(17,29,24,.12);
+      border-radius: 24px;
+      background: rgba(255,255,255,.72);
+      color: #111d18;
+      box-shadow: 0 24px 78px rgba(17,29,24,.12);
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.22;
+    }
+
+    .card p {
+      margin: 9px 0 0;
+      color: #647168;
+      font-size: 14px;
+      line-height: 1.72;
+    }
+
+    .rules {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .rule {
+      min-height: 112px;
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(247,249,245,.9);
+      border: 1px solid rgba(17,29,24,.08);
+    }
+
+    .rule b,
+    .rule span {
+      display: block;
+    }
+
+    .rule b {
+      font-size: 13px;
+    }
+
+    .rule span {
+      margin-top: 7px;
+      color: #647168;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    @media (max-width: 980px) {
+      .stage {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .stage {
+        padding: 18px 12px 36px;
+      }
+
+      .phone {
+        padding: 8px;
+        border-radius: 30px;
+      }
+
+      .screen {
+        border-radius: 24px;
+      }
+
+      .rules {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <section class="phone" aria-label="Agent 首页概念">
+      <div class="screen">
+        <div class="light one"></div>
+        <div class="light two"></div>
+        <div class="light three"></div>
+        <div class="status"><span>9:41</span><span>Reality</span></div>
+
+        <div class="top-copy">
+          <div class="product">
+            <span class="product-name">Reality</span>
+            <span class="live"><i></i> 感知中</span>
+          </div>
+          <h1>在场</h1>
+          <p class="subtitle">你看到的现实，它也在理解。物品、行动和偏好会在需要时被唤起。</p>
+        </div>
+
+        <div class="presence" aria-hidden="true">
+          <i class="presence-ring"></i>
+          <i class="presence-ring two"></i>
+          <i class="presence-ring three"></i>
+          <div class="presence-core"></div>
+        </div>
+
+        <div class="state-line">
+          <b>正在整理今天的现实上下文</b>
+          <span>没有重要变化时，它保持安静；你也可以直接问。</span>
+        </div>
+
+        <div class="voice-panel">
+          <button class="primary-voice">
+            <i class="mic"></i>
+            <span><b>按住说话</b><span>问它：充电器在哪里？今天有什么要留意？</span></span>
+          </button>
+          <div class="secondary-actions">
+            <button>输入文字</button>
+            <button>看看今天</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside class="notes">
+      <article class="card">
+        <h2>这版先解决三个问题。</h2>
+        <p>中心不再放“在”这个字，避免像一句话或 Logo。页面标题保留“在场”，但下面立刻解释它的含义：你看到的现实，它也在理解。Agent 形象改成抽象的 presence glyph，像一个有观察能力的小小生命体，但不拟人。</p>
+      </article>
+
+      <article class="card">
+        <h2>交互排版要有意义。</h2>
+        <p>底部不再出现“声”这种含义不清的文字，而是一个明确的麦克风形态。主按钮只承担一件事：按住说话。文字输入和“看看今天”是次级动作，不和语音入口抢位置。</p>
+        <div class="rules">
+          <div class="rule"><b>标题</b><span>“在场”可以作为产品气质，但必须配一句解释，否则用户不知道它是什么。</span></div>
+          <div class="rule"><b>形象</b><span>不放文字，不放头像，不做机器人。用光、环、核心和小亮点表达理解现实。</span></div>
+          <div class="rule"><b>状态</b><span>页面告诉用户它正在整理上下文，不夸张承诺“全知全能”。</span></div>
+          <div class="rule"><b>动作</b><span>主动作是语音，次动作是输入文字和查看今天，层级清楚。</span></div>
+        </div>
+      </article>
+    </aside>
+  </main>
+</body>
+</html>

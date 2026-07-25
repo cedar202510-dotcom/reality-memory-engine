@@ -63,3 +63,5 @@ feishu-auth-qr*.png
 data/
 # ASR sidecar 本地模型缓存（运行时下载，不入库）
 services/asr-sidecar/models/
+# Local Feishu media used for analysis only
+.feishu-media/

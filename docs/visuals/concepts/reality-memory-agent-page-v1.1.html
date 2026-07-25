@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reality Agent 首页对话概念 v1.1</title>
+  <style>
+    :root {
+      --page: #edf1ee;
+      --ink: #f2fff5;
+      --muted: rgba(242,255,245,.62);
+      --green: #56eb8e;
+      --aqua: #4eb2cc;
+      --warm: #da924b;
+      --bar: rgba(248,255,250,.13);
+      --bar-line: rgba(248,255,250,.18);
+      --shadow: 0 34px 92px rgba(14,29,23,.34);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      letter-spacing: 0;
+      font-synthesis: none;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 16% 12%, rgba(86,235,142,.15), transparent 30%),
+        radial-gradient(circle at 84% 18%, rgba(78,178,204,.11), transparent 29%),
+        linear-gradient(180deg, #fbfbf7 0%, var(--page) 54%, #dfe8e1 100%);
+    }
+
+    button { font: inherit; color: inherit; cursor: pointer; }
+
+    .stage {
+      width: min(1240px, 100%);
+      padding: 28px clamp(14px, 4vw, 48px) 48px;
+      display: grid;
+      grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
+      gap: clamp(24px, 5vw, 58px);
+      align-items: center;
+    }
+
+    .phone {
+      width: min(430px, 100%);
+      margin: 0 auto;
+      aspect-ratio: 390 / 844;
+      padding: 10px;
+      border-radius: 38px;
+      background: #101612;
+      box-shadow: var(--shadow);
+    }
+
+    .screen {
+      position: relative;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 30px;
+      background:
+        radial-gradient(circle at 45% 38%, rgba(97,226,148,.34), transparent 18%),
+        radial-gradient(circle at 66% 61%, rgba(96,180,200,.22), transparent 24%),
+        radial-gradient(circle at 35% 74%, rgba(193,131,67,.16), transparent 24%),
+        linear-gradient(150deg, #0e1d17 0%, #203a30 52%, #101b17 100%);
+    }
+
+    .status {
+      position: relative;
+      z-index: 5;
+      height: 36px;
+      padding: 10px 18px 0;
+      display: flex;
+      justify-content: space-between;
+      color: rgba(248,255,250,.78);
+      font-size: 11px;
+      font-weight: 760;
+      text-shadow: 0 1px 12px rgba(0,0,0,.32);
+    }
+
+    .top {
+      position: relative;
+      z-index: 4;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 24px 24px 0;
+    }
+
+    .brand b,
+    .brand span { display: block; }
+
+    .brand b {
+      font-size: 22px;
+      line-height: 1;
+      font-weight: 760;
+    }
+
+    .brand span {
+      max-width: 250px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .enabled {
+      width: 28px;
+      height: 28px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(248,255,250,.14);
+      border-radius: 50%;
+      background: rgba(255,255,255,.08);
+      backdrop-filter: blur(12px);
+    }
+
+    .enabled::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 6px rgba(86,235,142,.11), 0 0 18px rgba(86,235,142,.55);
+    }
+
+    .light-field {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    .beam {
+      position: absolute;
+      width: 280px;
+      height: 280px;
+      border-radius: 45% 55% 52% 48%;
+      filter: blur(10px);
+      opacity: .58;
+      mix-blend-mode: screen;
+      animation: drift 12s ease-in-out infinite alternate;
+    }
+
+    .beam.one {
+      left: -60px;
+      top: 110px;
+      background: radial-gradient(circle, rgba(86,235,142,.72), transparent 64%);
+    }
+
+    .beam.two {
+      right: -80px;
+      top: 190px;
+      background: radial-gradient(circle, rgba(78,178,204,.58), transparent 66%);
+      animation-delay: -3s;
+    }
+
+    .beam.three {
+      left: 70px;
+      bottom: 18px;
+      background: radial-gradient(circle, rgba(218,146,75,.36), transparent 66%);
+      animation-delay: -6s;
+    }
+
+    @keyframes drift {
+      0% { transform: translate3d(-8px, 10px, 0) rotate(0deg) scale(.95); }
+      100% { transform: translate3d(16px, -18px, 0) rotate(18deg) scale(1.08); }
+    }
+
+    .orb-wrap {
+      position: absolute;
+      left: 50%;
+      top: 43%;
+      width: 110px;
+      height: 110px;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      animation: tremble 5.4s ease-in-out infinite;
+    }
+
+    .orb-wrap::before,
+    .orb-wrap::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border-radius: 49% 51% 52% 48%;
+      border: 1px solid rgba(255,255,255,.18);
+      background: radial-gradient(circle, rgba(255,255,255,.08), transparent 66%);
+      filter: blur(1.2px);
+      opacity: .68;
+      animation: edgeWave 4.8s ease-in-out infinite;
+    }
+
+    .orb-wrap::after {
+      inset: -10px;
+      border-color: rgba(86,235,142,.12);
+      opacity: .38;
+      animation-delay: -1.6s;
+    }
+
+    .orb {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 52% 56%, rgba(86,235,142,.25), transparent 40%),
+        radial-gradient(circle, rgba(255,255,255,.14), rgba(255,255,255,.07) 54%, rgba(255,255,255,.035) 74%, transparent 78%);
+      box-shadow:
+        0 0 42px rgba(94,231,145,.3),
+        inset 0 0 34px rgba(255,255,255,.11);
+      backdrop-filter: blur(12px);
+      animation: orbBreath 4.7s ease-in-out infinite;
+    }
+
+    @keyframes tremble {
+      0%, 100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+      25% { transform: translate(calc(-50% + 1px), calc(-50% - 1px)) scale(1.012) rotate(.8deg); }
+      50% { transform: translate(calc(-50% - 1px), calc(-50% + .5px)) scale(.992) rotate(-.6deg); }
+      75% { transform: translate(calc(-50% + .5px), calc(-50% + 1px)) scale(1.006) rotate(.4deg); }
+    }
+
+    @keyframes edgeWave {
+      0%, 100% { transform: scale(.985) rotate(0deg); border-radius: 49% 51% 52% 48%; opacity: .5; }
+      50% { transform: scale(1.035) rotate(7deg); border-radius: 54% 46% 49% 51%; opacity: .82; }
+    }
+
+    @keyframes orbBreath {
+      0%, 100% { opacity: .93; transform: scale(.99); }
+      50% { opacity: 1; transform: scale(1.025); }
+    }
+
+    .ring {
+      position: absolute;
+      left: 50%;
+      top: 43%;
+      border: 1px solid rgba(255,255,255,.13);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      animation: pulse 4.8s ease-in-out infinite;
+    }
+
+    .ring.r1 { width: 176px; height: 176px; }
+    .ring.r2 { width: 242px; height: 242px; animation-delay: .65s; }
+    .ring.r3 { width: 306px; height: 306px; animation-delay: 1.3s; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: .24; transform: translate(-50%, -50%) scale(.97); }
+      50% { opacity: .62; transform: translate(-50%, -50%) scale(1.035); }
+    }
+
+    .hint {
+      position: absolute;
+      left: 26px;
+      right: 26px;
+      bottom: 182px;
+      z-index: 5;
+      min-height: 24px;
+      text-align: center;
+      color: rgba(248,255,250,.82);
+      font-size: 13px;
+      font-weight: 690;
+    }
+
+    .dialogue {
+      position: absolute;
+      left: 22px;
+      right: 22px;
+      top: 315px;
+      bottom: 98px;
+      z-index: 6;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 9px;
+      pointer-events: none;
+    }
+
+    .bubble {
+      max-width: 82%;
+      padding: 10px 12px;
+      border-radius: 17px;
+      backdrop-filter: blur(18px);
+      box-shadow: 0 12px 34px rgba(0,0,0,.14);
+      font-size: 12px;
+      line-height: 1.45;
+      opacity: 0;
+      animation-duration: .46s;
+      animation-fill-mode: forwards;
+      animation-timing-function: cubic-bezier(.2,.8,.2,1);
+    }
+
+    .bubble.agent {
+      align-self: flex-start;
+      background: rgba(248,255,250,.14);
+      border: 1px solid rgba(248,255,250,.15);
+      color: rgba(248,255,250,.9);
+      animation-name: agentDrop;
+    }
+
+    .bubble.user {
+      align-self: flex-end;
+      background: rgba(248,255,250,.9);
+      color: #13221c;
+      animation-name: userRise;
+    }
+
+    .bubble.thinking {
+      width: 58px;
+      min-height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+
+    .bubble.thinking i {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: .5;
+      animation: thinking 1s ease-in-out infinite;
+    }
+
+    .bubble.thinking i:nth-child(2) { animation-delay: .15s; }
+    .bubble.thinking i:nth-child(3) { animation-delay: .3s; }
+
+    @keyframes agentDrop {
+      from { opacity: 0; transform: translateY(-16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes userRise {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes thinking {
+      0%, 100% { opacity: .28; transform: translateY(0); }
+      50% { opacity: 1; transform: translateY(-3px); }
+    }
+
+    .composer {
+      position: absolute;
+      left: 50%;
+      bottom: 28px;
+      z-index: 5;
+      width: min(304px, calc(100% - 58px));
+      height: 54px;
+      transform: translateX(-50%);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 44px;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .voice {
+      height: 54px;
+      border: 1px solid var(--bar-line);
+      border-radius: 19px;
+      background: var(--bar);
+      color: rgba(248,255,250,.88);
+      font-size: 15px;
+      font-weight: 720;
+      backdrop-filter: blur(18px);
+      box-shadow: 0 14px 38px rgba(0,0,0,.16), inset 0 0 0 1px rgba(255,255,255,.03);
+    }
+
+    .voice.listening {
+      background: rgba(86,235,142,.18);
+      border-color: rgba(86,235,142,.32);
+    }
+
+    .keyboard-toggle {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(248,255,250,.16);
+      border-radius: 50%;
+      background: rgba(248,255,250,.1);
+      color: rgba(248,255,250,.84);
+      backdrop-filter: blur(14px);
+    }
+
+    .keyboard-icon {
+      width: 21px;
+      height: 17px;
+      display: grid;
+      grid-template-columns: repeat(4, 3px);
+      grid-template-rows: repeat(3, 3px);
+      gap: 3px;
+      justify-content: center;
+      align-content: center;
+      border: 1.8px solid currentColor;
+      border-radius: 4px;
+      padding: 3px;
+    }
+
+    .keyboard-icon i {
+      width: 3px;
+      height: 3px;
+      border-radius: 1px;
+      background: currentColor;
+    }
+
+    .notes {
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      padding: 22px;
+      border: 1px solid rgba(17,29,24,.12);
+      border-radius: 24px;
+      background: rgba(255,255,255,.72);
+      color: #111d18;
+      box-shadow: 0 24px 78px rgba(17,29,24,.12);
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.22;
+    }
+
+    .card p {
+      margin: 9px 0 0;
+      color: #647168;
+      font-size: 14px;
+      line-height: 1.72;
+    }
+
+    .fixes {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .fix {
+      min-height: 112px;
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(247,249,245,.9);
+      border: 1px solid rgba(17,29,24,.08);
+    }
+
+    .fix b,
+    .fix span {
+      display: block;
+    }
+
+    .fix b { font-size: 13px; }
+
+    .fix span {
+      margin-top: 7px;
+      color: #647168;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    @media (max-width: 980px) {
+      .stage { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 680px) {
+      .stage { padding: 18px 12px 36px; }
+      .phone { padding: 8px; border-radius: 30px; }
+      .screen { border-radius: 24px; }
+      .fixes { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <section class="phone" aria-label="Agent 首页对话概念 v1.1">
+      <div class="screen">
+        <div class="light-field" aria-hidden="true">
+          <i class="beam one"></i>
+          <i class="beam two"></i>
+          <i class="beam three"></i>
+          <i class="ring r1"></i>
+          <i class="ring r2"></i>
+          <i class="ring r3"></i>
+          <span class="orb-wrap"><i class="orb"></i></span>
+        </div>
+
+        <div class="status"><span>9:41</span><span>Reality</span></div>
+
+        <header class="top">
+          <div class="brand">
+            <b>在场</b>
+            <span>随时待命的现实记忆 Agent。</span>
+          </div>
+          <i class="enabled" aria-label="已开启"></i>
+        </header>
+
+        <div class="dialogue" id="dialogue" aria-live="polite">
+          <div class="bubble agent">我在。你可以直接问现实里的事。</div>
+        </div>
+
+        <div class="hint" id="hint">2 条线索待确认</div>
+
+        <div class="composer" role="group" aria-label="语音输入">
+          <button class="voice" id="voiceButton">轻点说话</button>
+          <button class="keyboard-toggle" aria-label="切换文字输入">
+            <span class="keyboard-icon" aria-hidden="true">
+              <i></i><i></i><i></i><i></i>
+              <i></i><i></i><i></i><i></i>
+              <i></i><i></i><i></i><i></i>
+            </span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="notes">
+      <article class="card">
+        <h2>v1.1 模拟同页对话</h2>
+        <p>不再要求按住说话。点击语音条后，用户消息从下往上出现，Agent 回复从上往下进入。它不跳新页面，仍然发生在 Agent 首页里。</p>
+      </article>
+      <article class="card">
+        <h2>对话行为</h2>
+        <p>默认保留上一条 Agent 状态。用户轻点说话后，先出现用户句子，再短暂显示思考点，最后回复现实记忆答案。气泡会短暂停留，避免把首页变成完整聊天软件。</p>
+        <div class="fixes">
+          <div class="fix"><b>入口</b><span>点击即可说话，不再是长按语音条。</span></div>
+          <div class="fix"><b>用户</b><span>消息从底部向上进入，表示用户发出问题。</span></div>
+          <div class="fix"><b>Agent</b><span>回复从上方落下，和光球位置形成关系。</span></div>
+          <div class="fix"><b>边界</b><span>同页短回复，不做完整聊天会话页。</span></div>
+        </div>
+      </article>
+    </aside>
+  </main>
+  <script>
+    const voiceButton = document.getElementById("voiceButton");
+    const dialogue = document.getElementById("dialogue");
+    const hint = document.getElementById("hint");
+
+    const demos = [
+      {
+        user: "充电器在哪里？",
+        agent: "最后一次确认在客厅工作桌下方。今天 10:18 之后没有新的移动记录。"
+      },
+      {
+        user: "今天有什么要留意？",
+        agent: "有两条线索：纸巾可能快用完；午餐那家胡辣汤有一条偏好候选，等你确认。"
+      },
+      {
+        user: "这家外卖我喜欢吗？",
+        agent: "你中午说过“不好喝”。我还不能确定是这家店、这个商品，还是这一次体验。"
+      }
+    ];
+
+    let demoIndex = 0;
+    let busy = false;
+
+    function addBubble(kind, text, extraClass = "") {
+      const bubble = document.createElement("div");
+      bubble.className = `bubble ${kind} ${extraClass}`.trim();
+      bubble.innerHTML = text;
+      dialogue.appendChild(bubble);
+      while (dialogue.children.length > 3) {
+        dialogue.removeChild(dialogue.firstElementChild);
+      }
+      return bubble;
+    }
+
+    function runDemo() {
+      if (busy) return;
+      busy = true;
+      const current = demos[demoIndex % demos.length];
+      demoIndex += 1;
+      hint.style.opacity = "0";
+      voiceButton.classList.add("listening");
+      voiceButton.textContent = "正在听";
+
+      setTimeout(() => {
+        addBubble("user", current.user);
+        voiceButton.classList.remove("listening");
+        voiceButton.textContent = "轻点说话";
+      }, 520);
+
+      let thinking;
+      setTimeout(() => {
+        thinking = addBubble("agent", "<i></i><i></i><i></i>", "thinking");
+      }, 1150);
+
+      setTimeout(() => {
+        thinking?.remove();
+        addBubble("agent", current.agent);
+        hint.textContent = "继续问，或切换文字输入";
+        hint.style.opacity = "1";
+        busy = false;
+      }, 2200);
+    }
+
+    voiceButton.addEventListener("click", runDemo);
+  </script>
+</body>
+</html>

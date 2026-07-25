@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reality 手机 App 无底部导航探索 v0.1</title>
+  <style>
+    :root {
+      --bg: #f1f3ef;
+      --ink: #17201b;
+      --muted: #66716b;
+      --line: rgba(23, 32, 27, .12);
+      --surface: rgba(255,255,255,.78);
+      --deep: #13221c;
+      --green: #2f7b56;
+      --blue: #456f8b;
+      --amber: #a56a30;
+      --violet: #675991;
+      --shadow: 0 22px 70px rgba(23, 32, 27, .14);
+      --phone: 0 34px 88px rgba(28, 35, 31, .28);
+      --radius: 8px;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      letter-spacing: 0;
+      font-synthesis: none;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 18% 8%, rgba(47,123,86,.16), transparent 30%),
+        radial-gradient(circle at 90% 20%, rgba(69,111,139,.13), transparent 28%),
+        linear-gradient(180deg, #fafaf6 0%, var(--bg) 48%, #e5ebe5 100%);
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+    }
+
+    .page {
+      width: min(1360px, 100%);
+      margin: 0 auto;
+      padding: 28px clamp(14px, 4vw, 48px) 52px;
+    }
+
+    .intro {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 420px);
+      gap: 30px;
+      align-items: end;
+      margin-bottom: 28px;
+    }
+
+    .eyebrow {
+      margin: 0 0 9px;
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      max-width: 860px;
+      font-size: clamp(30px, 4vw, 54px);
+      line-height: 1.04;
+      font-weight: 720;
+    }
+
+    .lead {
+      max-width: 780px;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.75;
+    }
+
+    .answer {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,.7);
+      box-shadow: var(--shadow);
+    }
+
+    .answer b {
+      display: block;
+      font-size: 15px;
+    }
+
+    .answer span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(280px, 1fr));
+      gap: 22px;
+      align-items: start;
+    }
+
+    .option {
+      display: grid;
+      gap: 14px;
+    }
+
+    .option-copy {
+      min-height: 158px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,.72);
+      box-shadow: 0 14px 44px rgba(23, 32, 27, .09);
+    }
+
+    .option-copy h2 {
+      font-size: 20px;
+      line-height: 1.2;
+    }
+
+    .option-copy p {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .phone {
+      width: min(390px, 100%);
+      margin: 0 auto;
+      aspect-ratio: 390 / 844;
+      padding: 10px;
+      border-radius: 34px;
+      background: #111714;
+      box-shadow: var(--phone);
+    }
+
+    .screen {
+      position: relative;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 26px;
+      background: #f8faf6;
+    }
+
+    .status {
+      height: 36px;
+      padding: 10px 18px 0;
+      display: flex;
+      justify-content: space-between;
+      color: rgba(23,32,27,.72);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .screen-body {
+      height: calc(100% - 36px);
+      padding: 18px;
+      overflow: hidden;
+    }
+
+    .brand {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .brand b {
+      display: block;
+      font-size: 17px;
+    }
+
+    .brand span {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .small-pill {
+      min-height: 28px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: rgba(47,123,86,.1);
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .orb-stage {
+      position: relative;
+      height: 430px;
+      margin-top: 8px;
+      overflow: hidden;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 50% 47%, rgba(47,123,86,.22), transparent 22%),
+        linear-gradient(145deg, #17241e, #2a3c33);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+    }
+
+    .main-orb {
+      position: absolute;
+      left: 50%;
+      top: 47%;
+      width: 104px;
+      height: 104px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(231,249,237,.16);
+      color: #eef8f0;
+      border: 1px solid rgba(231,249,237,.2);
+      font-size: 24px;
+      font-weight: 760;
+    }
+
+    .orbit {
+      position: absolute;
+      left: 50%;
+      top: 47%;
+      border: 1px solid rgba(231,249,237,.14);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .orbit.o1 { width: 198px; height: 198px; }
+    .orbit.o2 { width: 310px; height: 310px; }
+
+    .planet {
+      position: absolute;
+      width: 68px;
+      height: 68px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(231,249,237,.2);
+      border-radius: 50%;
+      background: rgba(255,255,255,.11);
+      color: #eef8f0;
+      text-align: center;
+      font-size: 11px;
+      backdrop-filter: blur(14px);
+    }
+
+    .planet.one { left: 38px; top: 72px; }
+    .planet.two { right: 34px; top: 86px; }
+    .planet.three { left: 42px; bottom: 86px; }
+    .planet.four { right: 44px; bottom: 76px; }
+    .planet.five { left: 50%; bottom: 22px; transform: translateX(-50%); }
+
+    .voice-chip {
+      position: absolute;
+      left: 22px;
+      right: 22px;
+      bottom: 22px;
+      min-height: 58px;
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      padding: 8px 12px 8px 8px;
+      border: 0;
+      border-radius: 18px;
+      background: rgba(248,255,250,.94);
+      text-align: left;
+      box-shadow: 0 18px 44px rgba(0,0,0,.18);
+    }
+
+    .voice-chip i {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--deep);
+      color: #eef8f0;
+      font-style: normal;
+    }
+
+    .voice-chip b,
+    .voice-chip span {
+      display: block;
+    }
+
+    .voice-chip b {
+      font-size: 13px;
+    }
+
+    .voice-chip span {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .hero-card {
+      min-height: 206px;
+      padding: 20px;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 78% 20%, rgba(255,255,255,.22), transparent 24%),
+        linear-gradient(145deg, #17241e, #2e4b3d);
+      color: #f0faf2;
+      box-shadow: 0 18px 44px rgba(22,37,31,.2);
+    }
+
+    .hero-card span {
+      color: rgba(240,250,242,.68);
+      font-size: 11px;
+    }
+
+    .hero-card h3 {
+      margin-top: 32px;
+      max-width: 260px;
+      font-size: 25px;
+      line-height: 1.18;
+    }
+
+    .hero-card p {
+      margin-top: 10px;
+      max-width: 270px;
+      color: rgba(240,250,242,.72);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .row-card {
+      min-height: 86px;
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,.8);
+      box-shadow: 0 8px 24px rgba(23,32,27,.06);
+    }
+
+    .row-card i {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(47,123,86,.1);
+      color: var(--green);
+      font-style: normal;
+      font-weight: 760;
+    }
+
+    .row-card b,
+    .row-card span {
+      display: block;
+    }
+
+    .row-card b {
+      font-size: 13px;
+    }
+
+    .row-card span {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .sheet-handle {
+      position: absolute;
+      left: 50%;
+      bottom: 15px;
+      width: 86px;
+      height: 5px;
+      border-radius: 999px;
+      transform: translateX(-50%);
+      background: rgba(23,32,27,.18);
+    }
+
+    .command-bar {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 28px;
+      min-height: 58px;
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 12px 8px 8px;
+      border-radius: 18px;
+      background: rgba(19,34,28,.96);
+      color: #eef8f0;
+      box-shadow: 0 18px 44px rgba(19,34,28,.28);
+    }
+
+    .command-bar i {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(255,255,255,.12);
+      font-style: normal;
+    }
+
+    .command-bar b,
+    .command-bar span {
+      display: block;
+    }
+
+    .command-bar b {
+      font-size: 13px;
+    }
+
+    .command-bar span {
+      margin-top: 3px;
+      color: rgba(238,248,240,.68);
+      font-size: 10px;
+    }
+
+    .bottom-sheet {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      height: 312px;
+      padding: 20px 14px 14px;
+      border-radius: 26px;
+      background: rgba(251,253,250,.94);
+      box-shadow: 0 -18px 48px rgba(23,32,27,.14);
+    }
+
+    .bottom-sheet::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 9px;
+      width: 48px;
+      height: 4px;
+      border-radius: 999px;
+      transform: translateX(-50%);
+      background: rgba(23,32,27,.18);
+    }
+
+    .sheet-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .sheet-grid div {
+      min-height: 80px;
+      padding: 12px;
+      border-radius: var(--radius);
+      background: rgba(47,123,86,.08);
+    }
+
+    .sheet-grid b,
+    .sheet-grid span {
+      display: block;
+    }
+
+    .sheet-grid b {
+      font-size: 13px;
+    }
+
+    .sheet-grid span {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.45;
+    }
+
+    @media (max-width: 1040px) {
+      .intro,
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .option-copy {
+        min-height: 0;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .page {
+        padding: 18px 12px 36px;
+      }
+
+      .answer {
+        display: none;
+      }
+
+      .phone {
+        padding: 8px;
+        border-radius: 30px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="intro">
+      <div>
+        <p class="eyebrow">Reality / 在场 · 无底部导航探索 v0.1</p>
+        <h1>底部导航不是必须的。必须的是用户始终知道自己能问、能看、能控制。</h1>
+        <p class="lead">这页不是最终视觉稿，而是三种交互形态探索：用 Agent 作为中心、用今天的流作为入口、用上拉控制面板替代固定 Tab。导航可以消失，但返回、控制和边界不能消失。</p>
+      </div>
+      <div class="answer">
+        <b>我的判断</b>
+        <span>真正的手机 App 可以不要传统底部 Tab，但第一版不能把入口藏得太深。更稳的方案是“Agent 首页 + 记忆星系 + 上拉控制”，视觉上没有固定导航，逻辑上仍有清楚层级。</span>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="option">
+        <div class="option-copy">
+          <h2>A. Agent 中心宇宙</h2>
+          <p>进入 App 后只有一个中心 Agent。物品、偏好、任务、耗材、设备像星体围绕它。用户不是点 Tab，而是点记忆领域或直接说话。</p>
+        </div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span>Reality</span></div>
+            <div class="screen-body">
+              <div class="brand">
+                <div><b>在场</b><span>现实记忆入口</span></div>
+                <div class="small-pill">感知中</div>
+              </div>
+              <div class="orb-stage">
+                <i class="orbit o1"></i>
+                <i class="orbit o2"></i>
+                <div class="main-orb">顾问</div>
+                <div class="planet one">物品</div>
+                <div class="planet two">空间</div>
+                <div class="planet three">任务</div>
+                <div class="planet four">偏好</div>
+                <div class="planet five">控制</div>
+                <button class="voice-chip"><i>声</i><span><b>问一件现实里的事</b><span>按住说话，文字作为备选</span></span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-copy">
+          <h2>B. 今天流 + 命令入口</h2>
+          <p>没有导航栏，首页是一条智能整理过的“今天”。所有主动提醒、候选确认和记忆摘要都在流里。底部只是语音命令，不是导航。</p>
+        </div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span>Reality</span></div>
+            <div class="screen-body">
+              <div class="brand">
+                <div><b>今天</b><span>你的现实上下文摘要</span></div>
+                <div class="small-pill">3 条建议</div>
+              </div>
+              <div class="stack">
+                <div class="hero-card">
+                  <span>主动建议</span>
+                  <h3>纸巾可能只剩最后一包。</h3>
+                  <p>根据柜内观察和最近取用频率生成提醒，只建议，不自动购买。</p>
+                </div>
+                <div class="row-card"><i>问</i><span><b>我上次把门禁卡放哪了？</b><span>可以直接问，不需要进入物品页面。</span></span></div>
+                <div class="row-card"><i>确</i><span><b>是否记住：这家胡辣汤不好喝？</b><span>系统只把确认后的偏好沉淀为长期记忆。</span></span></div>
+                <div class="row-card"><i>看</i><span><b>最近形成了 6 条生活记忆</b><span>物品、任务、偏好和耗材的摘要。</span></span></div>
+              </div>
+              <div class="command-bar"><i>声</i><span><b>按住说话</b><span>问、纠正、暂停都从这里开始</span></span><strong>文字</strong></div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="option">
+        <div class="option-copy">
+          <h2>C. 单页主屏 + 上拉控制</h2>
+          <p>首页保持非常干净，只有 Agent 和少量状态。需要查看记忆、设备、隐私时，从底部上拉面板进入。它是控制面板，不是常驻导航。</p>
+        </div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span>Reality</span></div>
+            <div class="screen-body">
+              <div class="brand">
+                <div><b>在场顾问</b><span>已连接你的现实上下文</span></div>
+                <div class="small-pill">在线</div>
+              </div>
+              <div class="agent-orb" style="height: 252px; margin: 22px 0 16px; display: grid; place-items: center; border-radius: 28px; background: linear-gradient(145deg,#17241e,#2e4b3d); color: #eef8f0; box-shadow: 0 18px 44px rgba(22,37,31,.18);">
+                <div style="width: 104px; height: 104px; display: grid; place-items: center; border-radius: 50%; border: 1px solid rgba(238,248,240,.24); background: rgba(238,248,240,.12); font-size: 25px; font-weight: 760;">在</div>
+              </div>
+              <div class="row-card"><i>声</i><span><b>直接问生活里的问题</b><span>例如“上次药放在哪个抽屉？”</span></span></div>
+              <div class="row-card"><i>新</i><span><b>今天有 2 条需要确认</b><span>展开后可以确认、删除或纠正。</span></span></div>
+              <div class="bottom-sheet">
+                <b>控制与记忆</b>
+                <div class="sheet-grid">
+                  <div><b>记忆</b><span>物品、偏好、任务、耗材</span></div>
+                  <div><b>设备</b><span>眼镜、手机、家居设备</span></div>
+                  <div><b>隐私</b><span>暂停、禁采、删除</span></div>
+                  <div><b>审计</b><span>为什么形成这条记忆</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

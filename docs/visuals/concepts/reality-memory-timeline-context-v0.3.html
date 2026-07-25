@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reality 时间轴上下文概念 v0.3</title>
+  <style>
+    :root {
+      --bg: #eef1ef;
+      --ink: #111d18;
+      --muted: #657168;
+      --line: rgba(17,29,24,.12);
+      --surface: rgba(255,255,255,.72);
+      --deep: #101b17;
+      --moss: #2f7b56;
+      --mint: #67d799;
+      --aqua: #64c2b0;
+      --blue: #5d7ea4;
+      --amber: #c3843e;
+      --rose: #b86d80;
+      --violet: #725fa2;
+      --shadow: 0 24px 78px rgba(17,29,24,.14);
+      --phone-shadow: 0 34px 92px rgba(17,29,24,.32);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      letter-spacing: 0;
+      font-synthesis: none;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 16% 12%, rgba(103,215,153,.16), transparent 30%),
+        radial-gradient(circle at 86% 18%, rgba(93,126,164,.14), transparent 28%),
+        linear-gradient(180deg, #fbfbf7 0%, var(--bg) 48%, #e3ebe5 100%);
+    }
+
+    button { font: inherit; color: inherit; cursor: pointer; }
+
+    .page {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 28px clamp(14px, 4vw, 48px) 56px;
+    }
+
+    .intro {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(310px, 430px);
+      gap: 28px;
+      align-items: end;
+      margin-bottom: 28px;
+    }
+
+    .eyebrow {
+      margin: 0 0 9px;
+      color: var(--moss);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      max-width: 900px;
+      font-size: clamp(31px, 4vw, 56px);
+      line-height: 1.03;
+      font-weight: 760;
+    }
+
+    .lead {
+      max-width: 830px;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.76;
+    }
+
+    .note {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255,255,255,.72);
+      box-shadow: var(--shadow);
+    }
+
+    .note b,
+    .note span {
+      display: block;
+    }
+
+    .note b { font-size: 15px; }
+    .note span {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.64;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
+      gap: clamp(22px, 4vw, 44px);
+      align-items: start;
+    }
+
+    .phone {
+      position: sticky;
+      top: 24px;
+      width: min(430px, 100%);
+      margin: 0 auto;
+      aspect-ratio: 390 / 844;
+      padding: 10px;
+      border-radius: 36px;
+      background: #101612;
+      box-shadow: var(--phone-shadow);
+    }
+
+    .screen {
+      position: relative;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 55% 10%, rgba(103,215,153,.1), transparent 24%),
+        linear-gradient(180deg, #fbfcf8 0%, #edf3ed 100%);
+    }
+
+    .status {
+      height: 36px;
+      padding: 10px 18px 0;
+      display: flex;
+      justify-content: space-between;
+      color: rgba(17,29,24,.74);
+      font-size: 11px;
+      font-weight: 760;
+    }
+
+    .screen-body {
+      height: calc(100% - 36px);
+      padding: 16px 17px 18px;
+      overflow: hidden;
+    }
+
+    .phone-page {
+      display: none;
+      height: 100%;
+    }
+
+    .phone-page.active {
+      display: block;
+    }
+
+    .brand {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .brand b,
+    .brand span {
+      display: block;
+    }
+
+    .brand b { font-size: 17px; }
+    .brand span {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .pill {
+      min-height: 28px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border-radius: 999px;
+      background: rgba(47,123,86,.1);
+      color: #2d754f;
+      font-size: 11px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .timeline {
+      position: relative;
+      height: 602px;
+      overflow: auto;
+      padding: 8px 0 86px;
+    }
+
+    .timeline::before {
+      content: "";
+      position: absolute;
+      left: 29px;
+      top: 22px;
+      bottom: 96px;
+      width: 1px;
+      background: linear-gradient(180deg, rgba(47,123,86,.08), rgba(47,123,86,.42), rgba(47,123,86,.08));
+    }
+
+    .time-card {
+      position: relative;
+      width: 100%;
+      display: grid;
+      grid-template-columns: 58px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      margin-bottom: 12px;
+      text-align: left;
+    }
+
+    .time-card time {
+      padding-top: 18px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-align: left;
+    }
+
+    .event-body {
+      position: relative;
+      min-height: 104px;
+      padding: 14px;
+      border: 1px solid rgba(17,29,24,.09);
+      border-radius: 22px;
+      background: rgba(255,255,255,.72);
+      box-shadow: 0 10px 28px rgba(17,29,24,.07);
+      overflow: hidden;
+    }
+
+    .event-body::before {
+      content: "";
+      position: absolute;
+      left: -40px;
+      top: 20px;
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(47,123,86,.22), transparent 60%);
+    }
+
+    .event-body b,
+    .event-body p,
+    .event-body span {
+      position: relative;
+      z-index: 2;
+      display: block;
+    }
+
+    .event-body b {
+      font-size: 14px;
+      line-height: 1.32;
+    }
+
+    .event-body p {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .chips {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 12px;
+    }
+
+    .chips span {
+      padding: 6px 8px;
+      border-radius: 999px;
+      background: rgba(47,123,86,.09);
+      color: #2b6d4b;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .chips span.preference { background: rgba(190,125,55,.12); color: #905f2d; }
+    .chips span.task { background: rgba(93,126,164,.12); color: #496a8d; }
+    .chips span.people { background: rgba(114,95,162,.12); color: #5d4c8c; }
+
+    .timeline-agent {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 13px;
+      min-height: 58px;
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 12px 8px 8px;
+      border: 0;
+      border-radius: 19px;
+      background: var(--deep);
+      color: #f2fff5;
+      box-shadow: 0 18px 48px rgba(17,29,24,.24);
+      text-align: left;
+    }
+
+    .timeline-agent i {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(255,255,255,.12);
+      font-style: normal;
+    }
+
+    .timeline-agent b,
+    .timeline-agent small {
+      display: block;
+    }
+
+    .timeline-agent b { font-size: 13px; }
+    .timeline-agent small {
+      margin-top: 3px;
+      color: rgba(242,255,245,.68);
+      font-size: 10px;
+    }
+
+    .detail-page {
+      position: relative;
+      height: 100%;
+      overflow: auto;
+      padding-bottom: 20px;
+    }
+
+    .back {
+      margin: 0 0 14px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #2d754f;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .detail-hero {
+      min-height: 182px;
+      padding: 18px;
+      border-radius: 26px;
+      background:
+        radial-gradient(circle at 78% 22%, rgba(103,215,153,.28), transparent 26%),
+        linear-gradient(145deg, #102019, #2e4b3d);
+      color: #f2fff5;
+      box-shadow: 0 16px 40px rgba(17,29,24,.18);
+    }
+
+    .detail-hero span {
+      color: rgba(242,255,245,.68);
+      font-size: 11px;
+    }
+
+    .detail-hero h2 {
+      margin-top: 32px;
+      font-size: 27px;
+      line-height: 1.12;
+    }
+
+    .detail-hero p {
+      margin-top: 9px;
+      color: rgba(242,255,245,.72);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .relation-field {
+      position: relative;
+      height: 264px;
+      margin-top: 13px;
+      overflow: hidden;
+      border-radius: 24px;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(47,123,86,.14), transparent 20%),
+        rgba(255,255,255,.72);
+      border: 1px solid rgba(17,29,24,.08);
+    }
+
+    .relation-field svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .relation-field path {
+      fill: none;
+      stroke: rgba(47,123,86,.31);
+      stroke-width: 1.4;
+      stroke-dasharray: 5 8;
+    }
+
+    .rnode {
+      position: absolute;
+      min-width: 60px;
+      height: 60px;
+      padding: 8px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      border: 1px solid rgba(17,29,24,.1);
+      background: rgba(255,255,255,.72);
+      text-align: center;
+      font-size: 10px;
+      box-shadow: 0 10px 24px rgba(17,29,24,.07);
+    }
+
+    .rnode.main {
+      left: 50%;
+      top: 50%;
+      width: 78px;
+      height: 78px;
+      transform: translate(-50%, -50%);
+      background: var(--deep);
+      color: #f2fff5;
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .rnode.n1 { left: 26px; top: 36px; }
+    .rnode.n2 { right: 30px; top: 44px; }
+    .rnode.n3 { left: 32px; bottom: 36px; }
+    .rnode.n4 { right: 42px; bottom: 28px; }
+
+    .object-flow {
+      margin-top: 13px;
+      padding: 14px;
+      border-radius: 22px;
+      background: rgba(255,255,255,.72);
+      border: 1px solid rgba(17,29,24,.08);
+    }
+
+    .object-flow h3 {
+      font-size: 15px;
+    }
+
+    .mini-timeline {
+      display: grid;
+      gap: 9px;
+      margin-top: 12px;
+    }
+
+    .mini-event {
+      padding: 11px 12px;
+      border-radius: 16px;
+      background: rgba(47,123,86,.08);
+    }
+
+    .mini-event b,
+    .mini-event span {
+      display: block;
+    }
+
+    .mini-event b { font-size: 12px; }
+    .mini-event span {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+      margin-top: 16px;
+      padding: 5px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,.68);
+    }
+
+    .tabs button {
+      min-height: 38px;
+      border: 0;
+      border-radius: 13px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .tabs button.active {
+      background: var(--deep);
+      color: #f2fff5;
+    }
+
+    .content {
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: rgba(255,255,255,.72);
+      box-shadow: var(--shadow);
+    }
+
+    .card h2 {
+      font-size: 22px;
+      line-height: 1.22;
+    }
+
+    .card p {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.72;
+    }
+
+    .model-grid,
+    .rules {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .model,
+    .rule {
+      min-height: 118px;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(17,29,24,.09);
+      background: rgba(247,249,245,.84);
+    }
+
+    .rule {
+      background: rgba(18,34,28,.95);
+      color: #eef8f0;
+    }
+
+    .model b,
+    .model span,
+    .rule b,
+    .rule span {
+      display: block;
+    }
+
+    .model b,
+    .rule b { font-size: 13px; }
+
+    .model span,
+    .rule span {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .rule span { color: rgba(238,248,240,.68); }
+
+    @media (max-width: 1080px) {
+      .intro,
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .phone {
+        position: relative;
+        top: 0;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .page { padding: 18px 12px 36px; }
+      .note { display: none; }
+      .model-grid,
+      .rules { grid-template-columns: 1fr; }
+      .phone { padding: 8px; border-radius: 30px; }
+      .screen { border-radius: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="intro">
+      <div>
+        <p class="eyebrow">Reality / 在场 · 时间轴上下文概念 v0.3</p>
+        <h1>第一层回到时间轴。关系网放到片段和对象的第二层。</h1>
+        <p class="lead">人的现实上下文天然按时间流动。首页应该先告诉用户“今天发生了什么”，每条是一句被总结过的现实片段；点进去以后，再展开这个片段里的物品、偏好、任务、人际关系，或进入单个物品的变化时间线。</p>
+      </div>
+      <div class="note">
+        <b>结构修正</b>
+        <span>第一层：时间轴。第二层：片段详情、对象时间线、关系网。第三层：解释、纠正、删除、审计。这样既保留灵动感，也不会让首页变成一个难懂的图。</span>
+      </div>
+    </section>
+
+    <section class="layout">
+      <div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span>Reality</span></div>
+            <div class="screen-body">
+              <section class="phone-page active" data-page="timeline">
+                <div class="brand">
+                  <div><b>今天</b><span>按现实片段整理</span></div>
+                  <div class="pill">7 条</div>
+                </div>
+
+                <div class="timeline" aria-label="今天的现实时间轴">
+                  <button class="time-card" data-detail="out">
+                    <time>08:10</time>
+                    <div class="event-body">
+                      <b>准备出门时，钥匙和背包一起被带走。</b>
+                      <p>系统把门口、钥匙、背包、门禁卡聚合成一个出门片段。</p>
+                      <div class="chips"><span>钥匙</span><span>背包</span><span class="task">出门</span></div>
+                    </div>
+                  </button>
+
+                  <button class="time-card" data-detail="meal">
+                    <time>12:42</time>
+                    <div class="event-body">
+                      <b>午餐时，你明确说这份胡辣汤不好喝。</b>
+                      <p>这是偏好候选，仍需确认指向店铺、商品还是本次体验。</p>
+                      <div class="chips"><span>胡辣汤</span><span class="preference">不好喝</span><span>午餐</span></div>
+                    </div>
+                  </button>
+
+                  <button class="time-card" data-detail="read">
+                    <time>15:18</time>
+                    <div class="event-body">
+                      <b>《设计中的设计》可能读到第 86 页附近。</b>
+                      <p>阅读进度来自低频观察，页码允许小范围误差。</p>
+                      <div class="chips"><span>书</span><span>进度</span></div>
+                    </div>
+                  </button>
+
+                  <button class="time-card" data-detail="home">
+                    <time>18:06</time>
+                    <div class="event-body">
+                      <b>你回到家，玄关和门口快递进入活跃上下文。</b>
+                      <p>到家事件可以触发快递、钥匙、耗材等低打扰提醒。</p>
+                      <div class="chips"><span>玄关</span><span>快递</span><span class="task">待取</span></div>
+                    </div>
+                  </button>
+
+                  <button class="time-card" data-detail="tissue">
+                    <time>20:00</time>
+                    <div class="event-body">
+                      <b>纸巾可能只剩最后一包。</b>
+                      <p>柜内观察和最近取用频率形成低库存提醒候选。</p>
+                      <div class="chips"><span>纸巾</span><span>耗材</span><span class="preference">建议补充</span></div>
+                    </div>
+                  </button>
+                </div>
+
+                <button class="timeline-agent">
+                  <i>声</i>
+                  <span><b>问今天的现实</b><small>比如：今天有什么需要我处理？</small></span>
+                  <strong>文字</strong>
+                </button>
+              </section>
+
+              <section class="phone-page" data-page="detail">
+                <div class="detail-page">
+                  <button class="back">← 返回今天</button>
+                  <div class="detail-hero">
+                    <span id="detail-type">午餐片段</span>
+                    <h2 id="detail-title">你说这份胡辣汤不好喝。</h2>
+                    <p id="detail-summary">片段里包含消费对象、口头评价、可能的偏好候选。这里才展开关系，不在首页直接画网。</p>
+                  </div>
+
+                  <div class="relation-field">
+                    <svg viewBox="0 0 360 264" preserveAspectRatio="none" aria-hidden="true">
+                      <path d="M180 132 C90 84,84 62,60 64"></path>
+                      <path d="M180 132 C260 86,284 70,302 74"></path>
+                      <path d="M180 132 C86 182,86 208,64 214"></path>
+                      <path d="M180 132 C252 180,270 214,288 218"></path>
+                    </svg>
+                    <div class="rnode main" id="main-node">午餐</div>
+                    <div class="rnode n1" id="node-1">胡辣汤</div>
+                    <div class="rnode n2" id="node-2">不好喝</div>
+                    <div class="rnode n3" id="node-3">订单?</div>
+                    <div class="rnode n4" id="node-4">偏好候选</div>
+                  </div>
+
+                  <div class="object-flow">
+                    <h3 id="flow-title">这个片段接下来可以怎样沉淀</h3>
+                    <div class="mini-timeline" id="mini-timeline"></div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <button class="active" data-target="timeline">时间轴</button>
+          <button data-target="detail">片段详情</button>
+        </div>
+      </div>
+
+      <div class="content">
+        <article class="card">
+          <h2>新的信息结构</h2>
+          <p>首页不是关系网，也不是物品列表，而是一天的上下文时间轴。每一条不是原始事件，而是后端把证据、观察和候选聚合后形成的“人能读懂的一句话”。</p>
+          <div class="model-grid">
+            <div class="model"><b>第一层：时间轴</b><span>今天做了什么、看到了什么、吃了什么、发生了什么重要变化。</span></div>
+            <div class="model"><b>第二层：片段详情</b><span>展开这个片段里的物品、偏好、任务、空间、人际关系。</span></div>
+            <div class="model"><b>对象路径</b><span>如果点击物品，就看这个物品在时间维度上的位置、数量、使用、归属变化。</span></div>
+            <div class="model"><b>关系视图</b><span>用于服装搭配、常吃食物、人物任务、物品组合等长期关系。</span></div>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>哪些内容适合进入首页时间轴</h2>
+          <p>首页应该克制，只放摘要性强、用户可能关心、可以被追问或纠正的片段。</p>
+          <div class="rules">
+            <div class="rule"><b>活动片段</b><span>出门、午餐、阅读、到家、洗衣、购物、工作会面。</span></div>
+            <div class="rule"><b>状态变化</b><span>物品移动、耗材下降、任务完成、阅读进度、偏好表达。</span></div>
+            <div class="rule"><b>需要确认</b><span>低置信偏好、疑似任务、归属不清的物品、冲突位置。</span></div>
+            <div class="rule"><b>不放首页</b><span>大量相似图片、传感器峰值、无信息增量的普通帧、模型中间输出。</span></div>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>关系网应该放在哪里</h2>
+          <p>关系网适合做第二层：点击“午餐”看食物、店铺、评价、偏好；点击“服装”看衣服之间的搭配；点击“钥匙”看它和玄关、背包、出门的长期关系。这样它是解释上下文的工具，不是首页负担。</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const details = {
+      out: {
+        type: "出门片段",
+        title: "钥匙和背包一起被带走。",
+        summary: "这个片段可以解释哪些物品随身、哪些任务应该提醒，以及是否有遗漏。",
+        main: "出门",
+        nodes: ["钥匙", "背包", "玄关", "门禁卡"],
+        flow: [
+          ["08:02", "钥匙仍在玄关托盘"],
+          ["08:10", "钥匙、背包一起离开玄关"],
+          ["18:12", "钥匙回到玄关，出门关系变弱"]
+        ]
+      },
+      meal: {
+        type: "午餐片段",
+        title: "你说这份胡辣汤不好喝。",
+        summary: "片段里包含消费对象、口头评价、可能的偏好候选。这里才展开关系，不在首页直接画网。",
+        main: "午餐",
+        nodes: ["胡辣汤", "不好喝", "订单?", "偏好候选"],
+        flow: [
+          ["12:38", "图片确认正在用餐"],
+          ["12:42", "音频出现明确否定评价"],
+          ["待确认", "指向店铺、商品还是本次体验"]
+        ]
+      },
+      read: {
+        type: "阅读片段",
+        title: "书可能读到第 86 页附近。",
+        summary: "阅读进度来自低频观察，不需要展示原始图片，只保存可纠正进度。",
+        main: "阅读",
+        nodes: ["书", "第86页", "进度", "书房"],
+        flow: [
+          ["昨晚", "读到第 72 页附近"],
+          ["15:18", "观察到第 86 页附近"],
+          ["后续", "再次观察后更新进度"]
+        ]
+      },
+      home: {
+        type: "到家片段",
+        title: "玄关和门口快递进入活跃上下文。",
+        summary: "到家不是单一事件，它会带出门锁、快递、钥匙、耗材和提醒策略。",
+        main: "到家",
+        nodes: ["玄关", "快递", "钥匙", "提醒"],
+        flow: [
+          ["18:06", "门锁和眼镜状态确认到家"],
+          ["18:07", "门口快递进入提醒候选"],
+          ["18:12", "钥匙回到玄关常用位置"]
+        ]
+      },
+      tissue: {
+        type: "耗材片段",
+        title: "纸巾可能只剩最后一包。",
+        summary: "耗材不是静态库存，而是开封、取用、余量下降和补充建议的趋势。",
+        main: "纸巾",
+        nodes: ["柜内", "余量低", "取用", "补充建议"],
+        flow: [
+          ["周三", "打开新包装"],
+          ["今天", "取出一包后余量变低"],
+          ["今晚", "生成低库存提醒候选"]
+        ]
+      }
+    };
+
+    const pages = document.querySelectorAll(".phone-page");
+    const tabs = document.querySelectorAll(".tabs button");
+    const detailButtons = document.querySelectorAll(".time-card");
+    const back = document.querySelector(".back");
+    const detailType = document.getElementById("detail-type");
+    const detailTitle = document.getElementById("detail-title");
+    const detailSummary = document.getElementById("detail-summary");
+    const mainNode = document.getElementById("main-node");
+    const nodeEls = [document.getElementById("node-1"), document.getElementById("node-2"), document.getElementById("node-3"), document.getElementById("node-4")];
+    const miniTimeline = document.getElementById("mini-timeline");
+
+    function showPage(target) {
+      pages.forEach((page) => page.classList.toggle("active", page.dataset.page === target));
+      tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.target === target));
+    }
+
+    function renderDetail(key) {
+      const data = details[key];
+      detailType.textContent = data.type;
+      detailTitle.textContent = data.title;
+      detailSummary.textContent = data.summary;
+      mainNode.textContent = data.main;
+      nodeEls.forEach((node, index) => {
+        node.textContent = data.nodes[index];
+      });
+      miniTimeline.innerHTML = data.flow.map(([time, text]) => `
+        <div class="mini-event">
+          <b>${time}</b>
+          <span>${text}</span>
+        </div>
+      `).join("");
+      showPage("detail");
+    }
+
+    tabs.forEach((tab) => tab.addEventListener("click", () => showPage(tab.dataset.target)));
+    detailButtons.forEach((button) => button.addEventListener("click", () => renderDetail(button.dataset.detail)));
+    back.addEventListener("click", () => showPage("timeline"));
+    renderDetail("meal");
+    showPage("timeline");
+  </script>
+</body>
+</html>

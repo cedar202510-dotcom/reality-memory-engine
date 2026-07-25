@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reality 时间轴与关系视图重设计 v0.4</title>
+  <style>
+    :root {
+      --bg: #eff2ef;
+      --ink: #111d18;
+      --muted: #647168;
+      --soft: #8c9890;
+      --line: rgba(17,29,24,.11);
+      --surface: rgba(255,255,255,.76);
+      --deep: #101b17;
+      --moss: #2f7b56;
+      --mint: #67d799;
+      --aqua: #64c2b0;
+      --blue: #5d7ea4;
+      --amber: #c3843e;
+      --rose: #b86d80;
+      --violet: #725fa2;
+      --shadow: 0 24px 78px rgba(17,29,24,.14);
+      --phone-shadow: 0 34px 92px rgba(17,29,24,.32);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      letter-spacing: 0;
+      font-synthesis: none;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 16% 12%, rgba(103,215,153,.15), transparent 30%),
+        radial-gradient(circle at 86% 18%, rgba(93,126,164,.13), transparent 28%),
+        linear-gradient(180deg, #fbfbf7 0%, var(--bg) 48%, #e3ebe5 100%);
+    }
+
+    button { font: inherit; color: inherit; cursor: pointer; }
+    a { color: inherit; text-decoration: none; }
+
+    .page {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 28px clamp(14px, 4vw, 48px) 56px;
+    }
+
+    .intro {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(310px, 430px);
+      gap: 28px;
+      align-items: end;
+      margin-bottom: 28px;
+    }
+
+    .eyebrow {
+      margin: 0 0 9px;
+      color: var(--moss);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      max-width: 900px;
+      font-size: clamp(31px, 4vw, 56px);
+      line-height: 1.03;
+      font-weight: 760;
+    }
+
+    .lead {
+      max-width: 830px;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.76;
+    }
+
+    .note {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255,255,255,.72);
+      box-shadow: var(--shadow);
+    }
+
+    .note b,
+    .note span {
+      display: block;
+    }
+
+    .note b { font-size: 15px; }
+    .note span {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.64;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
+      gap: clamp(22px, 4vw, 44px);
+      align-items: start;
+    }
+
+    .phone {
+      position: sticky;
+      top: 24px;
+      width: min(430px, 100%);
+      margin: 0 auto;
+      aspect-ratio: 390 / 844;
+      padding: 10px;
+      border-radius: 36px;
+      background: #101612;
+      box-shadow: var(--phone-shadow);
+    }
+
+    .screen {
+      position: relative;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 55% 10%, rgba(103,215,153,.1), transparent 24%),
+        linear-gradient(180deg, #fbfcf8 0%, #edf3ed 100%);
+    }
+
+    .status {
+      height: 36px;
+      padding: 10px 18px 0;
+      display: flex;
+      justify-content: space-between;
+      color: rgba(17,29,24,.74);
+      font-size: 11px;
+      font-weight: 760;
+    }
+
+    .screen-body {
+      height: calc(100% - 36px);
+      padding: 16px 17px 18px;
+      overflow: hidden;
+    }
+
+    .phone-page {
+      display: none;
+      height: 100%;
+    }
+
+    .phone-page.active {
+      display: block;
+    }
+
+    .brand {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .brand b,
+    .brand span {
+      display: block;
+    }
+
+    .brand b { font-size: 17px; }
+    .brand span {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .pill {
+      min-height: 28px;
+      padding: 0 10px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: rgba(47,123,86,.1);
+      color: #2d754f;
+      font-size: 11px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .day-summary {
+      min-height: 118px;
+      padding: 17px;
+      margin-bottom: 14px;
+      border-radius: 26px;
+      background:
+        radial-gradient(circle at 86% 12%, rgba(103,215,153,.26), transparent 30%),
+        linear-gradient(145deg, #102019, #2d493c);
+      color: #f2fff5;
+      box-shadow: 0 16px 40px rgba(17,29,24,.18);
+    }
+
+    .day-summary span {
+      color: rgba(242,255,245,.66);
+      font-size: 11px;
+    }
+
+    .day-summary h2 {
+      margin-top: 18px;
+      font-size: 24px;
+      line-height: 1.16;
+    }
+
+    .day-summary p {
+      margin-top: 8px;
+      color: rgba(242,255,245,.72);
+      font-size: 11px;
+      line-height: 1.52;
+    }
+
+    .timeline {
+      height: 455px;
+      overflow: auto;
+      padding-bottom: 82px;
+    }
+
+    .period {
+      margin: 18px 0 9px;
+      color: var(--soft);
+      font-size: 11px;
+      font-weight: 760;
+    }
+
+    .moment {
+      width: 100%;
+      padding: 0;
+      margin-bottom: 10px;
+      border: 0;
+      background: transparent;
+      text-align: left;
+    }
+
+    .moment-inner {
+      min-height: 94px;
+      padding: 14px;
+      border: 1px solid rgba(17,29,24,.09);
+      border-radius: 22px;
+      background: rgba(255,255,255,.74);
+      box-shadow: 0 10px 28px rgba(17,29,24,.065);
+    }
+
+    .moment-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
+    }
+
+    .moment-top time {
+      color: var(--soft);
+      font-size: 11px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .moment-top em {
+      color: var(--moss);
+      font-size: 10px;
+      font-style: normal;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .moment h3 {
+      margin-top: 7px;
+      font-size: 15px;
+      line-height: 1.34;
+    }
+
+    .moment p {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.52;
+    }
+
+    .moment-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      color: #2d754f;
+      font-size: 11px;
+      font-weight: 760;
+    }
+
+    .moment-actions span:last-child {
+      color: var(--soft);
+    }
+
+    .ask-bar {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 13px;
+      min-height: 58px;
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 12px 8px 8px;
+      border: 0;
+      border-radius: 19px;
+      background: var(--deep);
+      color: #f2fff5;
+      box-shadow: 0 18px 48px rgba(17,29,24,.24);
+      text-align: left;
+    }
+
+    .ask-bar i {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: rgba(255,255,255,.12);
+      font-style: normal;
+    }
+
+    .ask-bar b,
+    .ask-bar small {
+      display: block;
+    }
+
+    .ask-bar b { font-size: 13px; }
+    .ask-bar small {
+      margin-top: 3px;
+      color: rgba(242,255,245,.68);
+      font-size: 10px;
+    }
+
+    .detail-page {
+      position: relative;
+      height: 100%;
+      overflow: auto;
+      padding-bottom: 20px;
+    }
+
+    .back {
+      margin: 0 0 14px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #2d754f;
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .detail-hero {
+      min-height: 166px;
+      padding: 18px;
+      border-radius: 26px;
+      background:
+        radial-gradient(circle at 78% 22%, rgba(103,215,153,.26), transparent 26%),
+        linear-gradient(145deg, #102019, #2e4b3d);
+      color: #f2fff5;
+      box-shadow: 0 16px 40px rgba(17,29,24,.18);
+    }
+
+    .detail-hero span {
+      color: rgba(242,255,245,.68);
+      font-size: 11px;
+    }
+
+    .detail-hero h2 {
+      margin-top: 26px;
+      font-size: 25px;
+      line-height: 1.14;
+    }
+
+    .detail-hero p {
+      margin-top: 9px;
+      color: rgba(242,255,245,.72);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .section {
+      margin-top: 13px;
+      padding: 14px;
+      border-radius: 22px;
+      background: rgba(255,255,255,.73);
+      border: 1px solid rgba(17,29,24,.08);
+    }
+
+    .section h3 {
+      font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .section p {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.55;
+    }
+
+    .relation-field {
+      position: relative;
+      height: 236px;
+      margin-top: 11px;
+      overflow: hidden;
+      border-radius: 20px;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(47,123,86,.13), transparent 20%),
+        rgba(247,250,246,.86);
+    }
+
+    .relation-field svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .relation-field path {
+      fill: none;
+      stroke: rgba(47,123,86,.31);
+      stroke-width: 1.4;
+      stroke-dasharray: 5 8;
+    }
+
+    .rnode {
+      position: absolute;
+      min-width: 58px;
+      height: 58px;
+      padding: 8px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      border: 1px solid rgba(17,29,24,.1);
+      background: rgba(255,255,255,.74);
+      text-align: center;
+      font-size: 10px;
+      box-shadow: 0 10px 24px rgba(17,29,24,.07);
+    }
+
+    .rnode.main {
+      left: 50%;
+      top: 50%;
+      width: 76px;
+      height: 76px;
+      transform: translate(-50%, -50%);
+      background: var(--deep);
+      color: #f2fff5;
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .rnode.n1 { left: 22px; top: 30px; }
+    .rnode.n2 { right: 24px; top: 38px; }
+    .rnode.n3 { left: 30px; bottom: 28px; }
+    .rnode.n4 { right: 36px; bottom: 24px; }
+
+    .choice-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .choice-row button {
+      min-height: 34px;
+      padding: 0 11px;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(47,123,86,.1);
+      color: #2d754f;
+      font-size: 11px;
+      font-weight: 760;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+      margin-top: 16px;
+      padding: 5px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255,255,255,.68);
+    }
+
+    .tabs button {
+      min-height: 38px;
+      border: 0;
+      border-radius: 13px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .tabs button.active {
+      background: var(--deep);
+      color: #f2fff5;
+    }
+
+    .content {
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: rgba(255,255,255,.72);
+      box-shadow: var(--shadow);
+    }
+
+    .card h2 {
+      font-size: 22px;
+      line-height: 1.22;
+    }
+
+    .card p {
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.72;
+    }
+
+    .ref-grid,
+    .rules {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .ref,
+    .rule {
+      min-height: 118px;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(17,29,24,.09);
+      background: rgba(247,249,245,.84);
+    }
+
+    .rule {
+      background: rgba(18,34,28,.95);
+      color: #eef8f0;
+    }
+
+    .ref b,
+    .ref span,
+    .ref a,
+    .rule b,
+    .rule span {
+      display: block;
+    }
+
+    .ref b,
+    .rule b { font-size: 13px; }
+
+    .ref span,
+    .rule span {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .rule span { color: rgba(238,248,240,.68); }
+
+    .ref a {
+      margin-top: 9px;
+      color: #2d754f;
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    @media (max-width: 1080px) {
+      .intro,
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .phone {
+        position: relative;
+        top: 0;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .page { padding: 18px 12px 36px; }
+      .note { display: none; }
+      .ref-grid,
+      .rules { grid-template-columns: 1fr; }
+      .phone { padding: 8px; border-radius: 30px; }
+      .screen { border-radius: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="intro">
+      <div>
+        <p class="eyebrow">Reality / 在场 · 时间轴与关系视图重设计 v0.4</p>
+        <h1>时间轴要像“今天回顾”，不是模型推断列表。</h1>
+        <p class="lead">这版重新做文案和层级：第一层只放用户愿意看的生活片段，用自然语言表达；不确定的内容用“要不要记住？”而不是假装已经沉淀。关系图只在第二层解释这一刻牵出了什么。</p>
+      </div>
+      <div class="note">
+        <b>这版改了什么</b>
+        <span>去掉难懂标签；去掉“候选、片段、聚合”这类工程感文案；每条只保留“发生了什么、为什么出现、下一步能做什么”。</span>
+      </div>
+    </section>
+
+    <section class="layout">
+      <div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span>Reality</span></div>
+            <div class="screen-body">
+              <section class="phone-page active" data-page="timeline">
+                <div class="brand">
+                  <div><b>今天</b><span>Reality 替你整理的几件事</span></div>
+                  <div class="pill">5 件</div>
+                </div>
+
+                <div class="day-summary">
+                  <span>周六 · 家和外出</span>
+                  <h2>今天有 2 件事可能值得你确认。</h2>
+                  <p>一条是午饭口味，一条是纸巾余量。其他只是普通记录，已安静放入记忆。</p>
+                </div>
+
+                <div class="timeline" aria-label="今天回顾">
+                  <div class="period">上午</div>
+
+                  <button class="moment" data-detail="out">
+                    <div class="moment-inner">
+                      <div class="moment-top"><time>08:10</time><em>已记录</em></div>
+                      <h3>你带着钥匙和背包出了门。</h3>
+                      <p>它们晚点如果找不到，可以直接问我。</p>
+                      <div class="moment-actions"><span>查看相关物品</span><span>不需要操作</span></div>
+                    </div>
+                  </button>
+
+                  <div class="period">中午</div>
+
+                  <button class="moment" data-detail="meal">
+                    <div class="moment-inner">
+                      <div class="moment-top"><time>12:42</time><em>待确认</em></div>
+                      <h3>午饭时你说：“这份胡辣汤不好喝。”</h3>
+                      <p>要不要把它记成你的口味偏好？</p>
+                      <div class="moment-actions"><span>确认怎么记</span><span>稍后再说</span></div>
+                    </div>
+                  </button>
+
+                  <button class="moment" data-detail="read">
+                    <div class="moment-inner">
+                      <div class="moment-top"><time>15:18</time><em>已更新</em></div>
+                      <h3>你读的书大概到了第 86 页。</h3>
+                      <p>页码可能有一点误差，下次看到会自动修正。</p>
+                      <div class="moment-actions"><span>查看阅读进度</span><span>纠正页码</span></div>
+                    </div>
+                  </button>
+
+                  <div class="period">晚上</div>
+
+                  <button class="moment" data-detail="home">
+                    <div class="moment-inner">
+                      <div class="moment-top"><time>18:06</time><em>提醒</em></div>
+                      <h3>你回到家时，门口快递还没取。</h3>
+                      <p>这类提醒只在你回到相关地点时出现。</p>
+                      <div class="moment-actions"><span>知道了</span><span>不再提醒</span></div>
+                    </div>
+                  </button>
+
+                  <button class="moment" data-detail="tissue">
+                    <div class="moment-inner">
+                      <div class="moment-top"><time>20:00</time><em>待确认</em></div>
+                      <h3>纸巾可能快用完了。</h3>
+                      <p>我看到最后一包被拿出来了。要加入补充提醒吗？</p>
+                      <div class="moment-actions"><span>加入提醒</span><span>不是这样</span></div>
+                    </div>
+                  </button>
+                </div>
+
+                <button class="ask-bar">
+                  <i>声</i>
+                  <span><b>问今天的事</b><small>比如：今天有什么需要我处理？</small></span>
+                  <strong>文字</strong>
+                </button>
+              </section>
+
+              <section class="phone-page" data-page="detail">
+                <div class="detail-page">
+                  <button class="back">← 返回今天</button>
+                  <div class="detail-hero">
+                    <span id="detail-type">待确认</span>
+                    <h2 id="detail-title">午饭时你说这份胡辣汤不好喝。</h2>
+                    <p id="detail-summary">这里才展示它和食物、店铺、口味偏好的关系。首页不需要把这些都露出来。</p>
+                  </div>
+
+                  <div class="section">
+                    <h3>为什么这条会出现</h3>
+                    <p id="reason">你当时正在吃饭，同时说了“这份胡辣汤不好喝”。这足够形成提醒，但还不应该直接写成长期偏好。</p>
+                  </div>
+
+                  <div class="section">
+                    <h3>相关关系</h3>
+                    <div class="relation-field">
+                      <svg viewBox="0 0 360 236" preserveAspectRatio="none" aria-hidden="true">
+                        <path d="M180 118 C90 74,84 54,60 58"></path>
+                        <path d="M180 118 C260 78,284 64,302 68"></path>
+                        <path d="M180 118 C86 166,86 190,64 194"></path>
+                        <path d="M180 118 C252 164,270 194,288 198"></path>
+                      </svg>
+                      <div class="rnode main" id="main-node">午饭</div>
+                      <div class="rnode n1" id="node-1">胡辣汤</div>
+                      <div class="rnode n2" id="node-2">不好喝</div>
+                      <div class="rnode n3" id="node-3">店铺?</div>
+                      <div class="rnode n4" id="node-4">口味</div>
+                    </div>
+                  </div>
+
+                  <div class="section">
+                    <h3 id="action-title">你想怎么处理？</h3>
+                    <p id="action-copy">可以记成“这家胡辣汤不喜欢”，也可以只保留这一次评价，或者完全不记。</p>
+                    <div class="choice-row" id="choice-row">
+                      <button>记成偏好</button>
+                      <button>只记这次</button>
+                      <button>不记</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <button class="active" data-target="timeline">今天回顾</button>
+          <button data-target="detail">关系解释</button>
+        </div>
+      </div>
+
+      <div class="content">
+        <article class="card">
+          <h2>参考方向</h2>
+          <p>我重新看了时间轴和关系网的参考。对 Reality 来说，时间轴更应该学 journal、activity feed、travel itinerary 的“可读回顾”，关系网更应该学 Kumu/Cosmograph 的“解释复杂关系”，而不是一上来展示所有节点。</p>
+          <div class="ref-grid">
+            <div class="ref"><b>Mobbin Timeline / History</b><span>参考移动端真实时间轴和历史记录模式：清楚、可扫读、操作明确。</span><a href="https://mobbin.com/explore/mobile/screens/timeline-history">打开参考</a></div>
+            <div class="ref"><b>Dribbble Timeline Mobile</b><span>参考视觉语言和节奏，但不能照搬花哨卡片。</span><a href="https://dribbble.com/search/timeline-mobile-app">打开参考</a></div>
+            <div class="ref"><b>Kumu</b><span>参考复杂关系如何被组织成可理解关系地图。</span><a href="https://kumu.io/">打开参考</a></div>
+            <div class="ref"><b>Cosmograph</b><span>参考大规模关系图如何聚类和分析。Reality 只取“聚类和局部展开”的思路。</span><a href="https://cosmograph.app/">打开参考</a></div>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>这版时间轴的写法规则</h2>
+          <p>之前奇怪的根源是：把模型状态写成用户内容。这版改成更自然的人话，并且承认不确定性。</p>
+          <div class="rules">
+            <div class="rule"><b>不用工程标签</b><span>不写候选、片段、聚合、实体。换成“待确认”“已记录”“要不要记住”。</span></div>
+            <div class="rule"><b>不把推测写成事实</b><span>确定的写确定，不确定的用问题形式交给用户确认。</span></div>
+            <div class="rule"><b>每条都要有价值</b><span>用户看完要知道为什么出现，以及下一步能做什么。</span></div>
+            <div class="rule"><b>关系网在第二层</b><span>首页讲今天发生什么；点开后才讲这件事牵出了哪些关系。</span></div>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const details = {
+      out: {
+        type: "已记录",
+        title: "你带着钥匙和背包出了门。",
+        summary: "这个详情页解释这次出门牵出的物品关系。如果之后找钥匙，可以回到这条记录。",
+        reason: "眼镜在玄关附近看到钥匙和背包一起离开常用位置。它不是提醒，只是一个可查询的现实片段。",
+        main: "出门",
+        nodes: ["钥匙", "背包", "玄关", "门禁卡"],
+        actionTitle: "这条怎么用",
+        actionCopy: "之后你问钥匙或背包在哪里时，Reality 可以把这次出门作为线索。",
+        choices: ["查看钥匙", "查看背包", "忘记这条"]
+      },
+      meal: {
+        type: "待确认",
+        title: "午饭时你说这份胡辣汤不好喝。",
+        summary: "这里才展示它和食物、店铺、口味偏好的关系。首页不需要把这些都露出来。",
+        reason: "你当时正在吃饭，同时说了“这份胡辣汤不好喝”。这足够形成提醒，但还不应该直接写成长期偏好。",
+        main: "午饭",
+        nodes: ["胡辣汤", "不好喝", "店铺?", "口味"],
+        actionTitle: "你想怎么处理？",
+        actionCopy: "可以记成“这家胡辣汤不喜欢”，也可以只保留这一次评价，或者完全不记。",
+        choices: ["记成偏好", "只记这次", "不记"]
+      },
+      read: {
+        type: "已更新",
+        title: "你读的书大概到了第 86 页。",
+        summary: "阅读进度适合轻量记录，不需要展示原始图片。",
+        reason: "眼镜看到书页附近的页码，但页码识别可能有误差，所以允许你纠正。",
+        main: "阅读",
+        nodes: ["书", "第86页", "书房", "进度"],
+        actionTitle: "需要改吗？",
+        actionCopy: "如果页码不对，改一次后后续会按新的进度继续记录。",
+        choices: ["页码正确", "纠正页码", "不记录阅读"]
+      },
+      home: {
+        type: "提醒",
+        title: "你回到家时，门口快递还没取。",
+        summary: "这类内容适合主动出现，因为地点和时机都相关。",
+        reason: "到家事件出现时，门口快递仍处于未处理状态，所以它比普通记录更值得提醒。",
+        main: "到家",
+        nodes: ["快递", "门口", "玄关", "提醒"],
+        actionTitle: "提醒策略",
+        actionCopy: "如果你觉得这种提醒有用，之后只在回到相关地点时出现。",
+        choices: ["知道了", "今晚再提醒", "不提醒快递"]
+      },
+      tissue: {
+        type: "待确认",
+        title: "纸巾可能快用完了。",
+        summary: "耗材提醒要谨慎，不能把一次观察直接当成库存事实。",
+        reason: "系统看到最后一包被拿出来了，但还不知道家里是否有其他库存，所以用待确认形式出现。",
+        main: "纸巾",
+        nodes: ["柜子", "最后一包", "补充", "不确定"],
+        actionTitle: "要不要提醒补充？",
+        actionCopy: "你确认后，它会变成低打扰补充提醒。不会自动购买。",
+        choices: ["加入提醒", "还有库存", "不记耗材"]
+      }
+    };
+
+    const pages = document.querySelectorAll(".phone-page");
+    const tabs = document.querySelectorAll(".tabs button");
+    const detailButtons = document.querySelectorAll(".moment");
+    const back = document.querySelector(".back");
+    const detailType = document.getElementById("detail-type");
+    const detailTitle = document.getElementById("detail-title");
+    const detailSummary = document.getElementById("detail-summary");
+    const reason = document.getElementById("reason");
+    const mainNode = document.getElementById("main-node");
+    const nodeEls = [document.getElementById("node-1"), document.getElementById("node-2"), document.getElementById("node-3"), document.getElementById("node-4")];
+    const actionTitle = document.getElementById("action-title");
+    const actionCopy = document.getElementById("action-copy");
+    const choiceRow = document.getElementById("choice-row");
+
+    function showPage(target) {
+      pages.forEach((page) => page.classList.toggle("active", page.dataset.page === target));
+      tabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.target === target));
+    }
+
+    function renderDetail(key) {
+      const data = details[key];
+      detailType.textContent = data.type;
+      detailTitle.textContent = data.title;
+      detailSummary.textContent = data.summary;
+      reason.textContent = data.reason;
+      mainNode.textContent = data.main;
+      nodeEls.forEach((node, index) => {
+        node.textContent = data.nodes[index];
+      });
+      actionTitle.textContent = data.actionTitle;
+      actionCopy.textContent = data.actionCopy;
+      choiceRow.innerHTML = data.choices.map((choice) => `<button>${choice}</button>`).join("");
+      showPage("detail");
+    }
+
+    tabs.forEach((tab) => tab.addEventListener("click", () => showPage(tab.dataset.target)));
+    detailButtons.forEach((button) => button.addEventListener("click", () => renderDetail(button.dataset.detail)));
+    back.addEventListener("click", () => showPage("timeline"));
+    renderDetail("meal");
+    showPage("timeline");
+  </script>
+</body>
+</html>
