@@ -16,7 +16,8 @@ function timeText(iso) {
 function StreamPanel() {
   const [url, setUrl] = useState(() => localStorage.getItem("rme-stream-url") || DEFAULT_STREAM);
   const [draft, setDraft] = useState(url);
-  const [state, setState] = useState("connecting"); // connecting | live | error
+  const [state, setState] = useState("connecting"); // connecting | live | stale | error
+  const [staleAge, setStaleAge] = useState(null); // 僵住时最后一帧的秒龄
   const [epoch, setEpoch] = useState(0); // 变更强制 img 重连
   const [flash, setFlash] = useState(0); // 递增触发一次快门动画
   const [lastShot, setLastShot] = useState(null); // {ts, detail}
@@ -47,6 +48,26 @@ function StreamPanel() {
     return () => { alive = false; clearInterval(timer); };
   }, [url, epoch]);
 
+  // 画面新鲜度：MJPEG 的 <img> 只在首帧触发一次 onLoad，之后即使源头断了也会
+  // 一直挂着最后一帧。仅凭 onLoad 判活会在设备掉线数小时后仍显示「直播中」。
+  // 因此额外轮询 /status 拿最后一帧的年龄；服务端没有该端点时不改变原有判定。
+  useEffect(() => {
+    let origin;
+    try { origin = new URL(url).origin; } catch { return; }
+    let alive = true;
+    const timer = setInterval(async () => {
+      try {
+        const resp = await fetch(`${origin}/status`, { cache: "no-store" });
+        if (!resp.ok || !alive) return; // 404 → 该服务端不支持，保持既有行为
+        const s = await resp.json();
+        if (!alive) return;
+        setState((prev) => (prev === "error" ? prev : s.live ? "live" : "stale"));
+        setStaleAge(s.age_ms == null ? null : Math.round(s.age_ms / 1000));
+      } catch { /* 不支持 /status 或跨域被拒：沿用 onLoad 判定 */ }
+    }, 2000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [url, epoch]);
+
   const apply = (e) => {
     e.preventDefault();
     localStorage.setItem("rme-stream-url", draft);
@@ -61,7 +82,14 @@ function StreamPanel() {
         <h2>眼镜实时画面</h2>
         <span className="live-head-tags">
           {recording && <span className="live-rec"><i />采集中</span>}
-          <span className={`live-dot ${state}`}>{{ connecting: "连接中", live: "直播中", error: "未连接" }[state]}</span>
+          <span className={`live-dot ${state}`}>
+            {{
+              connecting: "连接中",
+              live: "直播中",
+              stale: staleAge == null ? "画面已停止" : `画面已停止 ${staleAge}s`,
+              error: "未连接",
+            }[state]}
+          </span>
         </span>
       </div>
       <div className="live-stream-frame">
@@ -78,7 +106,13 @@ function StreamPanel() {
             📸 已拍照 {timeText(new Date(lastShot.ts).toISOString())}
           </div>
         )}
-        {state !== "live" && (
+        {/* 僵住时不整屏遮挡：陈旧画面仍有参考价值，但必须一眼看出它不是实时的 */}
+        {state === "stale" && (
+          <div className="live-stale-banner">
+            画面已停止更新{staleAge != null && ` ${staleAge} 秒`} · 这不是实时画面
+          </div>
+        )}
+        {(state === "connecting" || state === "error") && (
           <div className="live-stream-hint">
             <p>{state === "connecting" ? "正在连接眼镜预览流…" : "连不上眼镜预览流。"}</p>
             <small>
