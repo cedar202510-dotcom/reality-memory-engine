@@ -25,6 +25,7 @@ def build_transcriber(settings: Settings) -> Transcriber:
             base_url=settings.asr_base_url,
             api_key=settings.asr_api_key,
             timeout=settings.asr_timeout_seconds,
+            language=settings.asr_language,
         )
     return NullTranscriber()
 

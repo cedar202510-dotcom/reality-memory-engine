@@ -5,7 +5,8 @@
 
 Sidecar 契约（简洁 JSON，base64 传音频）：
 - POST {base_url}/transcribe
-  请求 {"audio_base64": "<base64>", "media_kind": "audio"}
+  请求 {"audio_base64": "<base64>", "media_kind": "audio", "language": "zh"?}
+  language 可选：留空则 sidecar 自动检测（短片段误判率高，中文部署应固定 zh）
   响应 {"segments": [{"start": 0.0, "end": 1.2, "text": "...", "speaker": "S1"?}, ...],
         "language": "zh"?, "duration_seconds": 1.2?}
 - 认证：asr_api_key 非空时带 `Authorization: Bearer <key>`。
@@ -29,10 +30,12 @@ class HTTPTranscriber:
         base_url: str,
         api_key: str = "",
         timeout: float = 60.0,
+        language: str = "",
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout
+        self._language = language
 
     def _headers(self) -> dict[str, str]:
         if self._api_key:
@@ -43,10 +46,13 @@ class HTTPTranscriber:
         self, audio_bytes: bytes, *, media_kind: str
     ) -> list[TranscriptSegment] | None:
         """统一请求/校验；任何异常或契约不符都返回 None。"""
-        payload = {
+        payload: dict[str, object] = {
             "audio_base64": base64.b64encode(audio_bytes).decode(),
             "media_kind": media_kind,
         }
+        # 只在显式配置时下发：留空则由 sidecar 的部署级默认或自动检测决定
+        if self._language:
+            payload["language"] = self._language
         try:
             # trust_env=False：sidecar 是内网/本机地址，不经系统/环境代理（否则代理会错误接管 localhost 请求）
             async with httpx.AsyncClient(timeout=self._timeout, trust_env=False) as client:

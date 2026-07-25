@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     asr_base_url: str = ""                  # http：ASR sidecar 地址（如 faster-whisper 服务）
     asr_api_key: str = ""                   # http：sidecar 认证（Bearer）
     asr_timeout_seconds: float = 60.0       # http：sidecar 请求超时（音频转写较慢）
+    asr_language: str = ""                  # 留空=自动检测；短片段易误判，中文部署设 zh
 
     # --- 候选门 ---
     candidate_accept_threshold: float = 0.85

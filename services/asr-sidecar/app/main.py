@@ -30,6 +30,10 @@ COMPUTE_TYPE = os.environ.get("ASR_COMPUTE_TYPE", "int8")
 MODEL_DIR = os.environ.get("ASR_MODEL_DIR", "/models")   # 模型下载缓存目录（挂卷持久化）
 API_KEY = os.environ.get("ASR_API_KEY", "")
 BEAM_SIZE = int(os.environ.get("ASR_BEAM_SIZE", "5"))
+# 部署级语言锁定（空 = 自动检测）。短片段自动检测误判率高，中文部署应设为 zh
+LANGUAGE = os.environ.get("ASR_LANGUAGE", "")
+# 部署级解码提示。中文设为简体示例句可显著降低繁体输出
+INITIAL_PROMPT = os.environ.get("ASR_INITIAL_PROMPT", "")
 
 _model = None  # faster_whisper.WhisperModel，lifespan 中加载
 
@@ -55,6 +59,11 @@ app = FastAPI(title="RME ASR Sidecar", version="0.1.0", lifespan=lifespan)
 class TranscribeRequest(BaseModel):
     audio_base64: str = Field(min_length=1)
     media_kind: str = "audio"
+    # 语言：None → 回落到 ASR_LANGUAGE；两者都空才自动检测。
+    # 短片段（1-3s）自动检测极易误判（实测 2.7s 中文被判为泰语），中文场景应固定传 "zh"
+    language: str | None = None
+    # 解码提示：影响用词与字形。中文默认由 ASR_INITIAL_PROMPT 注入简体提示，避免输出繁体
+    initial_prompt: str | None = None
 
 
 class TranscriptSegmentOut(BaseModel):
@@ -87,11 +96,17 @@ async def transcribe(req: TranscribeRequest) -> TranscribeResponse:
     if not audio_bytes:
         raise HTTPException(status_code=422, detail="音频内容为空")
 
+    # 请求级参数优先于部署级默认；两者都空时才让 whisper 自动检测
+    language = req.language or LANGUAGE or None
+    initial_prompt = req.initial_prompt or INITIAL_PROMPT or None
+
     # VAD 过滤：输入本就是 0.4–15s 的 VAD 片段，仍开启 Silero VAD 过滤静音/噪声段
     try:
         segments_iter, info = _model.transcribe(
             io.BytesIO(audio_bytes),
             beam_size=BEAM_SIZE,
+            language=language,
+            initial_prompt=initial_prompt,
             vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 300},
         )
