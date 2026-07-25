@@ -10,6 +10,9 @@ import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -23,6 +26,22 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class PreviewStreamServer {
     private static final String BOUNDARY = "rme-frame";
+    private static final int MAX_EVENTS = 50;
+
+    /** 采集事件环形缓冲（静态：无论预览是否开启都先记着，开启后 /events 可查）。 */
+    private static final ArrayDeque<String> EVENTS = new ArrayDeque<>();
+
+    /** 拍照/采集状态变化时由 CaptureForegroundService 调用；type 如 photo_captured。 */
+    public static void recordEvent(String type, String detail) {
+        String json = "{\"ts\":" + System.currentTimeMillis()
+                + ",\"type\":\"" + type + "\",\"detail\":\"" + detail.replace("\"", "'") + "\"}";
+        synchronized (EVENTS) {
+            EVENTS.addLast(json);
+            while (EVENTS.size() > MAX_EVENTS) {
+                EVENTS.removeFirst();
+            }
+        }
+    }
 
     private final Context context;
     private final int port;
@@ -130,6 +149,8 @@ public final class PreviewStreamServer {
                 serveStream(out);
             } else if (path.startsWith("/frame")) {
                 serveSingleFrame(out);
+            } else if (path.startsWith("/events")) {
+                serveEvents(out);
             } else {
                 serveIndex(out);
             }
@@ -148,6 +169,21 @@ public final class PreviewStreamServer {
                 + "<img src='/stream' alt='waiting for frames...'></body></html>";
         byte[] body = html.getBytes(StandardCharsets.UTF_8);
         String head = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
+                + "Content-Length: " + body.length + "\r\nConnection: close\r\n\r\n";
+        out.write(head.getBytes(StandardCharsets.US_ASCII));
+        out.write(body);
+        out.flush();
+    }
+
+    /** 最近采集事件 JSON 数组；带 CORS 头供前端联调页跨源轮询。 */
+    private void serveEvents(OutputStream out) throws Exception {
+        List<String> snapshot;
+        synchronized (EVENTS) {
+            snapshot = new ArrayList<>(EVENTS);
+        }
+        byte[] body = ("[" + String.join(",", snapshot) + "]").getBytes(StandardCharsets.UTF_8);
+        String head = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                + "Access-Control-Allow-Origin: *\r\nCache-Control: no-cache\r\n"
                 + "Content-Length: " + body.length + "\r\nConnection: close\r\n\r\n";
         out.write(head.getBytes(StandardCharsets.US_ASCII));
         out.write(body);

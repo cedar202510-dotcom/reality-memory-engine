@@ -10,6 +10,8 @@ RESOURCES="$CONTENTS/Resources"
 rm -rf "$OUTPUT_PATH"
 mkdir -p "$MACOS" "$RESOURCES"
 cp "$SCRIPT_DIR/server.mjs" "$RESOURCES/server.mjs"
+cp "$SCRIPT_DIR/rv101-adb.mjs" "$RESOURCES/rv101-adb.mjs"
+cp "$SCRIPT_DIR/rv101-page.mjs" "$RESOURCES/rv101-page.mjs"
 
 cat > "$CONTENTS/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

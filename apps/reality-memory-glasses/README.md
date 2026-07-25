@@ -127,6 +127,19 @@ adb exec-out run-as com.realitymemory.glasses \
 ./scripts/send-test-reminder.sh "记得把资料给小王"
 ```
 
+小米手环 10 的实时心率广播 POC 只在显式启动时运行。先在手环上开启
+“心率广播/Share HR”，再安装 Debug APK 并打开一次完成现有相机/麦克风授权，
+然后执行：
+
+```bash
+./scripts/heart-rate-broadcast-poc.sh start
+# 观察前台通知，或导出 files/reality-memory/audit.ndjson 查看 HEART_RATE_BROADCAST_SAMPLE
+./scripts/heart-rate-broadcast-poc.sh stop
+```
+
+这个 POC 只订阅标准 BLE Heart Rate Service（`0x180D`）的 Heart Rate Measurement
+通知（`0x2A37`），不读取小米私有历史数据，也不接管当前相机、音频和 IMU 采集链路。
+
 导出的 `.bin.enc` 不能脱离该眼镜 Android Keystore 解密。需要交给后端的正式上传
 流程应使用设备身份完成密钥封装；调试导出不能把生产密钥或明文媒体提交到 Git。
 

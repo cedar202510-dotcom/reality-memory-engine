@@ -144,26 +144,40 @@ class DebugBackendUploader(
 
     private fun post(candidate: UploadCandidate): UploadResponse {
         val boundary = "rme-${UUID.randomUUID()}"
+        val textParts = buildList {
+            add(textPartBytes(boundary, "source_envelope", candidate.sourceFile.readText()))
+            add(textPartBytes(boundary, "evidence_item", candidate.evidenceFile.readText()))
+            candidate.captureIntentFile?.let {
+                add(textPartBytes(boundary, "capture_intent", it.readText()))
+            }
+            candidate.captureWindowFile?.let {
+                add(textPartBytes(boundary, "capture_window", it.readText()))
+            }
+        }
+        val fileHeader = filePartHeaderBytes(boundary, candidate)
+        val lineEnding = "\r\n".toByteArray(StandardCharsets.UTF_8)
+        val closingBoundary = "--$boundary--\r\n".toByteArray(StandardCharsets.UTF_8)
+        val contentLength =
+            textParts.sumOf { it.size.toLong() } +
+                fileHeader.size +
+                candidate.plaintextFile.length() +
+                lineEnding.size +
+                closingBoundary.size
         val connection = URL(endpoint()).openConnection() as HttpURLConnection
         connection.requestMethod = "POST"
         connection.doOutput = true
         connection.connectTimeout = CONNECT_TIMEOUT_MS
         connection.readTimeout = READ_TIMEOUT_MS
-        connection.setChunkedStreamingMode(64 * 1024)
+        connection.setFixedLengthStreamingMode(contentLength)
         connection.setRequestProperty("Accept", "application/json")
         connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
         try {
             BufferedOutputStream(connection.outputStream).use { output ->
-                writeTextPart(output, boundary, "source_envelope", candidate.sourceFile.readText())
-                writeTextPart(output, boundary, "evidence_item", candidate.evidenceFile.readText())
-                candidate.captureIntentFile?.let {
-                    writeTextPart(output, boundary, "capture_intent", it.readText())
-                }
-                candidate.captureWindowFile?.let {
-                    writeTextPart(output, boundary, "capture_window", it.readText())
-                }
-                writeFilePart(output, boundary, candidate)
-                output.write("--$boundary--\r\n".toByteArray(StandardCharsets.UTF_8))
+                textParts.forEach(output::write)
+                output.write(fileHeader)
+                candidate.plaintextFile.inputStream().use { it.copyTo(output) }
+                output.write(lineEnding)
+                output.write(closingBoundary)
             }
 
             val status = connection.responseCode
@@ -177,39 +191,28 @@ class DebugBackendUploader(
         }
     }
 
-    private fun writeTextPart(
-        output: BufferedOutputStream,
+    private fun textPartBytes(
         boundary: String,
         name: String,
         value: String,
-    ) {
-        output.write("--$boundary\r\n".toByteArray(StandardCharsets.UTF_8))
-        output.write(
-            "Content-Disposition: form-data; name=\"$name\"\r\n".toByteArray(
-                StandardCharsets.UTF_8,
-            ),
-        )
-        output.write("Content-Type: application/json; charset=utf-8\r\n\r\n".toByteArray())
-        output.write(value.toByteArray(StandardCharsets.UTF_8))
-        output.write("\r\n".toByteArray())
-    }
+    ): ByteArray =
+        buildString {
+            append("--").append(boundary).append("\r\n")
+            append("Content-Disposition: form-data; name=\"").append(name).append("\"\r\n")
+            append("Content-Type: application/json; charset=utf-8\r\n\r\n")
+            append(value).append("\r\n")
+        }.toByteArray(StandardCharsets.UTF_8)
 
-    private fun writeFilePart(
-        output: BufferedOutputStream,
+    private fun filePartHeaderBytes(
         boundary: String,
         candidate: UploadCandidate,
-    ) {
-        output.write("--$boundary\r\n".toByteArray(StandardCharsets.UTF_8))
-        output.write(
-            (
-                "Content-Disposition: form-data; name=\"file\"; " +
-                    "filename=\"${candidate.plaintextFile.name}\"\r\n"
-                ).toByteArray(StandardCharsets.UTF_8),
-        )
-        output.write("Content-Type: ${candidate.mimeType}\r\n\r\n".toByteArray())
-        candidate.plaintextFile.inputStream().use { it.copyTo(output) }
-        output.write("\r\n".toByteArray())
-    }
+    ): ByteArray =
+        buildString {
+            append("--").append(boundary).append("\r\n")
+            append("Content-Disposition: form-data; name=\"file\"; filename=\"")
+            append(candidate.plaintextFile.name).append("\"\r\n")
+            append("Content-Type: ").append(candidate.mimeType).append("\r\n\r\n")
+        }.toByteArray(StandardCharsets.UTF_8)
 
     private fun endpoint(): String =
         "${BuildConfig.DEBUG_BACKEND_BASE_URL.trimEnd('/')}/internal/v1/device-evidence"

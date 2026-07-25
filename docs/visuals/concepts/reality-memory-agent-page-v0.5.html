@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reality Agent 首页概念 v0.5</title>
+  <style>
+    :root {
+      --page: #edf1ee;
+      --ink: #eefaf1;
+      --muted: rgba(238,250,241,.62);
+      --deep: #0c1712;
+      --deep-2: #16281f;
+      --green: #8ee8a8;
+      --aqua: #82ddd0;
+      --warm: #d9b67e;
+      --panel: rgba(246,252,247,.93);
+      --panel-ink: #12221b;
+      --panel-muted: #647168;
+      --shadow: 0 34px 92px rgba(13,23,19,.34);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      letter-spacing: 0;
+      font-synthesis: none;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 16% 12%, rgba(142,232,168,.15), transparent 30%),
+        radial-gradient(circle at 84% 18%, rgba(130,221,208,.12), transparent 29%),
+        linear-gradient(180deg, #fbfbf7 0%, var(--page) 54%, #dfe8e1 100%);
+    }
+
+    button { font: inherit; color: inherit; cursor: pointer; }
+
+    .stage {
+      width: min(1240px, 100%);
+      padding: 28px clamp(14px, 4vw, 48px) 48px;
+      display: grid;
+      grid-template-columns: minmax(340px, 430px) minmax(0, 1fr);
+      gap: clamp(24px, 5vw, 58px);
+      align-items: center;
+    }
+
+    .phone {
+      width: min(430px, 100%);
+      margin: 0 auto;
+      aspect-ratio: 390 / 844;
+      padding: 10px;
+      border-radius: 38px;
+      background: #101612;
+      box-shadow: var(--shadow);
+    }
+
+    .screen {
+      position: relative;
+      height: 100%;
+      overflow: hidden;
+      border-radius: 30px;
+      background:
+        radial-gradient(circle at 48% 37%, rgba(142,232,168,.2), transparent 20%),
+        radial-gradient(circle at 72% 68%, rgba(130,221,208,.12), transparent 26%),
+        radial-gradient(circle at 28% 82%, rgba(217,182,126,.08), transparent 26%),
+        linear-gradient(154deg, #0c1712 0%, #17281f 52%, #0d1813 100%);
+    }
+
+    .status {
+      position: relative;
+      z-index: 5;
+      height: 36px;
+      padding: 10px 18px 0;
+      display: flex;
+      justify-content: space-between;
+      color: rgba(238,250,241,.72);
+      font-size: 11px;
+      font-weight: 730;
+    }
+
+    .glow {
+      position: absolute;
+      border-radius: 45% 55% 52% 48%;
+      filter: blur(15px);
+      opacity: .48;
+      mix-blend-mode: screen;
+      animation: drift 14s ease-in-out infinite alternate;
+    }
+
+    .glow.one {
+      width: 280px;
+      height: 280px;
+      left: -82px;
+      top: 92px;
+      background: radial-gradient(circle, rgba(142,232,168,.58), transparent 65%);
+    }
+
+    .glow.two {
+      width: 270px;
+      height: 270px;
+      right: -82px;
+      top: 280px;
+      background: radial-gradient(circle, rgba(130,221,208,.36), transparent 68%);
+      animation-delay: -4s;
+    }
+
+    .glow.three {
+      width: 230px;
+      height: 230px;
+      left: 64px;
+      bottom: 82px;
+      background: radial-gradient(circle, rgba(217,182,126,.2), transparent 68%);
+      animation-delay: -7s;
+    }
+
+    @keyframes drift {
+      0% { transform: translate3d(-8px, 10px, 0) rotate(0deg) scale(.96); }
+      100% { transform: translate3d(18px, -18px, 0) rotate(16deg) scale(1.08); }
+    }
+
+    .top {
+      position: relative;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 23px 24px 0;
+    }
+
+    .brand b,
+    .brand span {
+      display: block;
+    }
+
+    .brand b {
+      font-size: 22px;
+      line-height: 1;
+      font-weight: 760;
+    }
+
+    .brand span {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .enabled {
+      width: 29px;
+      height: 29px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(238,250,241,.14);
+      border-radius: 50%;
+      background: rgba(255,255,255,.08);
+      backdrop-filter: blur(12px);
+    }
+
+    .enabled::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 6px rgba(142,232,168,.12), 0 0 18px rgba(142,232,168,.6);
+    }
+
+    .presence {
+      position: absolute;
+      left: 50%;
+      top: 43%;
+      width: 330px;
+      height: 330px;
+      transform: translate(-50%, -50%);
+    }
+
+    .ring {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      animation: breathe 5.6s ease-in-out infinite;
+    }
+
+    .ring.r1 {
+      width: 318px;
+      height: 318px;
+      border: 1px solid rgba(238,250,241,.13);
+    }
+
+    .ring.r2 {
+      width: 246px;
+      height: 246px;
+      border: 1px solid rgba(238,250,241,.12);
+      animation-delay: .45s;
+    }
+
+    .ring.r3 {
+      width: 170px;
+      height: 170px;
+      border: 1px solid rgba(142,232,168,.17);
+      animation-delay: .9s;
+    }
+
+    .ring.r4 {
+      width: 106px;
+      height: 106px;
+      border: 1px solid rgba(238,250,241,.23);
+      background:
+        radial-gradient(circle at 42% 35%, rgba(238,250,241,.16), transparent 18%),
+        radial-gradient(circle at 55% 60%, rgba(142,232,168,.16), transparent 35%),
+        rgba(238,250,241,.045);
+      box-shadow:
+        0 0 46px rgba(142,232,168,.16),
+        inset 0 0 34px rgba(238,250,241,.06);
+      animation-delay: 1.2s;
+      backdrop-filter: blur(12px);
+    }
+
+    .depth {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 78px;
+      height: 78px;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 38% 32%, rgba(255,255,255,.48), transparent 10%),
+        radial-gradient(circle at 60% 58%, rgba(142,232,168,.2), transparent 32%),
+        radial-gradient(circle, rgba(238,250,241,.05), transparent 65%);
+      opacity: .88;
+      animation: floatCore 7s ease-in-out infinite;
+    }
+
+    .depth::after {
+      content: "";
+      position: absolute;
+      right: 18px;
+      bottom: 20px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 18px rgba(142,232,168,.74);
+    }
+
+    @keyframes breathe {
+      0%, 100% { opacity: .36; transform: translate(-50%, -50%) scale(.96); }
+      50% { opacity: .9; transform: translate(-50%, -50%) scale(1.05); }
+    }
+
+    @keyframes floatCore {
+      0%, 100% { transform: translate(-50%, -50%) scale(.97); }
+      50% { transform: translate(-50%, -53%) scale(1.03); }
+    }
+
+    .hint {
+      position: absolute;
+      left: 26px;
+      right: 26px;
+      bottom: 140px;
+      z-index: 5;
+      min-height: 24px;
+      text-align: center;
+      color: rgba(238,250,241,.82);
+      font-size: 13px;
+      font-weight: 690;
+    }
+
+    .composer {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 22px;
+      z-index: 5;
+      height: 64px;
+      display: grid;
+      grid-template-columns: 48px minmax(0, 1fr) 44px;
+      align-items: center;
+      gap: 10px;
+      padding: 8px;
+      border: 0;
+      border-radius: 24px;
+      background: var(--panel);
+      color: var(--panel-ink);
+      box-shadow: 0 18px 52px rgba(0,0,0,.23);
+    }
+
+    .mic {
+      position: relative;
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--panel-ink);
+    }
+
+    .mic::before {
+      content: "";
+      width: 13px;
+      height: 20px;
+      border: 2px solid rgba(246,252,247,.94);
+      border-radius: 999px;
+    }
+
+    .mic::after {
+      content: "";
+      position: absolute;
+      width: 18px;
+      height: 10px;
+      border-bottom: 2px solid rgba(246,252,247,.94);
+      border-radius: 0 0 999px 999px;
+      transform: translateY(8px);
+    }
+
+    .hold {
+      min-width: 0;
+      text-align: left;
+    }
+
+    .hold b,
+    .hold span {
+      display: block;
+    }
+
+    .hold b {
+      font-size: 15px;
+      font-weight: 740;
+    }
+
+    .hold span {
+      margin-top: 3px;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      color: var(--panel-muted);
+      font-size: 11px;
+    }
+
+    .text-toggle {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(18,34,27,.08);
+      color: rgba(18,34,27,.72);
+      font-size: 15px;
+      font-weight: 780;
+    }
+
+    .notes {
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      padding: 22px;
+      border: 1px solid rgba(17,29,24,.12);
+      border-radius: 24px;
+      background: rgba(255,255,255,.72);
+      color: #111d18;
+      box-shadow: 0 24px 78px rgba(17,29,24,.12);
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.22;
+    }
+
+    .card p {
+      margin: 9px 0 0;
+      color: #647168;
+      font-size: 14px;
+      line-height: 1.72;
+    }
+
+    .fixes {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .fix {
+      min-height: 112px;
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(247,249,245,.9);
+      border: 1px solid rgba(17,29,24,.08);
+    }
+
+    .fix b,
+    .fix span {
+      display: block;
+    }
+
+    .fix b { font-size: 13px; }
+
+    .fix span {
+      margin-top: 7px;
+      color: #647168;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    @media (max-width: 980px) {
+      .stage { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 680px) {
+      .stage { padding: 18px 12px 36px; }
+      .phone { padding: 8px; border-radius: 30px; }
+      .screen { border-radius: 24px; }
+      .fixes { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <section class="phone" aria-label="Agent 首页概念 v0.5">
+      <div class="screen">
+        <div class="glow one"></div>
+        <div class="glow two"></div>
+        <div class="glow three"></div>
+
+        <div class="status"><span>9:41</span><span>Reality</span></div>
+
+        <header class="top">
+          <div class="brand">
+            <b>在场</b>
+            <span>现实上下文，随时可问。</span>
+          </div>
+          <i class="enabled" aria-label="已开启"></i>
+        </header>
+
+        <div class="presence" aria-hidden="true">
+          <i class="ring r1"></i>
+          <i class="ring r2"></i>
+          <i class="ring r3"></i>
+          <i class="ring r4"></i>
+          <i class="depth"></i>
+        </div>
+
+        <div class="hint">2 条线索待确认</div>
+
+        <div class="composer" role="group" aria-label="语音输入">
+          <i class="mic" aria-hidden="true"></i>
+          <div class="hold">
+            <b>按住说话</b>
+            <span>问现实里的事</span>
+          </div>
+          <button class="text-toggle" aria-label="切换文字输入">Aa</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="notes">
+      <article class="card">
+        <h2>v0.5 的核心修正</h2>
+        <p>去掉上下两段重复解释，不再写“想确认什么”。页面只保留轻量标题、一个大光圈形象、一个可选线索提示和语音输入长条。</p>
+      </article>
+      <article class="card">
+        <h2>我对这版的判断</h2>
+        <p>这版更接近你截图里“第一版光圈可取”的部分：中心没有文字，光圈更大，有深浅层次。语音入口变成默认长条，右侧只放文字切换图标，不再放“查看今天”。</p>
+        <div class="fixes">
+          <div class="fix"><b>标题</b><span>“在场”暂保留，但释义压到一句：现实上下文，随时可问。</span></div>
+          <div class="fix"><b>形象</b><span>回到大光圈，去掉 seed、眼睛和雷达感，只做层次和呼吸。</span></div>
+          <div class="fix"><b>提示</b><span>只保留“2 条线索待确认”，不再解释“没有变化会安静”。</span></div>
+          <div class="fix"><b>输入</b><span>语音为主，文字只是右侧切换图标。</span></div>
+        </div>
+      </article>
+    </aside>
+  </main>
+</body>
+</html>

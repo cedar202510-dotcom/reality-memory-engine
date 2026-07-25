@@ -7,6 +7,8 @@ import { spawn } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRv101Adapter } from "./rv101-adb.mjs";
+import { rv101Page } from "./rv101-page.mjs";
 
 const DEFAULT_PORT = 8787;
 const DEFAULT_BRIDGE_PORT = 8791;
@@ -26,6 +28,7 @@ if (liveEnabled) {
   await mkdir(path.join(path.resolve(rootArg), "sessions"), { recursive: true });
 }
 const captureRoot = await resolveCaptureRoot(path.resolve(rootArg));
+const rv101Adapter = createRv101Adapter();
 
 const liveBridge = {
   enabled: liveEnabled,
@@ -876,6 +879,19 @@ const page = String.raw`<!doctype html>
       flex-wrap: wrap;
       gap: 8px;
     }
+    .header-actions > a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      color: var(--ink);
+      background: #fff;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 700;
+    }
     .view-tabs {
       border: 1px solid var(--line);
       border-radius: 7px;
@@ -1370,6 +1386,7 @@ const page = String.raw`<!doctype html>
       <div class="root" id="root"></div>
     </div>
     <div class="header-actions">
+      <a href="/rv101">RV101 原生眼镜</a>
       <div class="view-tabs">
         <button type="button" id="showLive" class="selected">实时联调</button>
         <button type="button" id="showHistory">历史 Session</button>
@@ -2366,6 +2383,50 @@ const server = createServer(async (req, res) => {
       sendText(res, page, 200, "text/html; charset=utf-8");
       return;
     }
+    if (requestUrl.pathname === "/rv101") {
+      sendText(res, rv101Page, 200, "text/html; charset=utf-8");
+      return;
+    }
+    if (requestUrl.pathname === "/api/rv101") {
+      sendJson(res, rv101Adapter.getSnapshot());
+      return;
+    }
+    if (requestUrl.pathname === "/api/rv101/sensor") {
+      const id = requestUrl.searchParams.get("id");
+      if (!id) return fail(res, new Error("缺少传感器证据 id"), 400);
+      sendJson(res, await rv101Adapter.readSensor(id));
+      return;
+    }
+    if (requestUrl.pathname === "/api/rv101/media") {
+      const id = requestUrl.searchParams.get("id");
+      if (!id) return fail(res, new Error("缺少媒体证据 id"), 400);
+      const result = await rv101Adapter.readMedia(id);
+      res.writeHead(200, {
+        "content-type": result.contentType,
+        "content-length": result.body.length,
+        "cache-control": "private, max-age=60",
+      });
+      res.end(result.body);
+      return;
+    }
+    if (requestUrl.pathname === "/api/rv101/audio") {
+      const id = requestUrl.searchParams.get("id");
+      if (!id) return fail(res, new Error("缺少音频证据 id"), 400);
+      const result = await rv101Adapter.readMedia(id, { asAudio: true });
+      res.writeHead(200, {
+        "content-type": result.contentType,
+        "content-length": result.body.length,
+        "cache-control": "private, max-age=60",
+      });
+      res.end(result.body);
+      return;
+    }
+    if (requestUrl.pathname === "/api/rv101/command" && req.method === "POST") {
+      const input = await readJsonBody(req);
+      if (!input.command) return fail(res, new Error("缺少 command"), 400);
+      sendJson(res, await rv101Adapter.command(input.command));
+      return;
+    }
     if (requestUrl.pathname === "/api/sessions") {
       sendJson(res, { root: captureRoot, sessions: await listSessions() });
       return;
@@ -2468,6 +2529,7 @@ const server = createServer(async (req, res) => {
 });
 
 startLiveBridge();
+rv101Adapter.start();
 
 server.listen(port, HOST, () => {
   console.log(`Reality Memory Debug Console`);
@@ -2478,6 +2540,7 @@ server.listen(port, HOST, () => {
 });
 
 function shutdown() {
+  rv101Adapter.stop();
   liveBridge.socket?.destroy();
   liveBridge.server?.close();
   liveBridge.bonjourProcess?.kill();

@@ -11,12 +11,41 @@ function timeText(iso) {
     : t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-/** 眼镜 MJPEG 实时画面：img 直连探针的 multipart/x-mixed-replace 流。 */
+/** 眼镜 MJPEG 实时画面：img 直连探针的 multipart/x-mixed-replace 流。
+ *  同源 /events 每秒轮询采集事件：拍照 → 快门闪白 + 📸 角标；采集会话 → REC 红点。 */
 function StreamPanel() {
   const [url, setUrl] = useState(() => localStorage.getItem("rme-stream-url") || DEFAULT_STREAM);
   const [draft, setDraft] = useState(url);
   const [state, setState] = useState("connecting"); // connecting | live | error
   const [epoch, setEpoch] = useState(0); // 变更强制 img 重连
+  const [flash, setFlash] = useState(0); // 递增触发一次快门动画
+  const [lastShot, setLastShot] = useState(null); // {ts, detail}
+  const [recording, setRecording] = useState(false);
+  const seenTs = useRef(0);
+
+  useEffect(() => {
+    let origin;
+    try { origin = new URL(url).origin; } catch { return; }
+    seenTs.current = Date.now(); // 只响应连接之后的新事件
+    let alive = true;
+    const timer = setInterval(async () => {
+      try {
+        const events = await (await fetch(`${origin}/events`)).json();
+        if (!alive) return;
+        for (const ev of events) {
+          if (ev.type === "recording_started") setRecording(true);
+          if (ev.type === "recording_stopped") setRecording(false);
+          if (ev.ts <= seenTs.current) continue;
+          if (ev.type === "photo_captured") {
+            seenTs.current = ev.ts;
+            setLastShot(ev);
+            setFlash((n) => n + 1);
+          }
+        }
+      } catch { /* 预览断开时 /events 一并不可达，靠流状态提示 */ }
+    }, 1000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [url, epoch]);
 
   const apply = (e) => {
     e.preventDefault();
@@ -30,7 +59,10 @@ function StreamPanel() {
     <section className="live-panel">
       <div className="live-panel-head">
         <h2>眼镜实时画面</h2>
-        <span className={`live-dot ${state}`}>{{ connecting: "连接中", live: "直播中", error: "未连接" }[state]}</span>
+        <span className="live-head-tags">
+          {recording && <span className="live-rec"><i />采集中</span>}
+          <span className={`live-dot ${state}`}>{{ connecting: "连接中", live: "直播中", error: "未连接" }[state]}</span>
+        </span>
       </div>
       <div className="live-stream-frame">
         <img
@@ -40,6 +72,12 @@ function StreamPanel() {
           onLoad={() => setState("live")}
           onError={() => setState("error")}
         />
+        {flash > 0 && <div key={flash} className="live-shutter" aria-hidden="true" />}
+        {lastShot && (
+          <div key={`b${flash}`} className="live-shot-badge">
+            📸 已拍照 {timeText(new Date(lastShot.ts).toISOString())}
+          </div>
+        )}
         {state !== "live" && (
           <div className="live-stream-hint">
             <p>{state === "connecting" ? "正在连接眼镜预览流…" : "连不上眼镜预览流。"}</p>

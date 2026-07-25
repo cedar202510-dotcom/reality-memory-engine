@@ -1,6 +1,9 @@
 package com.realitymemory.glassprobe.collector;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
+import android.graphics.Matrix;
 import android.graphics.Rect;
 import android.graphics.YuvImage;
 
@@ -41,10 +44,30 @@ public final class PreviewFrameAnalyzer implements ImageAnalysis.Analyzer {
             YuvImage yuv = new YuvImage(nv21, ImageFormat.NV21, proxy.getWidth(), proxy.getHeight(), null);
             ByteArrayOutputStream jpeg = new ByteArrayOutputStream();
             yuv.compressToJpeg(new Rect(0, 0, proxy.getWidth(), proxy.getHeight()), jpegQuality, jpeg);
-            server.submitFrame(jpeg.toByteArray());
+            server.submitFrame(rotateIfNeeded(jpeg.toByteArray(), proxy.getImageInfo().getRotationDegrees()));
         } catch (Exception ignored) {
             // 预览是旁路能力，单帧转换失败直接丢帧。
         }
+    }
+
+    /** 按 CameraX 报告的 rotationDegrees 转正画面（Rokid 传感器横置，直出是躺倒的）。
+     *  预览分辨率下逐帧 decode/rotate/encode 开销可忽略；rotation=0 时零开销直通。 */
+    private byte[] rotateIfNeeded(byte[] jpegBytes, int rotationDegrees) {
+        if (rotationDegrees == 0) {
+            return jpegBytes;
+        }
+        Bitmap source = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.length);
+        if (source == null) {
+            return jpegBytes;
+        }
+        Matrix matrix = new Matrix();
+        matrix.postRotate(rotationDegrees);
+        Bitmap rotated = Bitmap.createBitmap(source, 0, 0, source.getWidth(), source.getHeight(), matrix, true);
+        source.recycle();
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        rotated.compress(Bitmap.CompressFormat.JPEG, jpegQuality, out);
+        rotated.recycle();
+        return out.toByteArray();
     }
 
     /** YUV_420_888 三平面（含 row/pixel stride）拷成 NV21（Y 后跟交错的 VU）。 */
