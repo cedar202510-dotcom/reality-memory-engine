@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { Mic, Keyboard, CircleDot, Milestone, Sparkles, X, Check, Coffee, Zap, MapPin, SlidersHorizontal, ChevronRight } from "lucide-react";
+import { Mic, Keyboard, CircleDot, Milestone, Sparkles, X, Check, Coffee, Zap, MapPin, SlidersHorizontal, ChevronRight, Radio, ArrowLeft } from "lucide-react";
 import "./styles.css";
 import TopologyGraph from "./TopologyGraph";
+import LiveView from "./LiveView";
+import { whereIs } from "./api";
 
 // Mock Data for Context
 const mockContextItems = [
@@ -62,30 +64,52 @@ const mockObjectDetails = {
   }
 };
 
+/** 从口语问句里取出物品名：「我的充电器在哪里？」→「充电器」。
+ *  后端 where-is 收的是物品名而不是整句；抽不出来时退回原文，由深检索兜底。 */
+function extractObjectName(text) {
+  const stripped = text
+    .replace(/[?？。！!，,、\s]/g, "")
+    .replace(/^(我的|我地|帮我找|找一下|找找|请问)/, "")
+    .replace(/(在哪里|在哪儿|在哪|放哪了|放哪儿了|放在哪|去哪了|呢)$/, "");
+  return stripped || text;
+}
+
+const FALLBACK_ANSWER = "最后一次确认在客厅工作桌下方。今天 10:18 之后没有新的移动记录。";
+
 function AgentHome({ setMessages, messages, isTyping, setIsTyping, setShowClues }) {
   const [listening, setListening] = useState(false);
 
-  const handleSend = (text) => {
+  const handleSend = async (text) => {
     const textToSend = text || "我的充电器在哪里？";
     const newMsg = { id: Date.now(), text: textToSend, sender: "user" };
     setMessages(prev => {
       const lastAgent = prev.slice().reverse().find(m => m.sender === 'agent');
       return lastAgent ? [lastAgent, newMsg] : [newMsg];
     });
-    
+
     setIsTyping(true);
     setListening(false);
+    setMessages(prev => [...prev, { id: Date.now()+1, text: "", sender: "agent", type: "thinking" }]);
 
-    setTimeout(() => {
-      setMessages(prev => [...prev, { id: Date.now()+1, text: "", sender: "agent", type: "thinking" }]);
-      setTimeout(() => {
-        setMessages(prev => [
-          prev[0], 
-          { id: Date.now()+2, text: "最后一次确认在客厅工作桌下方。今天 10:18 之后没有新的移动记录。", sender: "agent" }
-        ]);
-        setIsTyping(false);
-      }, 1500);
-    }, 600);
+    // 真实后端优先；memory-platform 未启动时回退演示答案，保持原型可独立展示
+    let reply = FALLBACK_ANSWER;
+    let demo = true;
+    try {
+      const res = await whereIs(extractObjectName(textToSend), true);
+      if (res?.answer_text) {
+        reply = res.answer_text;
+        demo = false;
+      }
+    } catch {
+      /* 后端不可达 → 保持 demo 答案 */
+    }
+
+    // 保留用户问句而不是上一条 agent 消息：看不到问的是什么，答案就没有意义
+    setMessages([
+      newMsg,
+      { id: Date.now()+2, text: reply, sender: "agent", demo },
+    ]);
+    setIsTyping(false);
   };
 
   const handleVoice = () => {
@@ -122,6 +146,8 @@ function AgentHome({ setMessages, messages, isTyping, setIsTyping, setShowClues 
         {messages.map(msg => (
           <div key={msg.id} className={`bubble ${msg.sender} ${msg.type === "thinking" ? "thinking" : ""}`}>
             {msg.type === "thinking" ? <><i/><i/><i/></> : msg.text}
+            {/* 演示答案必须标出来：分不清真假的 demo 会毁掉可信度 */}
+            {msg.demo && <span className="bubble-demo">演示答案 · 后端未连接</span>}
           </div>
         ))}
       </div>
@@ -347,6 +373,18 @@ function App() {
   const [selectedObject, setSelectedObject] = useState(null);
   const [showClues, setShowClues] = useState(false);
 
+  // 联调是桌面工作台，不是手机功能：跳出 430px 手机模型走全宽双栏
+  if (activeTab === "live") {
+    return (
+      <div className="live-console">
+        <button className="live-exit" onClick={() => setActiveTab("agent")}>
+          <ArrowLeft size={15} /> 返回应用
+        </button>
+        <LiveView />
+      </div>
+    );
+  }
+
   return (
     <div className={`app-shell premium-dark mode-${activeTab}`}>
       <div className="status-bar">
@@ -386,6 +424,10 @@ function App() {
         <button className={`dock-item ${activeTab === 'galaxy' ? 'active' : ''}`} onClick={() => setActiveTab("galaxy")}>
           <Sparkles size={20} />
           <span>全览</span>
+        </button>
+        <button className="dock-item" onClick={() => setActiveTab("live")}>
+          <Radio size={20} />
+          <span>联调</span>
         </button>
       </nav>
     </div>
