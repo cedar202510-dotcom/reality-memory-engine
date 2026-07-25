@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Mic, Keyboard, CircleDot, Milestone, Sparkles, X, Check, Coffee, Zap, MapPin, SlidersHorizontal, ChevronRight, Radio, ArrowLeft } from "lucide-react";
+import { Routes, Route, Navigate, Outlet, useNavigate, useLocation, useOutletContext, useSearchParams } from "react-router-dom";
+import { Mic, Keyboard, CircleDot, Milestone, Sparkles, X, Check, Coffee, Zap, MapPin, SlidersHorizontal, ChevronRight, Radio, ArrowLeft, Camera } from "lucide-react";
 import "./styles.css";
 import TopologyGraph from "./TopologyGraph";
 import LiveView from "./LiveView";
+import CaptureConsole from "./CaptureConsole";
 import { whereIs } from "./api";
 
 // Mock Data for Context
@@ -76,7 +78,8 @@ function extractObjectName(text) {
 
 const FALLBACK_ANSWER = "最后一次确认在客厅工作桌下方。今天 10:18 之后没有新的移动记录。";
 
-function AgentHome({ setMessages, messages, isTyping, setIsTyping, setShowClues }) {
+function AgentHome() {
+  const { messages, setMessages, isTyping, setIsTyping, setShowClues } = useOutletContext();
   const [listening, setListening] = useState(false);
 
   const handleSend = async (text) => {
@@ -172,7 +175,8 @@ function AgentHome({ setMessages, messages, isTyping, setIsTyping, setShowClues 
   );
 }
 
-function TimelineView({ setSelectedObject }) {
+function TimelineView() {
+  const { setSelectedObject } = useOutletContext();
   const [items, setItems] = useState(mockContextItems);
 
   const handleConfirm = (e, id, confirmed) => {
@@ -242,7 +246,8 @@ function TimelineView({ setSelectedObject }) {
   );
 }
 
-function GalaxyView({ setSelectedObject }) {
+function GalaxyView() {
+  const { setSelectedObject } = useOutletContext();
   return (
     <div className="page-view galaxy-page">
       <div className="galaxy-bg-canvas">
@@ -366,24 +371,42 @@ function CluesDrawer({ onClose }) {
   );
 }
 
-function App() {
-  const [activeTab, setActiveTab] = useState("agent");
+// 联调与采集控制都是桌面工作台，不是手机功能：跳出 430px 手机模型走全宽双栏
+function ConsolePage({ component: Console }) {
+  const navigate = useNavigate();
+  return (
+    <div className="live-console">
+      <button className="live-exit" onClick={() => navigate("/agent")}>
+        <ArrowLeft size={15} /> 返回应用
+      </button>
+      <Console />
+    </div>
+  );
+}
+
+/** 手机壳布局：三个 tab 页共用状态栏与底部 dock，页面本身交给子路由。
+ *  抽屉开合也写进 query（?object=…、?clues=1），刷新和浏览器后退都能还原当时看到的界面。 */
+function AppShell() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const activeTab = location.pathname.split("/")[1] || "agent";
   const [messages, setMessages] = useState([{ id: 1, text: "我在。你可以直接问现实里的事。", sender: "agent" }]);
   const [isTyping, setIsTyping] = useState(false);
-  const [selectedObject, setSelectedObject] = useState(null);
-  const [showClues, setShowClues] = useState(false);
 
-  // 联调是桌面工作台，不是手机功能：跳出 430px 手机模型走全宽双栏
-  if (activeTab === "live") {
-    return (
-      <div className="live-console">
-        <button className="live-exit" onClick={() => setActiveTab("agent")}>
-          <ArrowLeft size={15} /> 返回应用
-        </button>
-        <LiveView />
-      </div>
-    );
-  }
+  const selectedObject = searchParams.get("object");
+  const showClues = searchParams.get("clues") === "1";
+
+  const setParam = (key, value) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value); else next.delete(key);
+      return next;
+    }, { replace: true });
+  };
+  const setSelectedObject = (name) => setParam("object", name || null);
+  const setShowClues = (open) => setParam("clues", open ? "1" : null);
 
   return (
     <div className={`app-shell premium-dark mode-${activeTab}`}>
@@ -392,17 +415,7 @@ function App() {
       </div>
 
       <main className="main-content">
-        {activeTab === "agent" && (
-          <AgentHome 
-            messages={messages} 
-            setMessages={setMessages} 
-            isTyping={isTyping} 
-            setIsTyping={setIsTyping}
-            setShowClues={setShowClues}
-          />
-        )}
-        {activeTab === "timeline" && <TimelineView setSelectedObject={setSelectedObject} />}
-        {activeTab === "galaxy" && <GalaxyView setSelectedObject={setSelectedObject} />}
+        <Outlet context={{ messages, setMessages, isTyping, setIsTyping, setSelectedObject, setShowClues }} />
       </main>
 
       {selectedObject && (
@@ -413,24 +426,45 @@ function App() {
       )}
 
       <nav className="bottom-dock premium-dock">
-        <button className={`dock-item ${activeTab === 'agent' ? 'active' : ''}`} onClick={() => setActiveTab("agent")}>
+        {/* 切页只带路径不带 query：抽屉状态属于上一页，跟过去就成了幽灵弹窗 */}
+        <button className={`dock-item ${activeTab === 'agent' ? 'active' : ''}`} onClick={() => navigate("/agent")}>
           <CircleDot size={20} />
           <span>在场</span>
         </button>
-        <button className={`dock-item ${activeTab === 'timeline' ? 'active' : ''}`} onClick={() => setActiveTab("timeline")}>
+        <button className={`dock-item ${activeTab === 'timeline' ? 'active' : ''}`} onClick={() => navigate("/timeline")}>
           <Milestone size={20} />
           <span>上下文</span>
         </button>
-        <button className={`dock-item ${activeTab === 'galaxy' ? 'active' : ''}`} onClick={() => setActiveTab("galaxy")}>
+        <button className={`dock-item ${activeTab === 'galaxy' ? 'active' : ''}`} onClick={() => navigate("/galaxy")}>
           <Sparkles size={20} />
           <span>全览</span>
         </button>
-        <button className="dock-item" onClick={() => setActiveTab("live")}>
+        <button className="dock-item" onClick={() => navigate("/capture")}>
+          <Camera size={20} />
+          <span>采集</span>
+        </button>
+        <button className="dock-item" onClick={() => navigate("/live")}>
           <Radio size={20} />
           <span>联调</span>
         </button>
       </nav>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/live" element={<ConsolePage component={LiveView} />} />
+      <Route path="/capture" element={<ConsolePage component={CaptureConsole} />} />
+      <Route element={<AppShell />}>
+        <Route path="/agent" element={<AgentHome />} />
+        <Route path="/timeline" element={<TimelineView />} />
+        <Route path="/galaxy" element={<GalaxyView />} />
+      </Route>
+      {/* 根路径和任何认不出的 URL 都落回在场页，刷新不会白屏 */}
+      <Route path="*" element={<Navigate to="/agent" replace />} />
+    </Routes>
   );
 }
 
