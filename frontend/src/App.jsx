@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, Outlet, useNavigate, useLocation, useOutletContext, useSearchParams } from "react-router-dom";
-import { Mic, Keyboard, CircleDot, Milestone, Sparkles, X, Check, Coffee, Zap, MapPin, SlidersHorizontal, ChevronRight, Radio, ArrowLeft, Camera } from "lucide-react";
+import { Mic, Keyboard, CircleDot, Milestone, Sparkles, X, Check, Coffee, Zap, MapPin, SlidersHorizontal, ChevronRight, Radio, ArrowLeft, Camera, User } from "lucide-react";
 import "./styles.css";
 import TopologyGraph from "./TopologyGraph";
 import LiveView from "./LiveView";
@@ -266,6 +266,23 @@ function GalaxyView() {
   );
 }
 
+function MyPage() {
+  return (
+    <div className="page-view my-page">
+      <header className="top">
+        <div className="brand">
+          <b>我的</b>
+          <span>设置与设备管理</span>
+        </div>
+      </header>
+      <div style={{ padding: "32px 24px", color: "var(--text-dim)", textAlign: "center", display: "flex", flexDirection: "column", gap: "12px", alignItems: "center", justifyContent: "center", height: "60vh" }}>
+        <User size={48} color="var(--dim)" />
+        <p>页面建设中...</p>
+      </div>
+    </div>
+  );
+}
+
 // Drawer: Object Micro Lifecycle (MYGRID style minimalist dark drawer)
 function ObjectDrawer({ objectName, onClose }) {
   const data = mockObjectDetails[objectName] || {
@@ -439,13 +456,9 @@ function AppShell() {
           <Sparkles size={20} />
           <span>全览</span>
         </button>
-        <button className="dock-item" onClick={() => navigate("/capture")}>
-          <Camera size={20} />
-          <span>采集</span>
-        </button>
-        <button className="dock-item" onClick={() => navigate("/live")}>
-          <Radio size={20} />
-          <span>联调</span>
+        <button className={`dock-item ${activeTab === 'my' ? 'active' : ''}`} onClick={() => navigate("/my")}>
+          <User size={20} />
+          <span>我的</span>
         </button>
       </nav>
     </div>
@@ -461,6 +474,7 @@ function App() {
         <Route path="/agent" element={<AgentHome />} />
         <Route path="/timeline" element={<TimelineView />} />
         <Route path="/galaxy" element={<GalaxyView />} />
+        <Route path="/my" element={<MyPage />} />
       </Route>
       {/* 根路径和任何认不出的 URL 都落回在场页，刷新不会白屏 */}
       <Route path="*" element={<Navigate to="/agent" replace />} />
