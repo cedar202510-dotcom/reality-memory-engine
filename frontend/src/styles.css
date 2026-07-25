@@ -1445,6 +1445,13 @@ button {
   padding: 8px 2px 14px;
 }
 
+.life-header > div {
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 11px;
+}
+
 .life-header h1 {
   color: var(--life-ink);
   font-size: 28px;
@@ -1453,10 +1460,11 @@ button {
 }
 
 .life-header p {
-  margin-top: 7px;
+  margin: 0 0 2px;
   color: var(--life-muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .life-source-button,
@@ -2011,7 +2019,15 @@ header.top {
   gap: 18px;
   padding: 10px 24px 0;
 }
+.brand {
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
 .brand b {
+  flex: none;
   font-size: 30px;
   line-height: 1;
   font-weight: 780;
@@ -2020,10 +2036,10 @@ header.top {
 .brand span {
   display: block;
   max-width: 250px;
-  margin-top: 10px;
+  margin: 0 0 2px;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 12px;
+  line-height: 1.25;
 }
 
 .icon-btn {
@@ -2732,8 +2748,9 @@ header.top {
 
 .timeline-top-right {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
 }
 
 .timeline-date-badge {
@@ -3188,7 +3205,7 @@ header.top {
   padding-bottom: 10px;
 }
 .galaxy-page .brand span {
-  margin-top: 5px;
+  margin-bottom: 2px;
 }
 .graph-shell {
   position: relative;

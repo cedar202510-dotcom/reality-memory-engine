@@ -975,6 +975,7 @@ function TimelineView() {
           <span>日常留下的片段</span>
         </div>
         <div className="timeline-top-right">
+          <button className="icon-btn" aria-label="轨迹筛选"><SlidersHorizontal size={18} /></button>
           <AnimatePresence mode="wait">
             <motion.div
               key={selectedDay.id}
@@ -987,7 +988,6 @@ function TimelineView() {
               {selectedDay.month}.{String(selectedDay.day).padStart(2, "0")} · {selectedDay.weekday}
             </motion.div>
           </AnimatePresence>
-          <button className="icon-btn" aria-label="轨迹筛选"><SlidersHorizontal size={18} /></button>
         </div>
       </header>
 
