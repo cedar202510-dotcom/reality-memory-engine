@@ -92,6 +92,12 @@ public class MainActivity extends ComponentActivity {
         if (intent.getBooleanExtra("stop_capture", false)) {
             sendServiceAction(CaptureForegroundService.ACTION_STOP);
         }
+        if (intent.getBooleanExtra("stop_preview", false)) {
+            sendServiceAction(CaptureForegroundService.ACTION_STOP_PREVIEW);
+        }
+        if (intent.getBooleanExtra("start_preview", false)) {
+            sendServiceAction(CaptureForegroundService.ACTION_START_PREVIEW);
+        }
     }
 
     @Override

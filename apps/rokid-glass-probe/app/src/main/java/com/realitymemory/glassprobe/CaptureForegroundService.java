@@ -264,6 +264,13 @@ public class CaptureForegroundService extends LifecycleService {
             return;
         }
 
+        // Rokid 相机 HAL 无法同时跑 ImageCapture 与 ImageAnalysis：预览开着时 takePicture
+        // 必定 ERROR_CAPTURE_FAILED(2)。拍照期间临时摘掉 ImageAnalysis，拍完再挂回去
+        // （预览服务器不停，观看者看到画面短暂静止约 2 秒——正好是快门语义）。
+        final boolean resumePreview = previewActive;
+        if (resumePreview) {
+            previewActive = false;
+        }
         bindCameraThen(() -> {
             File file = new File(getCacheDir(), "probe_" + System.currentTimeMillis() + ".jpg");
             ImageCapture.OutputFileOptions options = new ImageCapture.OutputFileOptions.Builder(file).build();
@@ -275,6 +282,7 @@ public class CaptureForegroundService extends LifecycleService {
                     long bytes = file.exists() ? file.length() : -1L;
                     PreviewStreamServer.recordEvent(
                             "photo_captured", "trigger=" + trigger + ", bytes=" + bytes);
+                    restorePreview(resumePreview);
                     if (collectorConfig.canUpload()) {
                         spoolFrame(file, trigger, startedAt);
                         ProbeLog.append(
@@ -296,12 +304,28 @@ public class CaptureForegroundService extends LifecycleService {
                 public void onError(@NonNull ImageCaptureException exception) {
                     PreviewStreamServer.recordEvent(
                             "photo_failed", "trigger=" + trigger + ", code=" + exception.getImageCaptureError());
+                    restorePreview(resumePreview);
                     ProbeLog.append(
                             CaptureForegroundService.this,
                             "CAPTURE_FAILED",
                             "trigger=" + trigger + ", code=" + exception.getImageCaptureError() + ", message=" + exception.getMessage()
                     );
                 }
+            });
+        });
+    }
+
+    /** 拍照结束后把 ImageAnalysis 挂回去恢复出帧；在主线程改 previewActive 并重绑。 */
+    private void restorePreview(boolean resumePreview) {
+        if (!resumePreview) {
+            return;
+        }
+        handler.post(() -> {
+            if (previewServer == null || !previewServer.isRunning()) {
+                return;   // 拍照期间用户关了预览，不要擅自开回来
+            }
+            previewActive = true;
+            bindCameraThen(() -> {
             });
         });
     }
