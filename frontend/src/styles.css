@@ -4151,7 +4151,7 @@ header.top {
   align-items: end;
   padding: 4px 12px calc(7px + env(safe-area-inset-bottom));
   background: linear-gradient(to top, rgba(8, 12, 10, 0.98) 0%, rgba(8, 12, 10, 0.82) 72%, rgba(8, 12, 10, 0.05) 100%);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid rgba(255, 255, 255, 0.24);
   z-index: 50;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -4236,7 +4236,7 @@ header.top {
 
 .mode-life .bottom-dock.premium-dock {
   background: linear-gradient(to top, rgba(8, 12, 10, 0.98) 0%, rgba(8, 12, 10, 0.82) 72%, rgba(8, 12, 10, 0.05) 100%);
-  border-top-color: rgba(255, 255, 255, 0.06);
+  border-top-color: rgba(255, 255, 255, 0.24);
 }
 
 .mode-life .dock-item {
