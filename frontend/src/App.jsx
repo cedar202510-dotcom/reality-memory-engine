@@ -1,7 +1,19 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Routes, Route, Navigate, Outlet, useNavigate, useLocation, useOutletContext, useSearchParams } from "react-router-dom";
-import { Mic, Keyboard, Send, Maximize2, X, Check, MapPin, SlidersHorizontal, ChevronRight, ArrowLeft } from "lucide-react";
-import { CirclesFour, Compass, Path, UserCircle, Camera, Database, Radio } from "@phosphor-icons/react";
+import {
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  House,
+  Keyboard,
+  MapPin,
+  Maximize2,
+  Mic,
+  Send,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
+import { CirclesFour, Path, Robot, UserCircle } from "@phosphor-icons/react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import "./styles.css";
 import TopologyGraph from "./TopologyGraph";
@@ -11,7 +23,9 @@ import MediaLibrary from "./MediaLibrary";
 import PreferencePanel from "./PreferencePanel";
 import PresenceOrb from "./PresenceOrb";
 import MyPage from "./MyPage";
+import LifeHome from "./LifeHome";
 import PicoMode from "./PicoMode";
+import XRRoomPreview from "./XRRoomPreview";
 import { LightboxProvider, PreviewImage } from "./ImageLightbox";
 import { whereIs, recentEvents, objectTimeline, listClues, resolveClue, evidenceUrl, apiUrl, transcribe } from "./api";
 
@@ -79,6 +93,381 @@ function dayText(iso) {
   const today = new Date();
   const sameDay = t.toDateString() === today.toDateString();
   return sameDay ? "今天" : t.toLocaleDateString("zh-CN", { month: "long", day: "numeric" });
+}
+
+function demoTime(dayOffset, hour, minute) {
+  const value = new Date();
+  value.setDate(value.getDate() + dayOffset);
+  value.setHours(hour, minute, 0, 0);
+  return value.toISOString();
+}
+
+// 后端不可达时才使用。字段与真实 MemoryEvent 保持一致，因此演示与真实数据共用一套卡片。
+const DEMO_TIMELINE_EVENTS = [
+  {
+    event_id: "demo-keys",
+    entity_id: "demo-keys",
+    entity_name: "家门钥匙",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(0, 8, 12),
+    frame_asset_id: "demo-entrance-frame",
+    demo_evidence_url: "/assets/pico/inventory/items/keys.png",
+    evidence_url: true,
+    location: "玄关托盘",
+    payload: { position: "托盘内侧" },
+    confidence: 0.94,
+    superseded: false,
+    user_confirmed: true,
+  },
+  {
+    event_id: "demo-wallet",
+    entity_id: "demo-wallet",
+    entity_name: "钱包",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(0, 8, 12),
+    frame_asset_id: "demo-entrance-frame",
+    demo_evidence_url: "/assets/pico/inventory/items/keys.png",
+    evidence_url: true,
+    location: "玄关托盘",
+    payload: { position: "钥匙旁" },
+    confidence: 0.88,
+    superseded: false,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-water-bottle-today",
+    entity_id: "demo-water-bottle",
+    entity_name: "水杯",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(0, 10, 4),
+    frame_asset_id: "demo-desk-frame-today",
+    demo_evidence_url: "/assets/pico/inventory/items/water-bottle.png",
+    evidence_url: true,
+    location: "书房工作桌",
+    payload: { position: "笔记本电脑右侧" },
+    confidence: 0.91,
+    superseded: false,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-charger-moved",
+    entity_id: "demo-charger",
+    entity_name: "充电器",
+    event_type: "OBJECT_MOVED",
+    event_time_from: demoTime(-1, 18, 46),
+    frame_asset_id: null,
+    evidence_url: null,
+    location: "书房工作桌下方",
+    payload: { reason: "从桌面移动到桌下" },
+    confidence: 0.87,
+    superseded: false,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-laptop-yesterday",
+    entity_id: "demo-laptop",
+    entity_name: "笔记本电脑",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(-1, 9, 10),
+    frame_asset_id: "demo-work-frame-yesterday",
+    demo_evidence_url: "/assets/pico/inventory/items/laptop.png",
+    evidence_url: true,
+    location: "书房工作桌",
+    payload: { position: "桌面中央" },
+    confidence: 0.96,
+    superseded: false,
+    user_confirmed: true,
+  },
+  {
+    event_id: "demo-headphones-yesterday",
+    entity_id: "demo-headphones",
+    entity_name: "耳机",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(-1, 9, 10),
+    frame_asset_id: "demo-work-frame-yesterday",
+    demo_evidence_url: "/assets/pico/inventory/items/laptop.png",
+    evidence_url: true,
+    location: "书房工作桌",
+    payload: { position: "显示器旁" },
+    confidence: 0.89,
+    superseded: false,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-charger-correction",
+    entity_id: "demo-charger",
+    entity_name: "充电器",
+    event_type: "USER_CORRECTION",
+    event_time_from: demoTime(-2, 21, 6),
+    frame_asset_id: null,
+    evidence_url: null,
+    location: "书房",
+    payload: { field: "location", value: "工作桌下方" },
+    confidence: 1,
+    superseded: false,
+    user_confirmed: true,
+  },
+  {
+    event_id: "demo-sunscreen",
+    entity_id: "demo-sunscreen",
+    entity_name: "防晒霜",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(-2, 8, 20),
+    frame_asset_id: "demo-dresser-frame",
+    demo_evidence_url: "/assets/pico/inventory/items/sunscreen.png",
+    evidence_url: true,
+    location: "卧室梳妆台",
+    payload: { position: "镜子左侧" },
+    confidence: 0.93,
+    superseded: false,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-serum",
+    entity_id: "demo-serum",
+    entity_name: "精华液",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(-2, 8, 20),
+    frame_asset_id: "demo-dresser-frame",
+    demo_evidence_url: "/assets/pico/inventory/items/sunscreen.png",
+    evidence_url: true,
+    location: "卧室梳妆台",
+    payload: { position: "防晒霜旁" },
+    confidence: 0.86,
+    superseded: false,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-lunch-preference",
+    entity_id: "demo-hulatang",
+    entity_name: "胡辣汤",
+    event_type: "PREFERENCE_STATED",
+    event_time_from: demoTime(-3, 12, 30),
+    frame_asset_id: null,
+    evidence_url: null,
+    location: "餐桌",
+    payload: { value: "不喜欢这家外卖的味道" },
+    confidence: 0.82,
+    superseded: false,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-keys-old",
+    entity_id: "demo-keys",
+    entity_name: "家门钥匙",
+    event_type: "OBJECT_MOVED",
+    event_time_from: demoTime(-3, 20, 40),
+    frame_asset_id: "demo-keys-old-frame",
+    demo_evidence_url: "/assets/pico/inventory/items/keys.png",
+    evidence_url: true,
+    location: "餐桌边",
+    payload: { position: "购物袋旁" },
+    confidence: 0.79,
+    superseded: true,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-umbrella",
+    entity_id: "demo-umbrella",
+    entity_name: "雨伞",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(-3, 8, 5),
+    frame_asset_id: "demo-entry-frame-old",
+    demo_evidence_url: "/assets/pico/inventory/items/umbrella.png",
+    evidence_url: true,
+    location: "玄关",
+    payload: { position: "入户门右侧" },
+    confidence: 0.9,
+    superseded: false,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-task",
+    entity_id: "demo-task-passport",
+    entity_name: "护照",
+    event_type: "TASK_STATED",
+    event_time_from: demoTime(-4, 16, 20),
+    frame_asset_id: null,
+    evidence_url: null,
+    location: "书房",
+    payload: { value: "周五前确认签证材料" },
+    confidence: 0.9,
+    superseded: false,
+    user_confirmed: true,
+  },
+  {
+    event_id: "demo-passport-observed",
+    entity_id: "demo-task-passport",
+    entity_name: "护照",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(-4, 8, 45),
+    frame_asset_id: "demo-documents-frame",
+    demo_evidence_url: "/assets/pico/inventory/items/passport.png",
+    evidence_url: true,
+    location: "书房文件柜",
+    payload: { position: "签证材料上方" },
+    confidence: 0.95,
+    superseded: false,
+    user_confirmed: true,
+  },
+  {
+    event_id: "demo-phone-observed",
+    entity_id: "demo-phone",
+    entity_name: "备用手机",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(-4, 8, 45),
+    frame_asset_id: "demo-documents-frame",
+    demo_evidence_url: "/assets/pico/inventory/items/passport.png",
+    evidence_url: true,
+    location: "书房文件柜",
+    payload: { position: "护照右侧" },
+    confidence: 0.83,
+    superseded: false,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-tissue",
+    entity_id: "demo-tissue",
+    entity_name: "纸巾",
+    event_type: "CONSUMABLE_LEVEL_OBSERVED",
+    event_time_from: demoTime(-5, 10, 8),
+    frame_asset_id: null,
+    evidence_url: null,
+    location: "客厅柜内",
+    payload: { value: "可能只剩最后一包" },
+    confidence: 0.76,
+    superseded: false,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-water-bottle-old",
+    entity_id: "demo-water-bottle",
+    entity_name: "水杯",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(-5, 7, 50),
+    frame_asset_id: "demo-morning-frame",
+    demo_evidence_url: "/assets/pico/inventory/items/water-bottle.png",
+    evidence_url: true,
+    location: "卧室床头柜",
+    payload: { position: "手表旁" },
+    confidence: 0.84,
+    superseded: true,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-watch",
+    entity_id: "demo-watch",
+    entity_name: "手表",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(-5, 7, 50),
+    frame_asset_id: "demo-morning-frame",
+    demo_evidence_url: "/assets/pico/inventory/items/water-bottle.png",
+    evidence_url: true,
+    location: "卧室床头柜",
+    payload: { position: "水杯旁" },
+    confidence: 0.92,
+    superseded: false,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-headphones-old",
+    entity_id: "demo-headphones",
+    entity_name: "耳机",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(-6, 9, 12),
+    frame_asset_id: null,
+    evidence_url: null,
+    location: "书房显示器旁",
+    payload: {},
+    confidence: 0.71,
+    superseded: true,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-perfume",
+    entity_id: "demo-perfume",
+    entity_name: "香水",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(-6, 8, 35),
+    frame_asset_id: "demo-cabinet-frame",
+    demo_evidence_url: "/assets/pico/inventory/items/perfume.png",
+    evidence_url: true,
+    location: "卧室衣柜",
+    payload: { position: "内侧隔板" },
+    confidence: 0.88,
+    superseded: false,
+    user_confirmed: false,
+  },
+  {
+    event_id: "demo-face-cream",
+    entity_id: "demo-face-cream",
+    entity_name: "面霜",
+    event_type: "OBJECT_OBSERVED_AT",
+    event_time_from: demoTime(-6, 8, 35),
+    frame_asset_id: "demo-cabinet-frame",
+    demo_evidence_url: "/assets/pico/inventory/items/perfume.png",
+    evidence_url: true,
+    location: "卧室衣柜",
+    payload: { position: "香水旁" },
+    confidence: 0.81,
+    superseded: false,
+    user_confirmed: false,
+  },
+];
+
+function demoObjectTimeline(entityId) {
+  const events = DEMO_TIMELINE_EVENTS
+    .filter((event) => event.entity_id === entityId)
+    .sort((a, b) => new Date(a.event_time_from) - new Date(b.event_time_from));
+  const latest = events[events.length - 1];
+  if (!latest) return null;
+  return {
+    entity: { canonical_name: latest.entity_name, aliases: [] },
+    projection: {
+      location: latest.location,
+      last_seen_time: latest.event_time_from,
+      confidence: latest.confidence,
+      corrected: events.some((event) => event.event_type === "USER_CORRECTION"),
+    },
+    events: events.map((event) => ({
+      ...event,
+      payload: { ...event.payload, location: event.location },
+      confidence: { aggregate: event.confidence },
+      superseded_by: event.superseded ? "demo-newer-event" : null,
+    })),
+  };
+}
+
+function localDayId(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function timelineDay(date, events = []) {
+  return {
+    id: localDayId(date),
+    month: String(date.getMonth() + 1).padStart(2, "0"),
+    day: date.getDate(),
+    weekday: date.toLocaleDateString("zh-CN", { weekday: "short" }),
+    events,
+  };
+}
+
+function groupEventsByDay(events) {
+  const days = new Map();
+  events.forEach((event) => {
+    const date = new Date(event.event_time_from);
+    if (Number.isNaN(date.getTime())) return;
+    const id = localDayId(date);
+    if (!days.has(id)) days.set(id, timelineDay(date));
+    days.get(id).events.push(event);
+  });
+  days.forEach((day) => {
+    day.events.sort((a, b) => new Date(b.event_time_from) - new Date(a.event_time_from));
+  });
+  return Array.from(days.values()).sort((a, b) => b.id.localeCompare(a.id));
 }
 
 /** 从口语问句里取出物品名：「我的充电器在哪里？」→「充电器」。
@@ -459,37 +848,124 @@ function AgentHome() {
   );
 }
 
-/** 上下文页：已接受的事件流。
+/** 轨迹按天组织，卡片内仍展示后端已接受的真实事件。
  *
- *  这里刻意**不放**确认按钮。事件是已经过候选门的既成事实，对它点「确认」没有意义；
- *  真正等人拍板的是候选（线索），在确认中心里。旧原型把两者画在一起，看起来热闹，
- *  但会让人以为记忆是在这条流里被批准的——那是错的心智模型。 */
+ *  同一来源帧会在这里合成一张卡；这只是展示聚合，不会改写后端的原子事件。
+ *  真正等待确认的候选仍在确认中心，不能在事件流里再次“批准”已经成立的事实。 */
 function TimelineView() {
   const { setSelectedEntity, setShowClues, clueCount } = useOutletContext();
   const [events, setEvents] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedDayId, setSelectedDayId] = useState("");
+  const [scrubberOpen, setScrubberOpen] = useState(false);
+  const floatingScrubberRef = useRef(null);
+  const scrubberDraggingRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
-    recentEvents(40)
+    recentEvents(100)
       .then(data => { if (alive) { setEvents(data.events); setError(null); } })
       .catch(e => { if (alive) setError(String(e.message || e)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, []);
 
-  // 同一天的事件归到一个日期标签下，标签只在当天第一条上出现
-  let lastDay = null;
+  const isDemo = Boolean(error);
+  const visibleEvents = isDemo ? DEMO_TIMELINE_EVENTS : events;
+  const timelineDays = useMemo(() => {
+    const days = groupEventsByDay(visibleEvents);
+    return days.length > 0 ? days : [timelineDay(new Date())];
+  }, [visibleEvents]);
+
+  useEffect(() => {
+    if (!timelineDays.some((day) => day.id === selectedDayId)) {
+      setSelectedDayId(timelineDays[0].id);
+    }
+  }, [selectedDayId, timelineDays]);
+
+  const selectedDay = timelineDays.find((day) => day.id === selectedDayId) || timelineDays[0];
+  const selectedDayIndex = Math.max(0, timelineDays.findIndex((day) => day.id === selectedDay.id));
+  const selectedGroups = useMemo(() => groupByFrame(selectedDay.events), [selectedDay.events]);
+
+  const selectDayFromY = (clientY) => {
+    const rect = floatingScrubberRef.current?.getBoundingClientRect();
+    if (!rect || timelineDays.length === 0) return;
+    const progress = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+    const index = Math.round(progress * (timelineDays.length - 1));
+    const nextId = timelineDays[index]?.id;
+    if (nextId) setSelectedDayId((currentId) => currentId === nextId ? currentId : nextId);
+  };
+
+  const handleScrubberPointerDown = (event) => {
+    event.preventDefault();
+    scrubberDraggingRef.current = true;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    selectDayFromY(event.clientY);
+  };
+
+  const handleScrubberPointerMove = (event) => {
+    if (!scrubberDraggingRef.current) return;
+    event.preventDefault();
+    selectDayFromY(event.clientY);
+  };
+
+  const handleScrubberPointerEnd = (event) => {
+    scrubberDraggingRef.current = false;
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    }
+  };
+
+  const stepDay = (direction) => {
+    const nextIndex = Math.min(
+      timelineDays.length - 1,
+      Math.max(0, selectedDayIndex + direction)
+    );
+    const nextId = timelineDays[nextIndex]?.id;
+    if (nextId) setSelectedDayId(nextId);
+  };
+
+  const handleScrubberWheel = (event) => {
+    event.preventDefault();
+    if (event.deltaY !== 0) stepDay(event.deltaY > 0 ? 1 : -1);
+  };
+
+  const handleScrubberKeyDown = (event) => {
+    if (!["ArrowUp", "ArrowDown"].includes(event.key)) return;
+    event.preventDefault();
+    stepDay(event.key === "ArrowDown" ? 1 : -1);
+  };
+
+  const eventMeta = (event) => [
+    `置信度 ${Math.round(event.confidence * 100)}%`,
+    event.event_type === "USER_CORRECTION" ? "纠正记录" : "",
+    event.user_confirmed ? "已确认" : "",
+    event.superseded ? "已更新" : "",
+  ].filter(Boolean).join(" · ");
 
   return (
     <div className="page-view timeline-page">
-      <header className="top">
+      <header className="top timeline-header">
         <div className="brand">
           <b>轨迹</b>
-          <span>现实发生的流动切片</span>
+          <span>日常留下的片段</span>
         </div>
-        <button className="icon-btn"><SlidersHorizontal size={18} /></button>
+        <div className="timeline-top-right">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={selectedDay.id}
+              className="timeline-date-badge"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.15 }}
+            >
+              {selectedDay.month}.{String(selectedDay.day).padStart(2, "0")} · {selectedDay.weekday}
+            </motion.div>
+          </AnimatePresence>
+          <button className="icon-btn" aria-label="轨迹筛选"><SlidersHorizontal size={18} /></button>
+        </div>
       </header>
 
       {clueCount > 0 && (
@@ -501,115 +977,197 @@ function TimelineView() {
       )}
 
       <div className="timeline-container">
-        <div className="timeline-line"></div>
-
         {loading && <p className="timeline-hint">正在读记忆…</p>}
-
-        {error && (
-          <div className="timeline-hint error">
-            <p>拿不到事件流。</p>
-            <small>确认 memory-platform 在跑，且 <code>/api</code> 代理指向它。<br />{error}</small>
-          </div>
-        )}
 
         {!loading && !error && events.length === 0 && (
           <p className="timeline-hint">还没有任何记忆事件。去「采集」页拍一张，感知跑完就会出现在这里。</p>
         )}
 
-        <div className="timeline-list">
-          {groupByFrame(events).map((group) => {
-            const head = group.events[0];
-            const day = dayText(head.event_time_from);
-            const showDay = day !== lastDay;
-            lastDay = day;
-            const multi = group.events.length > 1;
-            // 单条时整卡可点；多条时点整卡没有唯一目标，改成点每一行
-            const single = multi ? null : head;
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={selectedDay.id}
+            className="timeline-list"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+          >
+            {selectedGroups.map((group, index) => {
+              const head = group.events[0];
+              const multi = group.events.length > 1;
+              const single = multi ? null : head;
+              const canOpenSingle = Boolean(single?.entity_id);
+              const sourceImage = head.demo_evidence_url
+                || (head.evidence_url && head.frame_asset_id ? evidenceUrl(head.frame_asset_id) : null);
 
-            return (
-              <div key={head.event_id} className="timeline-node">
-                <div className="node-time-badge">
-                  <span className="time-text">{clockText(head.event_time_from)}</span>
-                  {showDay && <span className="period-text">{day}</span>}
-                </div>
-                <div className="node-bullet"></div>
-
-                <div
-                  className={`dark-card ${single?.entity_id ? "clickable" : ""} ${single?.superseded ? "superseded" : ""}`}
-                  onClick={() => single?.entity_id && setSelectedEntity(single.entity_id)}
+              return (
+                <motion.div
+                  layout
+                  key={head.event_id}
+                  className="timeline-node"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.025, duration: 0.18 }}
                 >
-                  <div className="card-with-thumb">
-                    {/* 一组共用一张来源图。纠正类事件没有来源帧（不出自任何画面），那格就空着 */}
-                    {head.frame_asset_id && (
-                      head.evidence_url ? (
-                        <PreviewImage
-                          className="event-thumb"
-                          src={evidenceUrl(head.frame_asset_id)}
-                          alt={multi ? "这一眼的画面" : `${head.entity_name}的来源画面`}
-                          caption={
-                            multi
-                              ? `这一眼看到 ${group.events.length} 件东西 · ${clockText(head.event_time_from)}`
-                              : `${head.entity_name} · ${clockText(head.event_time_from)}`
-                          }
-                          loading="lazy"
-                        />
-                      ) : (
-                        <span className="event-thumb gone" title="原图已按保留期删除，记忆本身还在" />
-                      )
-                    )}
+                  <div className="node-time-badge">
+                    <span className="time-text">{clockText(head.event_time_from)}</span>
+                    <span className="period-text">{eventLabel(head.event_type)}</span>
+                  </div>
+                  <div className="node-bullet"></div>
 
-                    <div className="card-with-thumb-body">
-                      <div className="card-top-row">
-                        <span className="card-title">
-                          {multi
-                            ? `这一眼看到 ${group.events.length} 件东西`
-                            : `${head.entity_name} · ${eventLabel(head.event_type)}`}
-                        </span>
-                        {single?.entity_id && (
-                          <span className="more-link">
-                            轨迹 <ChevronRight size={14} />
-                          </span>
-                        )}
-                      </div>
-
-                      {multi ? (
+                  <div
+                    className={`dark-card ${canOpenSingle ? "clickable" : ""} ${single?.superseded ? "superseded" : ""}`}
+                    onClick={() => canOpenSingle && setSelectedEntity(single.entity_id)}
+                    onKeyDown={(event) => {
+                      if (!canOpenSingle || !["Enter", " "].includes(event.key)) return;
+                      event.preventDefault();
+                      setSelectedEntity(single.entity_id);
+                    }}
+                    role={canOpenSingle ? "button" : undefined}
+                    tabIndex={canOpenSingle ? 0 : undefined}
+                  >
+                    {multi ? (
+                      <div className="frame-card">
+                        <div className="frame-card-head">
+                          {head.frame_asset_id && (
+                            sourceImage ? (
+                              <PreviewImage
+                                className="event-thumb frame-source-thumb"
+                                src={sourceImage}
+                                alt="这一眼的来源画面"
+                                caption={`这一眼识别到 ${group.events.length} 件物品 · ${clockText(head.event_time_from)}`}
+                                loading="lazy"
+                              />
+                            ) : (
+                              <span className="event-thumb frame-source-thumb gone" title="原图已按保留期删除，记忆本身还在" />
+                            )
+                          )}
+                          <div className="frame-card-summary">
+                            <span className="card-title">这一眼识别到 {group.events.length} 件物品</span>
+                            <small>同一来源画面 · 点击物品查看轨迹</small>
+                          </div>
+                        </div>
                         <ul className="frame-objects">
-                          {group.events.map((ev) => (
-                            <li
-                              key={ev.event_id}
-                              className={ev.superseded ? "superseded" : ""}
-                              onClick={(e) => {
-                                // 卡片本身不再有唯一跳转目标，点击必须停在这一行上
-                                e.stopPropagation();
-                                if (ev.entity_id) setSelectedEntity(ev.entity_id);
-                              }}
-                            >
-                              <b>{ev.entity_name}</b>
-                              <span>{detailText(ev.payload, ev.location) || "没有位置信息"}</span>
-                              <em>{Math.round(ev.confidence * 100)}%</em>
+                          {group.events.map((event) => (
+                            <li key={event.event_id} className={event.superseded ? "superseded" : ""}>
+                              <button
+                                type="button"
+                                onClick={(clickEvent) => {
+                                  clickEvent.stopPropagation();
+                                  if (event.entity_id) setSelectedEntity(event.entity_id);
+                                }}
+                              >
+                                <b>{event.entity_name}</b>
+                                <span>{detailText(event.payload, event.location) || "没有位置信息"}</span>
+                                <em>{eventMeta(event)}</em>
+                              </button>
                             </li>
                           ))}
                         </ul>
-                      ) : (
-                        <>
+                      </div>
+                    ) : (
+                      <div className="card-with-thumb">
+                        {head.frame_asset_id && (
+                          sourceImage ? (
+                            <PreviewImage
+                              className="event-thumb"
+                              src={sourceImage}
+                              alt={`${head.entity_name}的来源画面`}
+                              caption={`${head.entity_name} · ${clockText(head.event_time_from)}`}
+                              loading="lazy"
+                            />
+                          ) : (
+                            <span className="event-thumb gone" title="原图已按保留期删除，记忆本身还在" />
+                          )
+                        )}
+                        <div className="card-with-thumb-body">
+                          <div className="card-top-row">
+                            <span className="card-title">{head.entity_name} · {eventLabel(head.event_type)}</span>
+                            {canOpenSingle && (
+                              <span className="more-link">
+                                详情 <ChevronRight size={14} />
+                              </span>
+                            )}
+                          </div>
                           <p className="card-detail">
                             {detailText(head.payload, head.location) || "没有位置信息"}
                           </p>
                           <div className="card-badges">
-                            {/* 取代过的事件仍然显示，但必须标出来，否则界面会同时摆出两个矛盾的位置 */}
+                            {head.event_type === "USER_CORRECTION" && <span className="status-note">纠正记录</span>}
                             {head.superseded && <span className="status-note">已被后续记忆更新</span>}
                             {head.user_confirmed && <span className="status-note confirmed">你确认过</span>}
                             <span className="conf-note">置信度 {Math.round(head.confidence * 100)}%</span>
                           </div>
-                        </>
-                      )}
-                    </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
+                </motion.div>
+              );
+            })}
+
+            {isDemo && (
+              <div className="timeline-hint error timeline-demo-note">
+                <p>后端暂时不可达，以上为演示轨迹，不会写入记忆。</p>
               </div>
-            );
-          })}
-        </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      <div className={`floating-day-switcher ${scrubberOpen ? "open" : ""}`}>
+        <AnimatePresence>
+          {scrubberOpen && (
+            <motion.div
+              className="floating-day-panel"
+              initial={{ opacity: 0, y: 14, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ type: "spring", duration: 0.32, bounce: 0.08 }}
+            >
+              <div
+                ref={floatingScrubberRef}
+                className="floating-scrubber"
+                role="slider"
+                aria-label="上下滑动切换日期"
+                aria-valuemin={1}
+                aria-valuemax={timelineDays.length}
+                aria-valuenow={selectedDayIndex + 1}
+                tabIndex={0}
+                onPointerDown={handleScrubberPointerDown}
+                onPointerMove={handleScrubberPointerMove}
+                onPointerUp={handleScrubberPointerEnd}
+                onPointerCancel={handleScrubberPointerEnd}
+                onWheel={handleScrubberWheel}
+                onKeyDown={handleScrubberKeyDown}
+              >
+                {timelineDays.map((day, index) => (
+                  <div
+                    key={day.id}
+                    className={`floating-scrubber-mark ${day.id === selectedDay.id ? "active" : ""}`}
+                    style={{
+                      "--wave": `${Math.max(12, 42 - Math.abs(index - selectedDayIndex) * 8)}px`,
+                      "--distance": Math.abs(index - selectedDayIndex),
+                    }}
+                  >
+                    <i></i>
+                    <span>{day.day}</span>
+                  </div>
+                ))}
+              </div>
+              <small>上下滑动</small>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <button
+          type="button"
+          className="day-switch-toggle"
+          aria-label={scrubberOpen ? "收起日期拨片" : "展开日期拨片"}
+          aria-expanded={scrubberOpen}
+          onClick={() => setScrubberOpen((open) => !open)}
+        >
+          <span className="switch-chevron" aria-hidden="true"></span>
+        </button>
       </div>
     </div>
   );
@@ -627,7 +1185,7 @@ function GalaxyView() {
       <header className="top">
         <div className="brand">
           <b>全览</b>
-          <span>物品之间，存在生活的路径。</span>
+          <span>生活中的一切</span>
         </div>
       </header>
       <TopologyGraph onOpenItem={setSelectedEntity}/>
@@ -648,6 +1206,12 @@ function ObjectDrawer({ entityId, onClose }) {
     let alive = true;
     setData(null);
     setError(null);
+    if (entityId?.startsWith("demo-")) {
+      const demoData = demoObjectTimeline(entityId);
+      if (demoData) setData(demoData);
+      else setError("演示轨迹中没有这个物品。");
+      return () => { alive = false; };
+    }
     objectTimeline(entityId)
       .then(d => { if (alive) setData(d); })
       .catch(e => { if (alive) setError(String(e.message || e)); });
@@ -716,7 +1280,7 @@ function ObjectDrawer({ entityId, onClose }) {
                             // 有限，直接加载就好。
                             <PreviewImage
                               className="event-thumb sm"
-                              src={evidenceUrl(ev.frame_asset_id)}
+                              src={ev.demo_evidence_url || evidenceUrl(ev.frame_asset_id)}
                               alt="这条记忆的来源画面"
                               caption={`${eventLabel(ev.event_type)} · ${dayText(ev.event_time_from)} ${clockText(ev.event_time_from)}`}
                             />
@@ -900,7 +1464,7 @@ function ConsolePage({ component: Console }) {
   );
 }
 
-/** 手机壳布局：三个 tab 页共用状态栏与底部 dock，页面本身交给子路由。
+/** 手机壳布局：主 tab 页共用状态栏与底部 dock，页面本身交给子路由。
  *  抽屉开合也写进 query（?object=…、?clues=1），刷新和浏览器后退都能还原当时看到的界面。 */
 function AppShell() {
   const location = useLocation();
@@ -943,7 +1507,6 @@ function AppShell() {
   const setSelectedEntity = (id) => setParam("entity", id || null);
   const setShowClues = (open) => setParam("clues", open ? "1" : null);
   const iconWeight = (tab) => (activeTab === tab ? "duotone" : "regular");
-
   return (
     <div className={`app-shell premium-dark mode-${activeTab}`}>
       <div className="status-bar">
@@ -962,36 +1525,32 @@ function AppShell() {
         <CluesDrawer onClose={() => setShowClues(false)} onCountChange={setClueCount} />
       )}
 
-      <nav className="bottom-dock premium-dock">
+      <nav className="bottom-dock premium-dock" aria-label="主要页面">
         {/* 切页只带路径不带 query：抽屉状态属于上一页，跟过去就成了幽灵弹窗 */}
-        <button className={`dock-item ${activeTab === 'agent' ? 'active' : ''}`} onClick={() => navigate("/agent")}>
-          <Compass size={22} weight={iconWeight("agent")} />
-          <span>顾问</span>
+        <button className={`dock-item ${activeTab === "life" ? "active" : ""}`} onClick={() => navigate("/life")}>
+          <House size={21} />
+          <span>生活</span>
         </button>
-        <button className={`dock-item ${activeTab === 'timeline' ? 'active' : ''}`} onClick={() => navigate("/timeline")}>
+        <button className={`dock-item ${activeTab === "timeline" ? "active" : ""}`} onClick={() => navigate("/timeline")}>
           <Path size={22} weight={iconWeight("timeline")} />
           <span>轨迹</span>
         </button>
-        <button className={`dock-item ${activeTab === 'galaxy' ? 'active' : ''}`} onClick={() => navigate("/galaxy")}>
+        <button
+          className={`dock-item agent-dock-item ${activeTab === "agent" ? "active" : ""}`}
+          onClick={() => navigate("/agent")}
+          aria-label="打开在场顾问"
+          title="在场顾问"
+        >
+          <span className="agent-dock-circle"><Robot size={23} weight={iconWeight("agent")} /></span>
+          <span className="agent-dock-label">顾问</span>
+        </button>
+        <button className={`dock-item ${activeTab === "galaxy" ? "active" : ""}`} onClick={() => navigate("/galaxy")}>
           <CirclesFour size={22} weight={iconWeight("galaxy")} />
           <span>全览</span>
         </button>
-        <button className={`dock-item ${activeTab === 'my' ? 'active' : ''}`} onClick={() => navigate("/my")}>
+        <button className={`dock-item ${activeTab === "my" ? "active" : ""}`} onClick={() => navigate("/my")}>
           <UserCircle size={22} weight={iconWeight("my")} />
           <span>我的</span>
-        </button>
-        {/* 采集/数据/联调是桌面工作台入口，不占主 tab 高亮，但功能保留在 dock 上 */}
-        <button className="dock-item" onClick={() => navigate("/capture")}>
-          <Camera size={20} weight="regular" />
-          <span>采集</span>
-        </button>
-        <button className="dock-item" onClick={() => navigate("/media")}>
-          <Database size={20} weight="regular" />
-          <span>数据</span>
-        </button>
-        <button className="dock-item" onClick={() => navigate("/live")}>
-          <Radio size={20} weight="regular" />
-          <span>联调</span>
         </button>
       </nav>
     </div>
@@ -1003,18 +1562,21 @@ function App() {
     // 放在路由外层：每个页面的缩略图都能点开看原图，浮层本身不参与路由
     <LightboxProvider>
       <Routes>
+        {/* 空间体验是独立入口，不替代真实物品拓扑和主应用数据流。 */}
+        <Route path="/pico" element={<PicoMode />} />
+        <Route path="/xr-room" element={<XRRoomPreview />} />
         <Route path="/live" element={<ConsolePage component={LiveView} />} />
         <Route path="/capture" element={<ConsolePage component={CaptureConsole} />} />
         <Route path="/media" element={<ConsolePage component={MediaLibrary} />} />
-        <Route path="/pico" element={<PicoMode />} />
         <Route element={<AppShell />}>
+          <Route path="/life" element={<LifeHome />} />
           <Route path="/agent" element={<AgentHome />} />
           <Route path="/timeline" element={<TimelineView />} />
           <Route path="/galaxy" element={<GalaxyView />} />
           <Route path="/my" element={<MyPage />} />
         </Route>
-        {/* 根路径和任何认不出的 URL 都落回在场页，刷新不会白屏 */}
-        <Route path="*" element={<Navigate to="/agent" replace />} />
+        {/* 根路径和任何认不出的 URL 都落回生活页，刷新不会白屏。 */}
+        <Route path="*" element={<Navigate to="/life" replace />} />
       </Routes>
     </LightboxProvider>
   );

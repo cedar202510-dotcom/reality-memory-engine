@@ -1,7 +1,18 @@
 // 冒烟：逐页打开，收集控制台错误与页面异常，截图存 /tmp
 import { chromium } from "playwright";
 
-const pages = ["/agent", "/timeline", "/galaxy", "/my", "/media", "/capture", "/live", "/pico"];
+const pages = [
+  "/life",
+  "/timeline",
+  "/agent",
+  "/galaxy",
+  "/my",
+  "/media",
+  "/capture",
+  "/live",
+  "/pico",
+  "/xr-room",
+];
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 430, height: 932 } });
 

@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { HDRLoader } from "three/examples/jsm/loaders/HDRLoader.js";
 import {
+  ArrowLeft,
   BadgeCheck,
   BatteryMedium,
   Boxes,
@@ -22,6 +23,7 @@ import {
   Smartphone,
   Sparkles,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const HDRI_URL = "/assets/xr-room/polyhaven/_hdris/relax_inn_seaview_suite_2k.hdr";
 const WARDROBE_ASSET = "/assets/pico/wardrobe/items";
@@ -216,6 +218,7 @@ function directionToScreen(camera, direction, width, height) {
 }
 
 export default function PicoMode() {
+  const navigate = useNavigate();
   const pageRef = useRef(null);
   const mountRef = useRef(null);
   const cameraRef = useRef(null);
@@ -454,6 +457,9 @@ export default function PicoMode() {
       {loading && <div className="pico-loading">正在进入空间...</div>}
 
       <header className="pico-topbar">
+        <button className="pico-round-button" onClick={() => navigate("/agent")} aria-label="返回应用">
+          <ArrowLeft size={19} />
+        </button>
         <div className="pico-brand">
           <span>REALITY MEMORY</span>
           <strong>空间助手</strong>
@@ -502,7 +508,7 @@ export default function PicoMode() {
           <div className="pico-locate-status">
             <LocateFixed size={19} />
             <div>
-              <span>当前定位 · 匹配度 {Math.round(active.confidence * 100)}%</span>
+              <span>已定位 · {Math.round(active.confidence * 100)}%</span>
               <strong>{active.label}</strong>
               <p>{active.location}</p>
             </div>
@@ -512,19 +518,16 @@ export default function PicoMode() {
               <Mic size={17} />
               <span>{agentState === "listening" ? "正在听你说话..." : "直接说出要找的物品"}</span>
             </button>
-            <div className="pico-query-suggestions">
-              <span>建议问法</span>
-              <div className="pico-query-list">
-                {locateItems.map((item) => (
-                  <button
-                    key={item.id}
-                    className={activeItem === item.id ? "is-active" : ""}
-                    onClick={() => selectLocateItem(item)}
-                  >
-                    {item.query}
-                  </button>
-                ))}
-              </div>
+            <div className="pico-query-list">
+              {locateItems.map((item) => (
+                <button
+                  key={item.id}
+                  className={activeItem === item.id ? "is-active" : ""}
+                  onClick={() => selectLocateItem(item)}
+                >
+                  {item.query}
+                </button>
+              ))}
             </div>
           </div>
           <DetectionLayer items={locateItems} activeItem={activeItem} labelPositions={labelPositions} onSelect={setActiveItem} />
@@ -532,7 +535,7 @@ export default function PicoMode() {
       )}
 
       {mode === "closet" && (
-        <section className={`pico-closet is-${inventoryGroup}`}>
+        <section className="pico-closet">
           <div className="pico-closet-heading">
             <span>SPATIAL INVENTORY</span>
             <h1>{group.title}</h1>
