@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 // /api → memory-platform（默认 8000，可用 RME_API_TARGET 覆盖）。
 // 代理只在 dev server 生效；生产部署由反向代理承担同样职责。
 const apiTarget = process.env.RME_API_TARGET || "http://127.0.0.1:8000";
+const agentTarget = process.env.RME_AGENT_TARGET || "http://127.0.0.1:8200";
 
 export default defineConfig({
   plugins: [react()],
@@ -17,6 +18,11 @@ export default defineConfig({
         target: apiTarget,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ""),
+      },
+      "/agent-api": {
+        target: agentTarget,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/agent-api/, ""),
       },
     },
   },

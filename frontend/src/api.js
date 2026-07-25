@@ -1,6 +1,7 @@
 // memory-platform API 客户端（owner 直通：不带 Authorization 头）。
 // dev 下走 Vite 代理 /api → 8000；部署时由反向代理保持同一前缀。
 const BASE = "/api";
+const AGENT_BASE = "/agent-api";
 
 async function request(method, path, { params, body } = {}) {
   const qs = params ? `?${new URLSearchParams(params)}` : "";
@@ -21,9 +22,10 @@ const patch = (path, body) => request("PATCH", path, { body });
 export const whereIs = (name, deep = false) =>
   get("/v1/memory/objects/where-is", { name, deep });
 
-/** 把一段录音转成字（在场页的语音输入）。
+/** 把一段录音转成字（采集调试与兼容链路保留）。
  *
  *  只转写，不入库：这段音频在后端用完即弃，不进 evidence_items、不生成记忆候选。
+ *  顾问页使用浏览器实时语音识别，不经过这条上传链路。
  *  ASR 没配起来时后端回 503 而不是空串——空串会被界面显示成「你没说话」，那是在撒谎。 */
 export const transcribe = async (blob) => {
   const form = new FormData();
@@ -36,6 +38,29 @@ export const transcribe = async (blob) => {
     throw new Error(detail || `转写失败（${resp.status}）`);
   }
   return resp.json();
+};
+
+/** 向顾问提问。事实查询由 Agent Gateway 通过受限 AgentGrant 调用记忆平台。 */
+export const askAgent = async (message, sessionId = null) => {
+  const resp = await fetch(`${AGENT_BASE}/v1/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message,
+      session_id: sessionId || undefined,
+      source: "WEB_APP",
+      response_channel: "CALLER",
+    }),
+  });
+  if (!resp.ok) {
+    const detail = await resp.json().then((data) => data?.detail).catch(() => null);
+    throw new Error(detail || `顾问请求失败（${resp.status}）`);
+  }
+  const payload = await resp.json();
+  if (typeof payload.reply !== "string" || !payload.reply.trim()) {
+    throw new Error("顾问返回了不兼容的回答");
+  }
+  return payload;
 };
 
 /** 最近摄入帧 + 感知积压量（联调面板轮询用）。 */

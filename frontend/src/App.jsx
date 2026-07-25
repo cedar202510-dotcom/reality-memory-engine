@@ -27,7 +27,7 @@ import LifeHome from "./LifeHome";
 import PicoMode from "./PicoMode";
 import XRRoomPreview from "./XRRoomPreview";
 import { LightboxProvider, PreviewImage } from "./ImageLightbox";
-import { whereIs, recentEvents, objectTimeline, listClues, resolveClue, evidenceUrl, apiUrl, transcribe } from "./api";
+import { askAgent, recentEvents, objectTimeline, listClues, resolveClue, evidenceUrl, apiUrl } from "./api";
 
 // 事件类型 → 人话。后端的事件类型是契约的一部分，不该直接漏到界面上。
 const EVENT_LABEL = {
@@ -470,50 +470,56 @@ function groupEventsByDay(events) {
   return Array.from(days.values()).sort((a, b) => b.id.localeCompare(a.id));
 }
 
-/** 从口语问句里取出物品名：「我的充电器在哪里？」→「充电器」。
- *  后端 where-is 收的是物品名而不是整句；抽不出来时退回原文，由深检索兜底。 */
-function extractObjectName(text) {
-  const stripped = text
-    .replace(/[?？。！!，,、\s]/g, "")
-    .replace(/^(我的|我地|帮我找|找一下|找找|请问)/, "")
-    .replace(/(在哪里|在哪儿|在哪|放哪了|放哪儿了|放在哪|去哪了|呢)$/, "");
-  return stripped || text;
-}
-
-/** 挑一个这个浏览器真的会录的容器。
- *  Chrome/Firefox 给 webm/opus，Safari 只给 mp4；两种 ASR sidecar 都能按容器解码。
- *  一个都不支持时返回空串，交给 MediaRecorder 用它自己的默认值。 */
-function pickRecordingMime() {
-  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
-  return candidates.find(t => window.MediaRecorder?.isTypeSupported?.(t)) || "";
-}
-
 let msgSeq = 0;
 const nextId = () => `m${++msgSeq}`;
 
+function agentAnswerMeta(toolTrace) {
+  const trace = [...(toolTrace || [])].reverse().find((item) => item.tool === "find_object");
+  if (!trace?.result) return {};
+  try {
+    const result = typeof trace.result === "string" ? JSON.parse(trace.result) : trace.result;
+    return {
+      shot: apiUrl(result.evidence_url),
+      entityId: result.entity?.id || null,
+      limitations: result.limitations || [],
+    };
+  } catch {
+    return {};
+  }
+}
+
 function AgentHome() {
-  const { messages, setMessages, isTyping, setIsTyping, setShowClues, setSelectedEntity, clueCount } = useOutletContext();
-  // idle | recording | transcribing | asking——四个状态在界面上长得都不一样，
-  // 合成一个 boolean 会让「正在听」和「正在转写」变成同一个样子，而它们的等待时长差一个量级
+  const {
+    messages,
+    setMessages,
+    isTyping,
+    setIsTyping,
+    setShowClues,
+    setSelectedEntity,
+    clueCount,
+    agentSessionId,
+    setAgentSessionId,
+  } = useOutletContext();
+  // idle | recording | asking。浏览器会边听边返回文字，不再单独等待后端转写。
   const [phase, setPhase] = useState("idle");
   const [mode, setMode] = useState("voice");   // voice | text
   const [draft, setDraft] = useState("");
-  const [notice, setNotice] = useState("");    // 麦克风/转写这类环境问题，不进对话流
+  const [notice, setNotice] = useState("");    // 麦克风/浏览器识别这类环境问题，不进对话流
+  const [liveTranscript, setLiveTranscript] = useState("");
   const [previewMedia, setPreviewMedia] = useState(null);  // 答案来源画面的大图预览
-  const recorderRef = useRef(null);
+  const recognitionRef = useRef(null);
+  const speechTextRef = useRef("");
+  const speechFinishedRef = useRef(false);
   const textInputRef = useRef(null);
   const reduceMotion = useReducedMotion();
   const busy = phase !== "idle" && phase !== "recording";
-  // MediaRecorder 的 onstop 是在点「说完」那一刻的闭包里跑的，那时 phase 还是旧值。
-  // 守卫要读当下的真值，不能读闭包快照，否则「录完自动提问」这条路能不能走通全凭巧合。
   const askingRef = useRef(false);
 
-  // 离开这一页时必须收掉录音：轨不停的话浏览器标签上的录音红点会一直亮着，
-  // 用户会以为我们在后台偷录。
+  // 离开这一页就终止识别，避免浏览器的麦克风状态继续亮着。
   useEffect(() => () => {
-    const rec = recorderRef.current;
-    if (rec && rec.state !== "inactive") rec.stop();
-    rec?.stream?.getTracks?.().forEach(t => t.stop());
+    speechFinishedRef.current = true;
+    recognitionRef.current?.abort?.();
+    recognitionRef.current = null;
   }, []);
 
   // 大图预览开着时 Esc 关闭
@@ -533,6 +539,8 @@ function AgentHome() {
 
     setNotice("");
     setDraft("");
+    setLiveTranscript("");
+    speechTextRef.current = "";
     // 只留最近这一轮：问句必须和答案待在一起，看不到问的是什么，答案就没有意义
     const question = { id: nextId(), text, sender: "user" };
     setMessages([question, { id: nextId(), sender: "agent", type: "thinking" }]);
@@ -540,28 +548,23 @@ function AgentHome() {
     setPhase("asking");
 
     try {
-      const res = await whereIs(extractObjectName(text), true);
+      const res = await askAgent(text, agentSessionId);
+      if (res.session_id) setAgentSessionId(res.session_id);
+      const answerMeta = agentAnswerMeta(res.tool_trace);
       setMessages([
         question,
         {
           id: nextId(),
           sender: "agent",
-          text: res.answer_text,
-          // 答案出自的那张画面。用后端给的相对地址而不是自己拼 id：原图是否暴露由后端
-          // 按身份决定（owner 才给），前端拼 id 等于绕开那道判断。
-          shot: apiUrl(res.evidence_url),
-          // 答出了具体实体就给一条进轨迹的路：答案只是结论，轨迹才是它的依据
-          entityId: res.entity?.id || null,
-          // 平台自己声明的不确定性（规则生成，不经 LLM），不转达就等于替它把话说满了
-          limitations: res.limitations || [],
-          outOfScope: res.channel === "not_found",
+          text: res.reply,
+          ...answerMeta,
         },
       ]);
     } catch (e) {
       // 这里绝不能编一个答案顶上。答不出来是事实，装作答得出来会毁掉整个产品的可信度。
       setMessages([
         question,
-        { id: nextId(), sender: "agent", error: true, text: `问不到记忆平台：${e.message || e}` },
+        { id: nextId(), sender: "agent", error: true, text: `暂时连接不到顾问：${e.message || e}` },
       ]);
     } finally {
       askingRef.current = false;
@@ -571,64 +574,89 @@ function AgentHome() {
   };
 
   const stopRecording = () => {
-    const rec = recorderRef.current;
-    if (rec && rec.state === "recording") rec.stop();  // 收尾在 onstop 里，那时最后一块数据才到齐
+    recognitionRef.current?.stop?.();
   };
 
-  const startRecording = async () => {
+  const startRecording = () => {
     setNotice("");
-    if (!navigator.mediaDevices?.getUserMedia) {
-      // 十有八九是拿局域网 IP 走 http 打开的：浏览器只在 localhost 或 https 下给麦克风
-      setNotice("这个页面拿不到麦克风。用 localhost 或 https 打开试试。");
-      return;
-    }
-    let stream;
-    try {
-      // 不指定 deviceId：跟随系统当前输入设备，插上耳机就自动是耳机麦
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (e) {
-      setNotice(
-        e.name === "NotAllowedError"
-          ? "麦克风权限被拒绝了。在地址栏左边的权限里放开，再点一次。"
-          : `打不开麦克风：${e.message || e}`,
-      );
+    setLiveTranscript("");
+    speechTextRef.current = "";
+    speechFinishedRef.current = false;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setNotice("当前浏览器不支持实时语音识别。请使用最新版 Chrome 或 Edge，或改用文字输入。");
       return;
     }
 
-    const mimeType = pickRecordingMime();
-    const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-    const chunks = [];
-    rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-    rec.onstop = async () => {
-      stream.getTracks().forEach(t => t.stop());
-      setPhase("transcribing");
-      try {
-        const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
-        const { text } = await transcribe(blob);
-        if (!text) {
-          // 空转写是真的没听清（或者太短），不是出错。说清楚，别静悄悄什么都不发生。
-          setNotice("没听清，再说一次？");
-          setPhase("idle");
-          return;
-        }
-        await handleAsk(text);
-      } catch (e) {
-        setNotice(String(e.message || e));
-        setPhase("idle");
-      }
+    const recognition = new SpeechRecognition();
+    recognition.lang = "zh-CN";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      recognitionRef.current = recognition;
+      setPhase("recording");
     };
-    recorderRef.current = rec;
-    rec.start();
-    setPhase("recording");
+    recognition.onresult = (event) => {
+      let text = "";
+      for (let index = 0; index < event.results.length; index += 1) {
+        text += event.results[index][0]?.transcript || "";
+      }
+      const nextText = text.trim();
+      speechTextRef.current = nextText;
+      setLiveTranscript(nextText);
+    };
+    recognition.onerror = (event) => {
+      speechFinishedRef.current = true;
+      recognitionRef.current = null;
+      setLiveTranscript("");
+      setPhase("idle");
+
+      const errorText = {
+        "not-allowed": "麦克风或语音识别权限被拒绝了。请在浏览器权限里允许后再试。",
+        "service-not-allowed": "浏览器的语音识别服务不可用，请检查浏览器语音服务设置。",
+        "audio-capture": "没有找到可用的麦克风。",
+        "no-speech": "没有听到清晰语音，再说一次？",
+        network: "实时语音识别网络不可用，请稍后重试。",
+      }[event.error];
+      setNotice(errorText || `实时语音识别失败：${event.error || "未知错误"}`);
+    };
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      if (speechFinishedRef.current) return;
+      speechFinishedRef.current = true;
+
+      const text = speechTextRef.current.trim();
+      if (!text) {
+        setLiveTranscript("");
+        setNotice("没有听到清晰语音，再说一次？");
+        setPhase("idle");
+        return;
+      }
+      void handleAsk(text);
+    };
+
+    try {
+      recognitionRef.current = recognition;
+      setPhase("recording");
+      recognition.start();
+    } catch (e) {
+      speechFinishedRef.current = true;
+      recognitionRef.current = null;
+      setPhase("idle");
+      setNotice(`无法启动实时语音识别：${e.message || e}`);
+    }
   };
 
-  const voiceLabel = { recording: "正在听…点一下说完", transcribing: "正在转文字…", asking: "正在翻记忆…" }[phase]
+  const voiceLabel = { recording: "正在听…点一下发送", asking: "正在翻记忆…" }[phase]
     || "轻点说话";
 
   // 只显示最近这一轮问答：问句必须和答案待在一起，看不到问的是什么，答案就没有意义
   const lastUser = [...messages].reverse().find(m => m.sender === "user");
   const lastAgent = [...messages].reverse().find(m => m.sender === "agent" && m.type !== "thinking");
-  const thinking = isTyping || phase === "transcribing" || phase === "asking";
+  const thinking = isTyping || phase === "asking";
   const hasAnswered = Boolean(lastUser);
   // 答案出自的那张画面。用后端给的相对地址而不是自己拼 id：原图是否暴露由后端
   // 按身份决定（owner 才给），前端拼 id 等于绕开那道判断。原图过了 TTL 就没有这一格，
@@ -670,7 +698,6 @@ function AgentHome() {
           <b>顾问</b>
           <span>你的专属现实顾问</span>
         </div>
-        <i className="enabled" aria-label="已开启"></i>
       </header>
 
       {/* 数量是真的：它等于系统看到了东西但不敢当成事实的次数。写死成常数就把这个信号抹掉了 */}
@@ -689,12 +716,17 @@ function AgentHome() {
       )}
 
       <div
-        className={`dialogue agent-dialogue ${thinking || phase === "recording" ? "is-asking" : ""} ${hasAnswered ? "has-answer" : ""}`}
+        className={`dialogue agent-dialogue ${thinking || phase === "recording" ? "is-asking" : ""} ${hasAnswered ? "has-answer" : ""} ${liveTranscript ? "has-live-transcript" : ""}`}
         aria-live="polite"
       >
         <div className="agent-center-text agent-greeting" aria-hidden={hasAnswered}>
           {messages[0]?.text}
         </div>
+        {phase === "recording" && liveTranscript && (
+          <div className="agent-center-text agent-live-transcript">
+            {liveTranscript}
+          </div>
+        )}
         {hasAnswered && lastAgent && (
           <div key={lastAgent.id} className={`agent-center-text agent-answer-text ${lastAgent.error ? "error" : ""}`}>
             <span className="agent-answer-copy">{lastAgent.text}</span>
@@ -716,10 +748,6 @@ function AgentHome() {
             {lastAgent.limitations?.map((line, i) => (
               <span key={i} className="agent-answer-note">{line}</span>
             ))}
-            {/* 找不到时顺带说清楚能力边界：现在这一页只接了找物这一条查询通道 */}
-            {lastAgent.outOfScope && (
-              <span className="agent-answer-note">我目前只答得了「东西在哪」，别的还不会。</span>
-            )}
             {/* 答出了具体实体就给一条进轨迹的路：答案只是结论，轨迹才是它的依据 */}
             {lastAgent.entityId && (
               <button className="agent-trace-link" onClick={() => setSelectedEntity(lastAgent.entityId)}>
@@ -1472,11 +1500,11 @@ function AppShell() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = location.pathname.split("/")[1] || "agent";
-  // 开场白只能承诺现在真做得到的事：这一页接的是找物查询，别的问题还答不了
   const [messages, setMessages] = useState([
-    { id: "hello", text: "我在。问我东西放哪了——我只答记忆里真看到过的。", sender: "agent" },
+    { id: "hello", text: "我在。你可以直接问现实里的事。", sender: "agent" },
   ]);
   const [isTyping, setIsTyping] = useState(false);
+  const [agentSessionId, setAgentSessionId] = useState(null);
   // null = 还没问到后端。0 和「不知道」要分开：不知道的时候不该显示「0 条待确认」
   const [clueCount, setClueCount] = useState(null);
 
@@ -1510,12 +1538,21 @@ function AppShell() {
   return (
     <div className={`app-shell premium-dark mode-${activeTab}`}>
       <div className="status-bar">
-        {/* 真表。9:41 是苹果发布会的截图时间，摆在一个讲「记忆有多新」的产品上很讽刺 */}
-        <span>{clock}</span><span>Reality</span>
+        <span>Real Kit</span><span>{clock}</span>
       </div>
 
       <main className="main-content">
-        <Outlet context={{ messages, setMessages, isTyping, setIsTyping, setSelectedEntity, setShowClues, clueCount }} />
+        <Outlet context={{
+          messages,
+          setMessages,
+          isTyping,
+          setIsTyping,
+          setSelectedEntity,
+          setShowClues,
+          clueCount,
+          agentSessionId,
+          setAgentSessionId,
+        }} />
       </main>
 
       {selectedEntity && (
