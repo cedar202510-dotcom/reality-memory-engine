@@ -130,7 +130,23 @@ class RealityRuntimeService : LifecycleService() {
     }
 
     private fun startDisclosure(startReason: String) {
-        if (state == SessionState.ACTIVE || state == SessionState.DISCLOSURE) return
+        if (state == SessionState.DISCLOSURE) return
+        if (state == SessionState.ACTIVE) {
+            disclosureGeneration += 1
+            val generation = disclosureGeneration
+            publish(
+                state,
+                "RealGit 已开启现实感知",
+                RuntimeDisplayKind.DISCLOSURE,
+            )
+            presenter.speak("RealGit 已开启现实感知。")
+            handler.postDelayed({
+                if (state == SessionState.ACTIVE && generation == disclosureGeneration) {
+                    publish(state, "现实感知运行中", RuntimeDisplayKind.NONE)
+                }
+            }, DISCLOSURE_DELAY_MS)
+            return
+        }
         if (!hasCapturePermissions()) {
             repository.openSession(startReason)
             repository.updateSessionState(SessionState.BLOCKED)

@@ -25,6 +25,7 @@ class GlassesUiView(context: Context) : View(context) {
         setBackgroundColor(Color.BLACK)
         isFocusable = true
         isClickable = true
+        defaultFocusHighlightEnabled = false
     }
 
     fun render(newStatus: RuntimeStatus) {
@@ -41,7 +42,8 @@ class GlassesUiView(context: Context) : View(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
-        canvas.drawColor(Color.BLACK)
+        // Keep the verified pure-black window background as the only
+        // full-screen fill; this View only draws the green HUD elements.
         val scale = min(width / DESIGN_WIDTH, height / DESIGN_HEIGHT)
         val originX = (width - DESIGN_WIDTH * scale) / 2f
         val originY = (height - DESIGN_HEIGHT * scale) / 2f

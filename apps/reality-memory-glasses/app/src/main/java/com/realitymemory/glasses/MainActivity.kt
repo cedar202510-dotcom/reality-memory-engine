@@ -6,8 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
@@ -68,10 +66,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.setBackgroundDrawable(ColorDrawable(Color.BLACK))
-        window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-        window.setDimAmount(0f)
-        window.decorView.setBackgroundColor(Color.BLACK)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         buildUi()
         registerReceivers()
@@ -155,14 +149,6 @@ class MainActivity : ComponentActivity() {
     private fun startRuntimeAndOptionalPreview() {
         sendRuntimeAction(RealityRuntimeService.ACTION_START_EXPLICIT)
         maybeShowDebugReminder()
-        glassesUi.postDelayed(
-            {
-                if (RuntimeStatusStore.read(this).displayKind == RuntimeDisplayKind.NONE) {
-                    closeVisualShell()
-                }
-            },
-            STARTUP_VISUAL_GRACE_MS,
-        )
     }
 
     private fun maybeShowDebugReminder() {
@@ -262,7 +248,6 @@ class MainActivity : ComponentActivity() {
         private const val DEBUG_COMMAND_REMEMBER_NOW = "remember_now"
         private const val DEBUG_COMMAND_END_SESSION = "end_session"
         private const val DEBUG_REMINDER_DELAY_MS = 400L
-        private const val STARTUP_VISUAL_GRACE_MS = 1_000L
         private const val CANCELLED_DISPLAY_MS = 3_000L
     }
 }
