@@ -6,13 +6,15 @@
 from __future__ import annotations
 
 import contextlib
+import secrets
 import uuid
+from enum import StrEnum
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel, Field, model_validator
 
-from .config import get_settings
+from .config import Settings, get_settings
 from .glasses_delivery import deliver_agent_reply, deliver_proactive_suggestions
 from .harness import run_turn
 from .llm import FakeChatLLM, build_chat_llm
@@ -26,10 +28,49 @@ class GlassesDeliveryTarget(BaseModel):
     allow_tts: bool | None = None
 
 
+class ChatSource(StrEnum):
+    API = "API"
+    WEB_APP = "WEB_APP"
+    ROKID_AIUI = "ROKID_AIUI"
+    RV101_NATIVE = "RV101_NATIVE"
+
+
+class ChatResponseChannel(StrEnum):
+    CALLER = "CALLER"
+    AIUI_CONVERSATION = "AIUI_CONVERSATION"
+    RV101_OVERLAY = "RV101_OVERLAY"
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
     session_id: str | None = None
+    source: ChatSource = ChatSource.API
+    response_channel: ChatResponseChannel | None = None
+    correlation_id: str | None = Field(default=None, min_length=1, max_length=128)
+    device_id: uuid.UUID | None = None
     delivery: GlassesDeliveryTarget | None = None
+
+    @model_validator(mode="after")
+    def validate_response_route(self) -> "ChatRequest":
+        if self.source == ChatSource.ROKID_AIUI:
+            if self.response_channel is None:
+                self.response_channel = ChatResponseChannel.AIUI_CONVERSATION
+            elif self.response_channel != ChatResponseChannel.AIUI_CONVERSATION:
+                raise ValueError("ROKID_AIUI 对话只能通过 AIUI_CONVERSATION 返回")
+
+        if self.delivery is not None:
+            if self.response_channel is None:
+                self.response_channel = ChatResponseChannel.RV101_OVERLAY
+            elif self.response_channel != ChatResponseChannel.RV101_OVERLAY:
+                raise ValueError("delivery 只能与 RV101_OVERLAY 回答通道一起使用")
+            if (
+                self.device_id is not None
+                and self.delivery.device_id is not None
+                and self.device_id != self.delivery.device_id
+            ):
+                raise ValueError("device_id 与 delivery.device_id 不能指向不同设备")
+
+        return self
 
 
 class ToolTraceOut(BaseModel):
@@ -41,6 +82,9 @@ class ToolTraceOut(BaseModel):
 class ChatResponse(BaseModel):
     session_id: str
     reply: str
+    source: ChatSource
+    response_channel: ChatResponseChannel
+    correlation_id: str
     tool_trace: list[ToolTraceOut] = Field(default_factory=list)
     delivery: dict[str, Any] | None = None
 
@@ -59,9 +103,10 @@ def create_app(
     *,
     fake_llm: FakeChatLLM | None = None,
     memory_client: MemoryClient | None = None,
+    settings_override: Settings | None = None,
 ) -> FastAPI:
     """fake_llm / memory_client 注入用于测试（不碰真实模型与平台）。"""
-    settings = get_settings()
+    settings = settings_override or get_settings()
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -81,7 +126,22 @@ def create_app(
     )
 
     @app.post("/v1/chat", response_model=ChatResponse)
-    async def chat(req: ChatRequest) -> ChatResponse:
+    async def chat(
+        req: ChatRequest,
+        x_realgit_client_token: str | None = Header(default=None),
+    ) -> ChatResponse:
+        if (
+            req.source == ChatSource.ROKID_AIUI
+            and settings.aiui_client_token
+            and (
+                x_realgit_client_token is None
+                or not secrets.compare_digest(
+                    x_realgit_client_token, settings.aiui_client_token
+                )
+            )
+        ):
+            raise HTTPException(status_code=401, detail="AIUI 客户端认证失败")
+
         session = app.state.sessions.get_or_create(req.session_id)
         result = await run_turn(
             llm=app.state.llm,
@@ -90,10 +150,16 @@ def create_app(
             user_message=req.message,
             max_tool_turns=settings.max_tool_turns,
         )
+        response_channel = req.response_channel
+        if response_channel is None:
+            response_channel = (
+                ChatResponseChannel.RV101_OVERLAY
+                if settings.glasses_auto_delivery_enabled
+                else ChatResponseChannel.CALLER
+            )
+        correlation_id = req.correlation_id or f"agent-turn:{uuid.uuid4()}"
         delivery_target = req.delivery
-        should_deliver = (
-            delivery_target is not None or settings.glasses_auto_delivery_enabled
-        )
+        should_deliver = response_channel == ChatResponseChannel.RV101_OVERLAY
         delivery = None
         if should_deliver:
             outcome = await deliver_agent_reply(
@@ -103,7 +169,7 @@ def create_app(
                 requested_device_id=(
                     str(delivery_target.device_id)
                     if delivery_target and delivery_target.device_id
-                    else None
+                    else str(req.device_id) if req.device_id else None
                 ),
                 configured_device_id=settings.glasses_default_device_id,
                 allow_tts=(
@@ -112,11 +178,15 @@ def create_app(
                     else settings.glasses_default_allow_tts
                 ),
                 ttl_seconds=settings.glasses_answer_ttl_seconds,
+                correlation_id=correlation_id,
             )
             delivery = outcome.to_dict()
         return ChatResponse(
             session_id=session.id,
             reply=result.reply,
+            source=req.source,
+            response_channel=response_channel,
+            correlation_id=correlation_id,
             tool_trace=[
                 ToolTraceOut(tool=t.tool, arguments=t.arguments, result=t.result)
                 for t in result.tool_trace

@@ -1,0 +1,11 @@
+{
+  "pages": [
+    "pages/answer/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "RealGit",
+    "viewport": {
+      "width": "device-width"
+    }
+  }
+}

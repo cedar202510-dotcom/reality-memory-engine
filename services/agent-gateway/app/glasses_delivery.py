@@ -169,6 +169,7 @@ async def deliver_agent_reply(
     configured_device_id: str | None = None,
     allow_tts: bool = False,
     ttl_seconds: int = 90,
+    correlation_id: str | None = None,
 ) -> DeliveryResult:
     device_id, error = await resolve_glasses_device(
         memory,
@@ -178,7 +179,6 @@ async def deliver_agent_reply(
     if error or device_id is None:
         return DeliveryResult(status="FAILED", error=error or "无法确定目标眼镜", intent="ANSWER")
 
-    turn_id = str(uuid.uuid4())
     return await _send(
         memory,
         device_id=device_id,
@@ -186,7 +186,7 @@ async def deliver_agent_reply(
         text=reply,
         source_kind="AGENT_REPLY",
         source_reference_id=session_id,
-        correlation_id=f"agent-turn:{turn_id}",
+        correlation_id=correlation_id or f"agent-turn:{uuid.uuid4()}",
         interaction="NONE",
         priority="NORMAL",
         allow_tts=allow_tts,

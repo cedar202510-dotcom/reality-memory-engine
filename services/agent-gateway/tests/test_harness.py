@@ -12,6 +12,7 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.config import Settings
 from app.harness import run_turn
 from app.llm import AssistantTurn, FakeChatLLM, ToolCall
 from app.main import create_app
@@ -209,6 +210,95 @@ async def test_chat_result_is_converted_and_sent_to_glasses():
     assert request["payload"]["presentation"]["interaction"] == "NONE"
     assert request["payload"]["source"]["kind"] == "AGENT_REPLY"
     assert "style" not in request["payload"]
+
+
+async def test_aiui_chat_returns_to_aiui_without_duplicate_glasses_message():
+    device_id = str(uuid.uuid4())
+    captured: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == f"/v1/agent/devices/{device_id}/messages":
+            captured.append(json.loads(request.content))
+            return httpx.Response(200, json={})
+        return httpx.Response(404, json={"detail": "not found"})
+
+    settings = Settings(
+        _env_file=None,
+        glasses_auto_delivery_enabled=True,
+        glasses_default_device_id=device_id,
+    )
+    app = create_app(
+        fake_llm=FakeChatLLM(script=[AssistantTurn(content="钥匙最后一次在玄关柜。")]),
+        memory_client=_memory(handler),
+        settings_override=settings,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gw") as client:
+        resp = await client.post(
+            "/v1/chat",
+            json={
+                "message": "我的钥匙在哪？",
+                "source": "ROKID_AIUI",
+                "response_channel": "AIUI_CONVERSATION",
+                "device_id": device_id,
+                "correlation_id": "aiui:test-turn",
+            },
+        )
+
+    assert resp.status_code == 200
+    result = resp.json()
+    assert result["source"] == "ROKID_AIUI"
+    assert result["response_channel"] == "AIUI_CONVERSATION"
+    assert result["correlation_id"] == "aiui:test-turn"
+    assert result["delivery"] is None
+    assert captured == []
+
+
+async def test_aiui_chat_rejects_conflicting_native_delivery():
+    app = create_app(
+        fake_llm=FakeChatLLM(script=[AssistantTurn(content="不会执行")]),
+        memory_client=_memory(),
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gw") as client:
+        resp = await client.post(
+            "/v1/chat",
+            json={
+                "message": "测试",
+                "source": "ROKID_AIUI",
+                "response_channel": "AIUI_CONVERSATION",
+                "delivery": {"device_id": str(uuid.uuid4())},
+            },
+        )
+
+    assert resp.status_code == 422
+
+
+async def test_aiui_client_token_is_checked_when_configured():
+    settings = Settings(_env_file=None, aiui_client_token="test-aiui-token")
+    app = create_app(
+        fake_llm=FakeChatLLM(
+            script=[
+                AssistantTurn(content="认证后的回答"),
+                AssistantTurn(content="认证后的第二次回答"),
+            ]
+        ),
+        memory_client=_memory(),
+        settings_override=settings,
+    )
+    payload = {
+        "message": "测试认证",
+        "source": "ROKID_AIUI",
+        "response_channel": "AIUI_CONVERSATION",
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://gw") as client:
+        denied = await client.post("/v1/chat", json=payload)
+        allowed = await client.post(
+            "/v1/chat",
+            json=payload,
+            headers={"X-RealGit-Client-Token": "test-aiui-token"},
+        )
+
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
 
 
 async def test_proactive_check_templates():

@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     glasses_answer_ttl_seconds: int = 90
     glasses_reminder_ttl_seconds: int = 300
 
+    # --- Rokid AIUI 对话入口 ---
+    # 留空时便于本地 POC；部署环境应设置，并通过 HTTPS 请求头传入。
+    # 静态 token 只用于早期联调，正式多用户版本需要用户级短期凭证。
+    aiui_client_token: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

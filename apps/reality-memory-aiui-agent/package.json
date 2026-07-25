@@ -1,0 +1,11 @@
+{
+  "name": "realgit-rokid-aiui-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RealGit conversational AIUI agent for Rokid Glasses",
+  "scripts": {
+    "test": "node scripts/validate.mjs"
+  },
+  "dependencies": {}
+}
