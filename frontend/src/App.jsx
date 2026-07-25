@@ -40,9 +40,9 @@ const EVENT_LABEL = {
 
 const CLUE_SOURCE_LABEL = { perception: "采集时看到", query: "问答时推断" };
 const TIMELINE_KIND_LABEL = {
-  OBJECT_OBSERVED_AT: "视觉",
-  OBJECT_MOVED: "视觉",
-  CONSUMABLE_LEVEL_OBSERVED: "视觉",
+  OBJECT_OBSERVED_AT: "物",
+  OBJECT_MOVED: "物",
+  CONSUMABLE_LEVEL_OBSERVED: "物",
   PREFERENCE_STATED: "偏好",
   TASK_STATED: "任务",
   USER_CORRECTION: "纠正",
@@ -54,11 +54,6 @@ function eventLabel(type) {
 
 function timelineKindLabel(type) {
   return TIMELINE_KIND_LABEL[type] || eventLabel(type);
-}
-
-function memoryCardLabel(type) {
-  const kind = timelineKindLabel(type);
-  return ["视觉", "偏好"].includes(kind) ? `${kind}记忆` : eventLabel(type);
 }
 
 /** 事件/线索卡片的正文：位置 + payload 里的附加属性（颜色、状态、姿态…）。
@@ -1163,7 +1158,6 @@ function TimelineView() {
 
                     <div className="dark-card preference-candidate-card">
                       <div className="preference-candidate-copy">
-                        <span className="preference-memory-label">偏好记忆</span>
                         <strong>{clue.object_text}</strong>
                         <p className="preference-statement">
                           {clue.payload?.preference || clue.payload?.value}
@@ -1214,6 +1208,12 @@ function TimelineView() {
               const multi = group.events.length > 1;
               const single = multi ? null : head;
               const canOpenSingle = Boolean(single?.entity_id);
+              const groupLocations = [...new Set(
+                group.events.map(event => event.location).filter(Boolean)
+              )];
+              const groupTitle = groupLocations.length === 1
+                ? groupLocations[0]
+                : "同一场景中的物品";
               const sourceImage = head.demo_evidence_url
                 || (head.evidence_url && head.frame_asset_id ? evidenceUrl(head.frame_asset_id) : null);
 
@@ -1251,8 +1251,8 @@ function TimelineView() {
                               <PreviewImage
                                 className="event-thumb frame-source-thumb"
                                 src={sourceImage}
-                                alt="这一眼的来源画面"
-                                caption={`这一眼识别到 ${group.events.length} 件物品 · ${clockText(head.event_time_from)}`}
+                                alt="场景来源画面"
+                                caption={`${groupTitle} · ${group.events.length} 件物品 · ${clockText(head.event_time_from)}`}
                                 loading="lazy"
                               />
                             ) : (
@@ -1260,8 +1260,8 @@ function TimelineView() {
                             )
                           )}
                           <div className="frame-card-summary">
-                            <span className="card-title">这一眼识别到 {group.events.length} 件物品</span>
-                            <small>同一来源画面 · 点击物品查看轨迹</small>
+                            <span className="card-title">{groupTitle}</span>
+                            <small>{group.events.length} 件物品 · 点击查看轨迹</small>
                           </div>
                         </div>
                         <ul className="frame-objects">
@@ -1299,7 +1299,7 @@ function TimelineView() {
                         )}
                         <div className="card-with-thumb-body">
                           <div className="card-top-row">
-                            <span className="card-title">{head.entity_name} · {memoryCardLabel(head.event_type)}</span>
+                            <span className="card-title">{head.entity_name}</span>
                             {canOpenSingle && (
                               <span className="more-link">
                                 详情 <ChevronRight size={14} />
