@@ -6,6 +6,9 @@ import { bindDevice, createCaptureRequest, listCaptureRequests, listDevices } fr
 const RUNTIMES = [
   { value: "com.realitymemory.glassprobe", label: "探针 App（拍照 / 周期采集 / 预览流）" },
   { value: "com.realitymemory.glasses", label: "正式 App（拍照 / 结束会话）" },
+  // 耳机不是 Android 设备，这里放的是宿主侧 collector 的标识而不是包名。它只能走 inbox：
+  // adb 通道对它没有意义，选了也只会得到一条 unknown_runtime 失败。
+  { value: "iflybuds-host-collector/0.1.0", label: "IFLYBUDS 采集器（录音 / 播报，仅 inbox）" },
 ];
 
 const TRANSPORTS = [
@@ -46,17 +49,29 @@ function statusOf(record) {
   return { tone: "pending", text: "排队中，等设备来拉", note: null };
 }
 
-function DeviceBar({ devices, deviceId, setDeviceId, onBind, busy }) {
+function DeviceBar({ devices, deviceId, setDeviceId, onBind, busy, error }) {
   const device = devices.find((d) => d.device_id === deviceId);
 
   return (
     <section className="live-panel">
       <div className="live-panel-head">
         <h2>目标设备</h2>
-        <span className={`live-dot ${device?.runtime_package ? "live" : "error"}`}>
-          {device?.runtime_package ? "已绑定" : "未绑定运行时"}
+        <span className={`live-dot ${!error && device?.runtime_package ? "live" : "error"}`}>
+          {error ? "后端未连接" : device?.runtime_package ? "已绑定" : "未绑定运行时"}
         </span>
       </div>
+      {/* 后端连不上时，空下拉框 +「未绑定运行时」看起来像设备没接好，会把人引到
+          错误的方向去查眼镜。这里必须先说清楚是后端的问题，并给出具体地址。 */}
+      {error && (
+        <div className="live-empty">
+          <p>拿不到设备列表，采集动作已禁用。</p>
+          <small>
+            后端多半没起，或者当前页面的 <code>/api</code> 代理指到了旧后端。确认
+            memory-platform 在跑，且 Vite 的 <code>RME_API_TARGET</code> 指向它。
+            <br />{String(error)}
+          </small>
+        </div>
+      )}
       <div className="cap-binding">
         <label>
           <span>设备</span>
@@ -104,7 +119,8 @@ function DeviceBar({ devices, deviceId, setDeviceId, onBind, busy }) {
   );
 }
 
-function ActionPanel({ onSend, busy, disabled }) {
+function ActionPanel({ onSend, busy, disabledReason }) {
+  const disabled = Boolean(disabledReason);
   const [interval, setIntervalSeconds] = useState(30);
   const [duration, setDuration] = useState(8);
 
@@ -152,7 +168,7 @@ function ActionPanel({ onSend, busy, disabled }) {
           <small>秒</small>
         </label>
       </div>
-      {disabled && <p className="cap-note">先给设备绑定一个眼镜 App，再下发动作。</p>}
+      {disabled && <p className="cap-note">{disabledReason}</p>}
     </section>
   );
 }
@@ -203,18 +219,34 @@ export default function CaptureConsole() {
   const [toast, setToast] = useState(null);
   const timer = useRef();
 
+  /** 返回是否拿到了设备列表（调用方据此决定要不要继续重试）。 */
   const refreshDevices = useCallback(async () => {
     try {
       const data = await listDevices();
       setDevices(data.devices);
       setError(null);
       setDeviceId((cur) => cur || data.devices[0]?.device_id || null);
+      return data.devices.length > 0;
     } catch (e) {
       setError(String(e.message || e));
+      return false;
     }
   }, []);
 
-  useEffect(() => { refreshDevices(); }, [refreshDevices]);
+  // 设备列表要重试：只拉一次的话，后端晚起或中途重启后控制台会永远停在「后端未连接」，
+  // 只能靠刷新页面恢复——而这恰恰是最容易被误判成「眼镜没连上」的状态。
+  useEffect(() => {
+    let alive = true;
+    let timer;
+    const tick = async () => {
+      const ok = await refreshDevices();
+      if (!alive) return;
+      // 连上且已有设备后不再轮询：设备列表几乎不变，没必要一直打后端
+      if (!ok) timer = setTimeout(tick, 4000);
+    };
+    tick();
+    return () => { alive = false; clearTimeout(timer); };
+  }, [refreshDevices]);
 
   // 请求状态靠轮询：inbox 通道下终态由设备回执产生，可能在下发后好几秒才到。
   useEffect(() => {
@@ -296,8 +328,21 @@ export default function CaptureConsole() {
             setDeviceId={setDeviceId}
             onBind={handleBind}
             busy={busy}
+            error={error}
           />
-          <ActionPanel onSend={handleSend} busy={busy} disabled={!device?.runtime_package} />
+          <ActionPanel
+            onSend={handleSend}
+            busy={busy}
+            disabledReason={
+              error
+                ? "后端未连接，无法下发采集请求。先确认 memory-platform 在跑。"
+                : !device
+                ? "后端里还没有任何设备。"
+                : !device.runtime_package
+                ? "先给设备绑定一个眼镜 App，再下发动作。"
+                : null
+            }
+          />
           <HistoryPanel requests={requests} error={error} />
         </div>
       </div>

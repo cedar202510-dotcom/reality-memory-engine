@@ -124,9 +124,11 @@ class LocalCLIPEncoder:
 
     def _encode_images_sync(self, images: list[bytes]) -> list[list[float]]:
         torch = self._torch
-        tensors = [
-            self._preprocess(self._Image.open(io.BytesIO(b)).convert("RGB")) for b in images
-        ]
+        from ..media import open_image  # noqa: PLC0415
+
+        # open_image 而非 Image.open：HEIC 在这里解不开只会静默返回 None，
+        # 那帧就永远没有视觉向量、永远检索不到——是最难发现的一种坏法。
+        tensors = [self._preprocess(open_image(b).convert("RGB")) for b in images]
         batch = torch.stack(tensors).to(self._device)
         with torch.no_grad():
             feats = self._model.encode_image(batch)

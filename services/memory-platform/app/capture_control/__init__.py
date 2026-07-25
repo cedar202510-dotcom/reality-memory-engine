@@ -34,6 +34,7 @@ from ..connectors import CaptureCommand, build_connector, resolve_transport
 from ..db import get_session
 from ..downlink import DeviceHub, _apply_receipt, _load_device, _mark_sent, get_hub
 from ..memory.events import record_audit
+from ..memory.seed import get_default_household_id
 from ..models import Device, DeviceDeliveryReceipt, DeviceMessage, utcnow
 from ..schemas import (
     CAPTURE_REQUEST_SCHEMA_REF,
@@ -46,6 +47,7 @@ from ..schemas import (
     DeviceListResponse,
     DeviceMessageOut,
     DeviceOut,
+    DeviceRegisterIn,
     DispatchOut,
     ReceiptRecord,
 )
@@ -70,6 +72,50 @@ async def list_devices_endpoint(
     """设备列表：控制台据此选目标设备，并看到它绑了哪个 App、走哪条通道。"""
     devices = (await session.scalars(select(Device).order_by(Device.name))).all()
     return DeviceListResponse(devices=[DeviceOut.of(d) for d in devices])
+
+
+@router.post("", response_model=DeviceOut)
+async def register_device_endpoint(
+    req: DeviceRegisterIn,
+    session: AsyncSession = Depends(get_session),
+) -> DeviceOut:
+    """注册一台设备并返回它的 device_id（04 §5.5 第 4 步）。
+
+    按 (household, name) 幂等，因为设备侧 Collector 会在每次启动时调它——没有幂等的话，
+    一副耳机重启十次就会在控制台的设备下拉框里变成十台设备。重复注册时同时刷新绑定，
+    这样升级 collector 版本后 runtime_package 会跟着更新，不需要再 PATCH 一次。
+
+    单租户 v0：household 取默认家庭。多租户时这里换成鉴权主体所属的 household。
+    """
+    household_id = await get_default_household_id(session)
+    device = await session.scalar(
+        select(Device).where(Device.household_id == household_id, Device.name == req.name)
+    )
+    created = device is None
+    if device is None:
+        device = Device(household_id=household_id, kind=req.kind, name=req.name)
+        session.add(device)
+    device.kind = req.kind
+    if req.runtime_package is not None:
+        device.runtime_package = req.runtime_package or None
+    if req.control_transport is not None:
+        device.control_transport = req.control_transport
+    await session.flush()
+    await record_audit(
+        session,
+        actor="user:owner",
+        action="device_register",
+        target=f"device:{device.id}",
+        detail={
+            "kind": device.kind,
+            "name": device.name,
+            "runtime_package": device.runtime_package,
+            "control_transport": device.control_transport,
+            "created": created,
+        },
+    )
+    await session.commit()
+    return DeviceOut.of(device)
 
 
 @router.patch("/{device_id}/binding", response_model=DeviceOut)

@@ -188,3 +188,59 @@ async def test_ingest_idempotency_and_phash_dedup(db_session, make_image):
         body = resp.json()
         assert body["evidence_item_ids"] == []
         assert len(body["duplicate_evidence_ids"]) == 1
+
+
+# ---------------------------------------------------------------- 答案的来源画面
+#
+# 「最后一次看到在办公桌上」这句话，配上那张照片才算说完：用户认得出自己那张桌子，
+# 认不出一句位置描述对不对。所以两条通道都必须把答案出自的那一帧交出来。
+
+
+async def test_projection_answer_carries_the_frame_it_came_from(db_session, make_image):
+    fake = PHONE_FAKE
+    async with await _client(fake) as client:
+        await _ingest(client, "phone_on_stool.jpg", make_image((10, 10, 10)))
+        await _drain_outbox(fake)
+
+        body = (await client.get("/v1/memory/objects/where-is", params={"name": "手机"})).json()
+        assert body["channel"] == "projection"
+        assert body["frame_asset_id"] is not None
+        assert body["evidence_available"] is True
+        # owner 直通拿得到原图地址，且指向的就是那一帧
+        assert body["evidence_url"] == f"/v1/memory/frames/{body['frame_asset_id']}/evidence"
+        assert (await client.get(body["evidence_url"])).status_code == 200
+
+
+async def test_deep_retrieval_answer_carries_the_frame_the_model_looked_at(db_session, make_image):
+    """精判是看着某一帧下的结论，配图必须是**那一帧**，不能是召回集合里的随便一张。"""
+    fake = FakeLLMClient(
+        caption_rules=[
+            ("glasses_scene", {"caption": "一副眼镜放在书架上", "scene_tags": ["眼镜", "书架"]}),
+        ],
+        answer_rules=[
+            ("眼镜", {"found": True, "location": "书架", "confidence": 0.95, "answer_text": "在书架上。"})
+        ],
+    )
+    async with await _client(fake) as client:
+        ingested = await _ingest(client, "glasses_scene.jpg", make_image((200, 100, 50)))
+        await _drain_outbox(fake)
+
+        body = (await client.get("/v1/memory/objects/where-is", params={"name": "眼镜"})).json()
+        assert body["channel"] == "deep_retrieval"
+        assert body["frame_asset_id"] is not None
+        assert body["evidence_available"] is True
+        assert (await client.get(body["evidence_url"])).status_code == 200
+        assert ingested  # 这一帧确实是本次摄入的那张
+
+
+async def test_not_found_answer_has_no_frame(db_session, make_image):
+    """没找到就不该配图。随便配一张会让人以为「这就是它」，那是最坏的一种撒谎。"""
+    fake = PHONE_FAKE  # answer_rules 为空 → 兜底 found=false
+    async with await _client(fake) as client:
+        await _ingest(client, "phone_on_stool.jpg", make_image((10, 10, 10)))
+        await _drain_outbox(fake)
+
+        body = (await client.get("/v1/memory/objects/where-is", params={"name": "眼镜"})).json()
+        assert body["channel"] == "not_found"
+        assert body["frame_asset_id"] is None
+        assert body["evidence_url"] is None

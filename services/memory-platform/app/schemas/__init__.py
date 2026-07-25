@@ -310,6 +310,12 @@ class FindObjectResponse(BaseModel):
     answer_text: str = ""
     alternatives: list[LocationAlternative] = Field(default_factory=list)
     timeline_url: str | None = None
+    # 答案出自哪一帧。「最后一次看到在办公桌上」这句话，配上那张照片才算说完——
+    # 用户认得出自己那张桌子，认不出一句位置描述对不对。
+    frame_asset_id: uuid.UUID | None = None
+    evidence_available: bool = False       # 原图是否还在（TTL 到期后为 False，但答案仍有效）
+    # 原始媒体默认不给 Agent（§5，同 scene-search）：带 token 的调用永远拿不到这个字段
+    evidence_url: str | None = None
     provenance_summary: ProvenanceSummary = Field(default_factory=ProvenanceSummary)
     # 平台对自身不确定性的机器可读声明（规则生成，不经 LLM）；Agent 必须转达给用户
     limitations: list[str] = Field(default_factory=list)
@@ -326,6 +332,13 @@ class TimelineEntry(BaseModel):
     payload: dict[str, Any]
     confidence: dict[str, Any]
     superseded_by: uuid.UUID | None = None
+    # 这条记忆出自哪一帧（顺 source_candidate_ids → observation_ids 追溯的来源，
+    # 不是相似度猜的）。纠正类事件没有来源帧，为 null。
+    frame_asset_id: uuid.UUID | None = None
+    # 帧记录还在但字节已被保留期删除时为 False——不是加载失败。
+    # evidence_url 只给 owner 直通（§5：原始媒体默认不暴露给 Agent）。
+    evidence_available: bool = False
+    evidence_url: str | None = None
 
 
 class TimelineResponse(BaseModel):
@@ -457,6 +470,67 @@ class PreferenceResponse(BaseModel):
     cache_until: datetime | None = None
 
 
+# ---------------------------------------------------------------- 喜好度洞察（跨模态融合）
+#
+# 上面的 /preferences 回答「关于 X 你说过什么」，是一次检索。
+# 下面这组回答「你对什么有态度、有多强」，是一次聚合——四路证据融合成一个可解释的分数。
+
+AFFINITY_CHANNELS = ("verbal", "intent", "behavior", "attention")
+
+AFFINITY_LEVELS = (
+    "强烈喜欢",
+    "喜欢",
+    "中性",
+    "不喜欢",
+    "强烈不喜欢",
+    "证据不足",
+)
+
+
+class AffinityChannelOut(BaseModel):
+    """单通道得分。前端靠它把总分拆开解释，而不是甩一个不知从哪来的数字。"""
+
+    channel: str                           # verbal/intent/behavior/attention
+    label: str                             # 中文名，前端直接用
+    value: float                           # -1~1
+    weight: float                          # 该通道在本次融合中的实际权重
+    evidence_count: int
+
+
+class AffinityEvidenceOut(BaseModel):
+    """一条可回溯的证据（原话/任务/使用记录）。"""
+
+    kind: str                              # verbal/intent/behavior
+    text: str
+    at: datetime | None = None
+    event_id: uuid.UUID | None = None
+    confidence: float = 0.5
+    superseded: bool = False
+
+
+class PreferenceInsightOut(BaseModel):
+    entity: EntityRef
+    score: int = Field(ge=0, le=100, description="喜好度 0~100，50 为中性")
+    level: str
+    polarity: float = Field(ge=-1.0, le=1.0)
+    confidence: float = Field(ge=0.0, le=1.0, description="证据充分程度，低于阈值时 level=证据不足")
+    channels: list[AffinityChannelOut] = Field(default_factory=list)
+    evidence: list[AffinityEvidenceOut] = Field(default_factory=list)
+    use_count: int = 0
+    frame_count: int = 0
+    dwell_seconds: float = 0.0
+    pending_count: int = Field(default=0, description="还在候选门里等人确认的相关线索数")
+    last_signal_at: datetime | None = None
+
+
+class PreferenceInsightsResponse(BaseModel):
+    items: list[PreferenceInsightOut] = Field(default_factory=list)
+    total: int = 0
+    generated_at: datetime
+    limitations: list[str] = Field(default_factory=list)
+    cache_until: datetime | None = None
+
+
 # ---------------------------------------------------------------- Agent 授权（grants 管理契约）
 
 
@@ -541,6 +615,201 @@ class SignalListResponse(BaseModel):
     signals: list[SignalOut] = Field(default_factory=list)
     # 因冷却/每日上限/过期被抑制的数量（可观测性：抑制不是丢失）
     suppressed: int = 0
+
+
+# ---------------------------------------------------------------- 采集媒体总览
+#
+# 这是「翻看采集到了什么」的读侧视图，直接建在 evidence_items 上，而不是 frame_assets：
+# 后者只有走完 VLM 感知的图片才有行，看不到音频、看不到还在排队的、更看不到视频。
+# 要回答「我刚才采的东西呢」，必须从证据本身出发。
+#
+# 原始媒体有 TTL，过期物理删除但记录保留。所以列表里一定会出现「有记录、没文件」的条目，
+# 这不是错误状态，而是隐私设计的正常结果，UI 必须能表达它。
+
+MEDIA_KINDS = ("image", "audio", "video", "sensor")
+
+# 感知状态。三个「没有结果」的状态必须分开，因为它们的含义和处理方式完全不同：
+#   PENDING     还在排队，等一等会有
+#   UNSUPPORTED 传感器只可靠落盘，没有解析器，永远不会有 caption 或转写——等下去是白等。
+#               （视频曾经也在这一档，自 video.process 起不是了：它会被拆成关键帧 + 音轨，
+#                 两路都有解析器，所以未完成的视频是 PENDING。）
+#   ABANDONED   原始字节已被 TTL 删除而解析从未完成，解析器再也没有输入可读，
+#               同样永远不会有结果
+# 混成一个 PENDING 会让人对着一堆永远不会完成的条目一直等。
+MEDIA_PERCEPTION_STATES = ("READY", "PENDING", "UNSUPPORTED", "ABANDONED")
+
+
+class MediaItemOut(BaseModel):
+    evidence_item_id: uuid.UUID
+    media_kind: str
+    # 服务端摄入时间；captured_at 是设备端拍摄时间（只有解析出资产后才知道）
+    created_at: datetime
+    captured_at: datetime | None = None
+    ttl_until: datetime
+    retention_state: str
+    perception_state: str
+    # 原始字节是否还在（TTL 删除后为 false，但下面的派生字段仍然有效）
+    available: bool
+    raw_url: str | None = None
+    # 实际 Content-Type，UI 据此决定用 <img> / <audio> / <video> 还是只给下载
+    media_type: str | None = None
+    # 图片派生
+    frame_asset_id: uuid.UUID | None = None
+    caption: str | None = None
+    scene_tags: list[str] = Field(default_factory=list)
+    # 音频派生
+    audio_asset_id: uuid.UUID | None = None
+    transcript: str | None = None
+    language: str | None = None
+    duration_seconds: float | None = None
+
+
+class MediaListResponse(BaseModel):
+    items: list[MediaItemOut] = Field(default_factory=list)
+    # 满足过滤条件的总数（不受 limit/offset 影响），用于分页与「共 N 条」
+    total: int = 0
+    limit: int = 0
+    offset: int = 0
+
+
+# ---------------------------------------------------------------- 记忆浏览读侧
+#
+# where-is 是「问一件事」，这里是「翻记忆本身」：事件流、物品分布、待确认线索。
+# 三者都不经 LLM——直接把 memory_events / state_projections / memory_candidates
+# 投成界面能画的形状。答案是确定性的，刷新两次结果一样，这对「记忆是否可信」很重要。
+
+
+class MemoryEventEntry(BaseModel):
+    """事件流里的一条。location 从 payload 提到顶层，因为界面主要就显示它。"""
+
+    event_id: uuid.UUID
+    entity_id: uuid.UUID | None = None
+    entity_name: str | None = None
+    event_type: str
+    event_time_from: datetime
+    accepted_at: datetime
+    location: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+    confidence: float = 0.0
+    # 被后续事件取代（典型是用户纠正覆盖了它）。取代不删除历史，所以列表里仍然出现，
+    # UI 要把它画成「已被更新」而不是当前事实——否则界面会同时展示两个互相矛盾的位置。
+    superseded: bool = False
+    # 人拍板的事件（用户确认线索 / 用户纠正），跟模型自动接受的要能分开
+    user_confirmed: bool = False
+    # 这条记忆出自哪一帧。顺 source_candidate_ids → observation_ids → frame_asset_id 追溯，
+    # 是**来源**而不是相似度猜的——同一个物体在别的帧里也出现过，但只有这一帧生成了这条事件。
+    # USER_CORRECTION 没有来源帧（它不出自任何画面），这里就是 null。
+    frame_asset_id: uuid.UUID | None = None
+    # 原始媒体默认不给 Agent（§5）：只有 owner 直通才有 evidence_url。
+    # evidence_available=False 表示帧记录还在但字节已被保留期删除——不是加载失败。
+    evidence_available: bool = False
+    evidence_url: str | None = None
+
+
+class MemoryEventsResponse(BaseModel):
+    events: list[MemoryEventEntry] = Field(default_factory=list)
+    total: int = 0
+
+
+# 实体粗分类。这一刀切的是「这是不是一件你会去找的东西」，而不是数码/日用那种品类：
+# 感知会把 人、手臂、木地板、墙面、空调 一并认成实体，它们在品类表里无处可放，硬塞
+# 进「其他」只会让「其他」变成垃圾桶。先按「找得找不得」分，全览和找物默认只看 PORTABLE。
+#
+# 类别是**推断**出来的，不像位置是**观察**到的——所以它跟别的推断一样要带来源、可纠正，
+# UNCLASSIFIED 是诚实的「还没判」，不是兜底垃圾桶。
+ENTITY_CATEGORIES = (
+    "PORTABLE",       # 随身/可移动物品：手机、充电线、钥匙、茶杯——「我的东西在哪」关心的那批
+    "FIXTURE",        # 场景固定物：地板、墙面、窗帘、空调、桌子本身
+    "PERSON",         # 人与身体部位：人、手臂、人手
+    "CONSUMABLE",     # 食物与耗材：包子、汤面、纸巾
+    "UNCLASSIFIED",   # 还没判或判不了
+)
+
+# 类别是谁定的。用户改过的绝不能被后续自动分类覆盖。
+CATEGORY_SOURCES = ("llm", "user", "unset")
+
+
+class ObjectNodeOut(BaseModel):
+    """一件物品的当前状态。location 为空表示有观察但没解析出位置。"""
+
+    entity_id: uuid.UUID
+    canonical_name: str
+    aliases: list[Any] = Field(default_factory=list)
+    entity_class: str = "instance"
+    location: str | None = None
+    last_seen_time: datetime | None = None
+    confidence: float = 0.0
+    event_count: int = 0
+    corrected: bool = False
+    # 推断出来的粗分类；category_source 说明是模型判的还是你改的
+    category: str = "UNCLASSIFIED"
+    category_source: str = "unset"
+    # 这件东西的实拍缩略图（检测框裁出来的那一块）。为空 = 没检出/没装检测器/原件已过期，
+    # 前端退回纯色球——不给占位图，因为占位图会让「没拍到」看起来像「拍到了但长这样」。
+    thumb_url: str | None = None
+
+
+class ObjectGroupOut(BaseModel):
+    """同一位置上的物品。全览里的连线就是这个分组，不是别的语义。"""
+
+    location: str
+    entity_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+class ObjectGraphResponse(BaseModel):
+    nodes: list[ObjectNodeOut] = Field(default_factory=list)
+    # 只含 2 件以上物品的位置：一件物品自己不构成「放在一起」，给它画组会让图里全是孤环
+    groups: list[ObjectGroupOut] = Field(default_factory=list)
+    total: int = 0
+
+
+class MemoryClueOut(BaseModel):
+    """待确认线索：候选门没敢自动接受的记忆，等人拍板。
+
+    PENDING = 置信度不够阈值；CONFLICTED = 同一物体撞上了位置不兼容的另一个候选。
+    两者都要能确认，但界面得说清是哪一种——「不太确定」和「跟别的记忆打架」
+    对用户来说是完全不同的问题。
+    """
+
+    candidate_id: uuid.UUID
+    entity_id: uuid.UUID | None = None
+    object_text: str
+    location: str | None = None
+    event_type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    confidence: float = 0.0
+    status: str
+    # perception=采集时看到的；query=问答时从画面里推出来的
+    source: str
+    created_at: datetime
+    conflict_set_id: uuid.UUID | None = None
+    # 线索出自哪一帧。原始媒体默认不给 Agent（§5），只有 owner 直通才有 evidence_url
+    frame_asset_id: uuid.UUID | None = None
+    frame_caption: str | None = None
+    evidence_available: bool = False
+    evidence_url: str | None = None
+
+
+class MemoryCluesResponse(BaseModel):
+    clues: list[MemoryClueOut] = Field(default_factory=list)
+    total: int = 0
+
+
+class ClueResolveRequest(BaseModel):
+    """确认或忽略一条线索。确认绕过置信度阈值——人的拍板不需要凑够分数。"""
+
+    decision: Literal["CONFIRM", "REJECT"]
+    reason: str = ""
+
+
+class ClueResolveResponse(BaseModel):
+    candidate_id: uuid.UUID
+    status: str
+    event_id: uuid.UUID | None = None
+    entity_id: uuid.UUID | None = None
+    projection: dict[str, Any] | None = None
+    # 确认一条线索会顺带把同冲突集里的其它候选判为 REJECTED（冲突由用户一次解决）
+    rejected_sibling_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------- 下行：设备消息与回执
@@ -701,6 +970,11 @@ CAPTURE_ACTIONS = (
 # inbox=落库等设备自己来拉（架构目标形态，脱离 USB）。
 CONTROL_TRANSPORTS = ("adb", "inbox")
 
+# 设备类型（04 §5.1）。这不是能力声明——耳机能不能录音、眼镜能不能拍照，由设备侧
+# Collector 自己回答（不支持的动作走 REJECTED 回执），后端不按 kind 猜设备能做什么。
+# earbuds：蓝牙耳机，采集与播报都由宿主侧 Collector 代跑（apps/iflybuds-collector）。
+DEVICE_KINDS = ("glasses", "ring", "phone", "earbuds")
+
 
 class CaptureRequestCreate(BaseModel):
     """从控制台下发一次采集请求。"""
@@ -813,6 +1087,41 @@ class DeviceOut(BaseModel):
 
 class DeviceListResponse(BaseModel):
     devices: list[DeviceOut] = Field(default_factory=list)
+
+
+class DeviceRegisterIn(BaseModel):
+    """设备自注册（04 §5.5 第 4 步：后端注册设备、下发 device_id）。
+
+    按 name 幂等：采集器每次启动都可以调一次而不会攒出一堆同名设备。名字是人给的，
+    也是控制台上唯一能认出「这是我桌上那副耳机」的东西，所以它就是幂等键。
+    """
+
+    kind: str
+    name: str = Field(min_length=1, max_length=128)
+    # 耳机这类没有 Android 包名的设备，这里放 collector 标识（如
+    # iflybuds-host-collector/0.1.0），控制台据此知道对面跑的是什么运行时。
+    runtime_package: str | None = Field(default=None, max_length=128)
+    control_transport: str | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> DeviceRegisterIn:
+        if self.kind not in DEVICE_KINDS:
+            raise ValueError(f"未知设备类型：{self.kind}（可用：{list(DEVICE_KINDS)}）")
+        if self.control_transport is not None and self.control_transport not in CONTROL_TRANSPORTS:
+            raise ValueError(
+                f"未知控制通道：{self.control_transport}（可用：{list(CONTROL_TRANSPORTS)}）"
+            )
+        return self
+
+
+class TranscribeResponse(BaseModel):
+    """一次性语音转写的结果（在场页把话变成字用）。
+
+    这里**没有** evidence_item_id / audio_asset_id：这段音频不入库，转写完就丢。
+    对着界面问一句话不等于授权把自己的声音存进记忆库，两件事必须分开授权。
+    """
+
+    text: str = Field(description="整段转写文本（各分段拼接）")
 
 
 class DeviceBindingUpdate(BaseModel):
