@@ -322,13 +322,13 @@ export default function TopologyGraph({ onOpenItem }) {
   };
   return <div className="graph-shell">
     <div className="graph-toolbar">
-      <label className="graph-search"><Search size={14}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索物品" aria-label="搜索物品"/>{query && <button onClick={() => setQuery("")} aria-label="清空搜索"><X size={13}/></button>}
+      <label className="graph-search"><Search size={14}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索物品或位置" aria-label="搜索物品或位置"/>{query && <button onClick={() => setQuery("")} aria-label="清空搜索"><X size={13}/></button>}
         {results.length > 0 && <span className="graph-results">{results.map((node) => <button key={node.id} onClick={() => { focusNode(node.id); setQuery(""); }}><i style={{ background: layers.find((layer) => layer.id === node.layer).color }}/><b>{node.name}</b><small>{node.room}</small></button>)}</span>}
       </label>
-      <div className="graph-mode">{[["all","全部"],["same","同层"],["cross","跨层"]].map(([id,label]) => <button key={id} className={relationMode === id ? "active" : ""} onClick={() => setRelationMode(id)}>{label}</button>)}</div>
+      <div className="graph-mode">{[["all","全部"],["same","同类"],["cross","跨类"]].map(([id,label]) => <button key={id} className={relationMode === id ? "active" : ""} onClick={() => setRelationMode(id)}>{label}</button>)}</div>
       <button className="graph-reset" onClick={() => setResetSignal((value) => value + 1)} aria-label="复位视角"><RotateCcw size={15}/></button>
     </div>
-    <div className="graph-layer-strip"> <button className={activeLayer === "all" ? "active" : ""} onClick={() => setActiveLayer("all")}>全部层</button>{layers.map((layer) => <button key={layer.id} className={activeLayer === layer.id ? "active" : ""} onClick={() => setActiveLayer(layer.id)}><i style={{ background: layer.color }}/>{layer.label}</button>)}</div>
+    <div className="graph-layer-strip"> <button className={activeLayer === "all" ? "active" : ""} onClick={() => setActiveLayer("all")}>全部</button>{layers.map((layer) => <button key={layer.id} className={activeLayer === layer.id ? "active" : ""} onClick={() => setActiveLayer(layer.id)}><i style={{ background: layer.color }}/>{layer.label}</button>)}</div>
     <div className="graph-stage">
       <Scene activeLayer={activeLayer} relationMode={relationMode} focusId={hoveredId || (focusSignal.tick ? selectedId : null)} onNode={focusNode} onHover={setHoveredId} focusSignal={focusSignal} resetSignal={resetSignal}/>
       <div className="graph-count">{nodes.length} 节点 · {relations.length} 关系</div>

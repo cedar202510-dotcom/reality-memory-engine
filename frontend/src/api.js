@@ -21,6 +21,45 @@ const patch = (path, body) => request("PATCH", path, { body });
 export const whereIs = (name, deep = false) =>
   get("/v1/memory/objects/where-is", { name, deep });
 
+/**
+ * where-is 的媒体返回约定：
+ * {
+ *   answer_text: string,
+ *   media?: Array<{
+ *     id: string,
+ *     type: "image",
+ *     url: string,
+ *     alt: string,
+ *     captured_at?: string,
+ *     source_label?: string
+ *   }>
+ * }
+ */
+export const mockWhereIs = async (name) => {
+  await new Promise(resolve => setTimeout(resolve, 320));
+
+  if (/身份证|证件/.test(name)) {
+    return {
+      answer_text: "最后一次确认在书房右侧抽屉的证件袋里。下面是昨天记录到的位置画面。",
+      media: [
+        {
+          id: "mock-id-card-location",
+          type: "image",
+          url: "/mock/id-card-location.png",
+          alt: "书房抽屉内的证件袋、钱包和钥匙，证件信息已模糊处理",
+          captured_at: "昨天 21:46",
+          source_label: "书房右侧抽屉",
+        },
+      ],
+    };
+  }
+
+  return {
+    answer_text: "最后一次确认在客厅工作桌下方。今天 10:18 之后没有新的移动记录。",
+    media: [],
+  };
+};
+
 /** 最近摄入帧 + 感知积压量（联调面板轮询用）。 */
 export const recentFrames = (limit = 12) => get("/v1/memory/frames/recent", { limit });
 
