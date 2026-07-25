@@ -1,8 +1,8 @@
-# Reality Memory Engine 工程架构与数据链路
+# RealGit 工程架构与数据链路
 
 > 文档版本：v1.3-engineering  
 > 文档日期：2026-07-24  
-> 母版来源：Reality-Memory-Engine-PRD-v1.3.md  
+> 母版来源：RealGit-PRD-v1.3.md  
 > 文档用途：让研发、算法、数据、设备和测试团队理解从采集到沉淀的完整工程链路
 > 当前状态：完整工程解释；部署和通信细节以 `docs/architecture/` 为准
 
@@ -783,7 +783,7 @@ outbox_events
 - RV101 正式眼镜端 App：`apps/reality-memory-glasses/`
 - RV101 能力探针与排障基线：`apps/rokid-glass-probe/`
 - 设备、手机与云端通信：`docs/architecture/05-Device-Cloud-Communication.md`
-- 正式多模态数据契约：`docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md`
+- 正式多模态数据契约：`docs/engineering/RealGit-Multimodal-Data-Contract-v1.0.md`
 - 历史数据契约 Review：`docs/engineering/archive/Reality-Memory-Engine-Contract-Review-v0.1.md`
 - 已归档 CXR-L 过渡探针：`archive/cxrl-probe/README.md`，仅作 SDK 参考和历史实验，不是第二个正式手机 App。
 - CXR-L Token 与状态历史记录：`archive/cxrl-probe/docs/CXRL-TOKEN-AND-STATE-FLOW.md`

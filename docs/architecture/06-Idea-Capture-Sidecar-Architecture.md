@@ -374,7 +374,7 @@ GET    /ideas/captures/{id}          原始捕捉（含 raw_text）
 | `app/idea/router.py` | §7.1 全部端点 |
 | `app/main.py` | 挂载 router |
 | `app/auth/` | `ideas:read` / `ideas:write` scope + 默认拒绝规则 |
-| `docs/engineering/Reality-Memory-Platform-API-Reference-v0.1.md` | 补充端点 |
+| `docs/engineering/RealGit-Platform-API-Reference-v0.1.md` | 补充端点 |
 
 ### 批次 E — 删除与审计
 

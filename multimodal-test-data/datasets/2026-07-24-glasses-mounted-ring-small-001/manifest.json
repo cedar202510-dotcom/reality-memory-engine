@@ -22,7 +22,7 @@
     "captureWindows": 6
   },
   "contract": {
-    "documentation": "docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md",
+    "documentation": "docs/engineering/RealGit-Multimodal-Data-Contract-v1.0.md",
     "schemas": "contracts/reality-memory/v1/"
   },
   "limitations": [

@@ -1,8 +1,8 @@
-# Reality Memory Engine 产品需求文档
+# RealGit 产品需求文档
 
 > 文档版本：v1.3  
 > 文档日期：2026-07-24  
-> 产品名称：Reality Memory Engine / 现实记忆引擎  
+> 产品名称：RealGit / 现实记忆引擎  
 > 当前状态：产品权威母版
 > 文档用途：让产品、设计、业务和非工程读者理解产品边界、核心场景、信任原则和阶段目标
 
@@ -10,7 +10,7 @@
 
 ## 1. 产品摘要
 
-Reality Memory Engine 是面向智能硬件与个人 Agent 的现实世界记忆中台。它从眼镜、戒指、手机及未来设备接收图片、短视频、短音频、传感器信号和结构化设备事件，将短暂原始证据转化为可检索、可纠正、可删除、可审计的现实记忆。
+RealGit 是面向智能硬件与个人 Agent 的现实世界记忆中台。它从眼镜、戒指、手机及未来设备接收图片、短视频、短音频、传感器信号和结构化设备事件，将短暂原始证据转化为可检索、可纠正、可删除、可审计的现实记忆。
 
 一句话定位：
 
@@ -164,7 +164,7 @@ Reality Memory Engine 是面向智能硬件与个人 Agent 的现实世界记忆
 
 | 路径 | 运行位置 | 产品定位 |
 |---|---|---|
-| Reality Memory for Glasses | RV101 眼镜本机 | 正式设备端 Runtime，负责采集、隐私状态、本地队列和提醒呈现 |
+| RealGit for Glasses | RV101 眼镜本机 | 正式设备端 Runtime，负责采集、隐私状态、本地队列和提醒呈现 |
 | RV101 Glass Probe | RV101 眼镜本机 | 保留的能力验证和设备排障基线，不演进为正式产品 |
 | CXR-L SDK | 统一 Android/iOS 手机 App | 历史图片/短音频兼容 Adapter 和测试数据来源 |
 | CXR-M SDK | Android 手机 | 获得商务能力后再评估 |
@@ -280,8 +280,8 @@ Agent 只在歧义判断、查询回答和个性化措辞确有收益时参与�
 - `docs/architecture/02-Memory-Platform-Architecture.md`：云端解析、融合、事实和状态投影。
 - `docs/architecture/03-Agent-Access-Architecture.md`：账号授权、查询、订阅、纠正和 Demo。
 - `docs/architecture/05-Device-Cloud-Communication.md`：眼镜、手机与云端的上下行通信边界。
-- `docs/engineering/Reality-Memory-Engine-Engineering-Architecture-v1.3.md`
-- `docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md`
+- `docs/engineering/RealGit-Engineering-Architecture-v1.3.md`
+- `docs/engineering/RealGit-Multimodal-Data-Contract-v1.0.md`
 - `docs/visuals/README.md`：当前探索性和历史可视化入口。
 - `archive/cxrl-probe/README.md`：历史 CXR-L SDK 探针，仅作参考，不是第二个正式手机 App。
 - `archive/cxrl-probe/docs/ACTIVITY-SESSION-AGENT-DESIGN.md`

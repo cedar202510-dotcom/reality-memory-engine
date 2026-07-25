@@ -6,7 +6,7 @@
 > 消费产品品牌：Reality  
 > 中文名：在场  
 > 当前交付：三天活动使用的可交互 Web 产品原型与 RV101 第一视角 UI 模拟  
-> 上游依据：`Reality-Memory-Engine-PRD-v1.3.md`
+> 上游依据：`RealGit-PRD-v1.3.md`
 
 ---
 

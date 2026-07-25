@@ -32,7 +32,7 @@ fi
 echo "正在安装：$apk_path"
 "$adb_bin" install -r "$apk_path"
 "$adb_bin" reverse tcp:8765 tcp:8765
-echo "安装完成。正在启动 Reality Memory..."
+echo "安装完成。正在启动 RealGit..."
 "$adb_bin" shell am force-stop com.realitymemory.glasses
 "$adb_bin" shell am start \
   -n com.realitymemory.glasses/.MainActivity \

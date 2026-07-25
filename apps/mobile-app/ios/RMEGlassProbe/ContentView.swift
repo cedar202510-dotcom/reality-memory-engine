@@ -21,7 +21,7 @@ struct ContentView: View {
                 }
             }
             .background(Color(uiColor: .systemBackground))
-            .navigationTitle("Reality Memory")
+            .navigationTitle("RealGit")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {

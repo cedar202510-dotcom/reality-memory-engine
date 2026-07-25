@@ -1,4 +1,4 @@
-# Reality Memory Engine 文档导航
+# RealGit 文档导航
 
 这里是项目文档的统一入口。当前文档按“产品、架构、工程、探索、归档”分层，
 避免同一目录中同时出现多个看似有效的版本。
@@ -7,14 +7,14 @@
 
 | 阅读目的 | 文档 | 状态 |
 | --- | --- | --- |
-| 理解产品定位、范围与阶段目标 | [产品 PRD v1.3](product/Reality-Memory-Engine-PRD-v1.3.md) | 当前产品母版 |
+| 理解产品定位、范围与阶段目标 | [产品 PRD v1.3](product/RealGit-PRD-v1.3.md) | 当前产品母版 |
 | 理解端、云、Agent 的整体边界 | [分层技术架构](architecture/README.md) | 当前工程口径 |
 | 开发眼镜端采集 | [数据采集架构](architecture/01-Data-Capture-Architecture.md) | 当前参考，硬件参数待真机 |
 | 开发云端记忆沉淀 | [云端记忆平台架构](architecture/02-Memory-Platform-Architecture.md) | 方案参考，沉淀规则待 review |
 | 开发 Agent 查询与提醒判断 | [Agent 调用架构](architecture/03-Agent-Access-Architecture.md) | 方案参考，业务策略待 review |
 | 开发眼镜与云端通信 | [设备与云端通信](architecture/05-Device-Cloud-Communication.md) | 上行可实施，下行业务内容待 review |
 | 开发灵感 / 问题 / 任务捕捉 | [灵感旁路架构](architecture/06-Idea-Capture-Sidecar-Architecture.md) | 方案参考，待 review |
-| 对接数据对象和 JSON Schema | [多模态数据契约 v1.0](engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md) | 当前正式契约 |
+| 对接数据对象和 JSON Schema | [多模态数据契约 v1.0](engineering/RealGit-Multimodal-Data-Contract-v1.0.md) | 当前正式契约 |
 
 机器可校验的 JSON Schema 位于
 [`contracts/reality-memory/v1/`](../contracts/reality-memory/v1/README.md)。

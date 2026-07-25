@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUTPUT_PATH="${1:-$HOME/Desktop/Reality Memory Debug Console.app}"
+OUTPUT_PATH="${1:-$HOME/Desktop/RealGit Debug Console.app}"
 CONTENTS="$OUTPUT_PATH/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
@@ -21,7 +21,7 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
   <key>CFBundleDevelopmentRegion</key>
   <string>zh_CN</string>
   <key>CFBundleDisplayName</key>
-  <string>Reality Memory 调试台</string>
+  <string>RealGit 调试台</string>
   <key>CFBundleExecutable</key>
   <string>RealityMemoryDebugConsole</string>
   <key>CFBundleIdentifier</key>
@@ -29,7 +29,7 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>Reality Memory Debug Console</string>
+  <string>RealGit Debug Console</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -77,7 +77,7 @@ find_node() {
 
 NODE="$(find_node || true)"
 if [[ -z "$NODE" ]]; then
-  /usr/bin/osascript -e 'display alert "Reality Memory 调试台无法启动" message "没有找到 Node.js。请先安装 Node.js，再重新打开调试台。" as critical'
+  /usr/bin/osascript -e 'display alert "RealGit 调试台无法启动" message "没有找到 Node.js。请先安装 Node.js，再重新打开调试台。" as critical'
   exit 1
 fi
 
@@ -111,7 +111,7 @@ if is_debug_console_ready; then
   exit 0
 fi
 
-/usr/bin/osascript -e 'display alert "Reality Memory 调试台启动失败" message "请查看 ~/Library/Logs/RealityMemoryDebugConsole.log 获取错误信息。" as critical'
+/usr/bin/osascript -e 'display alert "RealGit 调试台启动失败" message "请查看 ~/Library/Logs/RealityMemoryDebugConsole.log 获取错误信息。" as critical'
 exit 1
 LAUNCHER
 

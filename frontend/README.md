@@ -1,4 +1,4 @@
-# Reality Memory 前端
+# RealGit 前端
 
 React + Vite 原型。大部分视图仍是设计演示（mock 数据），已接真实后端的部分：
 

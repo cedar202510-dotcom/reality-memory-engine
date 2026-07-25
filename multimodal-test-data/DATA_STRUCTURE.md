@@ -1,7 +1,7 @@
 # 多模态测试数据结构说明
 
-这份文档说明 `multimodal-test-data` 里的样本如何映射到 Reality Memory Engine 的核心数据链路。正式字段以
-[`Reality-Memory-Multimodal-Data-Contract-v1.0.md`](../docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md)
+这份文档说明 `multimodal-test-data` 里的样本如何映射到 RealGit 的核心数据链路。正式字段以
+[`RealGit-Multimodal-Data-Contract-v1.0.md`](../docs/engineering/RealGit-Multimodal-Data-Contract-v1.0.md)
 和 `contracts/reality-memory/v1/` 为准；本目录保存少量可复现的真实输入。
 
 ## 核心概念

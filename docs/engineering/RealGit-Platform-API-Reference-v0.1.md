@@ -1,4 +1,4 @@
-# Reality Memory Platform API 参考 v0.1
+# RealGit Platform API 参考 v0.1
 
 > 文档版本：v0.1
 > 文档日期：2026-07-24
@@ -11,7 +11,7 @@
 
 ## 1. 服务概述
 
-Memory Platform 是 Reality Memory Engine 的后端沉淀服务，负责接收采集端上报的证据
+Memory Platform 是 RealGit 的后端沉淀服务，负责接收采集端上报的证据
 （图片 / 音频信封），异步完成感知（caption → 结构化抽取 → 候选门 → 事实事件 → 状态投影），
 并对外提供"东西在哪"查询、场景检索、纠正与遗忘等能力。
 
@@ -649,5 +649,5 @@ audit_hash）。冒烟实测：遗忘后再查同一物体，`location=null`，�
 | --- | --- | --- |
 | v0.1 | 2026-07-24 | 首版。基于当日 9/9 端点端到端冒烟测试（真实配置：LLM=kimi-coding k3、本地 CLIP ViT-B-32、ASR=none、Postgres+pgvector），响应示例均摘自真实响应。 |
 
-参考文档：《Reality Memory Engine 多模态数据契约 v1.0》、
-《Reality Memory Engine 工程架构与数据链路 v1.3》。
+参考文档：《RealGit 多模态数据契约 v1.0》、
+《RealGit 工程架构与数据链路 v1.3》。

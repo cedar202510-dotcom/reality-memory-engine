@@ -3,7 +3,7 @@
 > 文档版本：v0.1
 > 文档日期：2026-07-25
 > 当前状态：**方案参考，未冻结**。本文档是参赛决策与演示编排，不是产品承诺，也不指导实现
-> 产品母版：[产品 PRD v1.3](../product/Reality-Memory-Engine-PRD-v1.3.md)
+> 产品母版：[产品 PRD v1.3](../product/RealGit-PRD-v1.3.md)
 > 工程口径：[分层技术架构](../architecture/README.md)
 
 ## 0. 两个结论
@@ -98,10 +98,10 @@
 `injective-frontend-wallet` 做签名）。Phase 0（加盐 hash + JCS canonical）+
 Phase 1（daily Merkle root 上链）是几十行到几百行的量。
 
-- **但 07 号文档自己反对过**：§7.4 明确写了「引入加密货币基础设施与 Reality Memory 的
+- **但 07 号文档自己反对过**：§7.4 明确写了「引入加密货币基础设施与 RealGit 的
   家庭隐私叙事相反，若真要做，**做成独立产品线、独立 App、独立品牌**」。
 - **判断**：hackathon 恰好是那个独立分支该存在的地方。用「灵感存在性证明」单独立项，
-  与主产品只共享导出接口。**不要**把 Reality Memory 主体包装成区块链项目。
+  与主产品只共享导出接口。**不要**把 RealGit 主体包装成区块链项目。
 
 ### 2.3 明确劝退
 

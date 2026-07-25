@@ -472,7 +472,7 @@ final class RingDeviceAdapter: NSObject {
         case .poweredOff:
             state = .bluetoothUnavailable("手机蓝牙已关闭")
         case .unauthorized:
-            state = .bluetoothUnavailable("Reality Memory 未获得蓝牙权限")
+            state = .bluetoothUnavailable("RealGit 未获得蓝牙权限")
         case .unsupported:
             state = .bluetoothUnavailable("当前设备不支持蓝牙低功耗")
         case .resetting:

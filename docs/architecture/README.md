@@ -1,13 +1,13 @@
-# Reality Memory Engine 分层技术架构
+# RealGit 分层技术架构
 
 > 文档版本：v0.3
 > 更新日期：2026-07-24  
-> 产品母版：`docs/product/Reality-Memory-Engine-PRD-v1.3.md`  
+> 产品母版：`docs/product/RealGit-PRD-v1.3.md`  
 > 当前状态：当前工程架构入口；未冻结内容会在正文中明确标为“待 review”
 
 ## 1. 这组文档解决什么问题
 
-Reality Memory Engine 同时涉及眼镜、戒指、手机、云端记忆平台和 Agent。现有
+RealGit 同时涉及眼镜、戒指、手机、云端记忆平台和 Agent。现有
 PRD 已覆盖完整产品设想，但把设备路径、数据契约、云端沉淀和 Agent 调用写在同一
 份长文档中，容易产生三个误解：
 
@@ -70,7 +70,7 @@ RV101 开发线已经到位，由持有开发线和真机的队友负责安装�
 
 ```text
 眼镜佩戴事件 / 眼镜自身 IMU / 用户显式“记一下”
-  -> Reality Memory for Glasses
+  -> RealGit for Glasses
   -> CameraX / AudioRecord / SensorManager
   -> 本地加密 Evidence 队列
   -> 后续接入云端 Ingest API
@@ -253,7 +253,7 @@ MemorySignal / Policy Update
 | 模块 | 当前已实现 | 仍缺少 |
 | --- | --- | --- |
 | iOS Reality App | CXR-L 图片、短音频/VAD、戒指 NUS、IMU、动作触发、采集 Session、本地测试清单 | 正式 SourceEnvelope、上传接口、自动戒指模式处理、后台可靠性 |
-| Reality Memory for Glasses | 佩戴会话、眼镜 IMU 动态触发、无预览图片/短视频、短音频、加密 Evidence 队列、暂停/关闭/“记一下”、文字与 TTS 提醒入口 | RV101 真机验证、VAD、上传、TTL 实际清理与删除回执、签名策略、功耗校准、后端提醒通道 |
+| RealGit for Glasses | 佩戴会话、眼镜 IMU 动态触发、无预览图片/短视频、短音频、加密 Evidence 队列、暂停/关闭/“记一下”、文字与 TTS 提醒入口 | RV101 真机验证、VAD、上传、TTL 实际清理与删除回执、签名策略、功耗校准、后端提醒通道 |
 | RV101 Glass Probe | CameraX 无业务预览拍照、30 秒周期、佩戴广播、前台服务框架 | 仅继续承担官方能力对照和设备排障，不再扩展为正式产品 |
 | PC Session Viewer | 图片、PCM、戒指数据和触发关联展示 | 正式契约展示、上传/解析状态、云端记忆结果 |
 | Memory Platform | PRD 和工程设计 | 可运行 Ingest、Evidence、Parser、Fusion、Event Store、Projection、Query |
@@ -311,11 +311,11 @@ MemorySignal / Policy Update
 ## 10. 文档关系
 
 - 产品定位、用户场景和产品边界以
-  `docs/product/Reality-Memory-Engine-PRD-v1.3.md` 为母版。
+  `docs/product/RealGit-PRD-v1.3.md` 为母版。
 - 当前部署和数据通道决策以本文件及四份分层文档为工程口径。
-- `docs/engineering/Reality-Memory-Engine-Engineering-Architecture-v1.3.md`
+- `docs/engineering/RealGit-Engineering-Architecture-v1.3.md`
   保留完整流水线解释。
-- `docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md`
+- `docs/engineering/RealGit-Multimodal-Data-Contract-v1.0.md`
   与 `contracts/reality-memory/v1/` 是当前正式数据契约和机器 Schema。
 - `docs/engineering/archive/Reality-Memory-Engine-Contract-Review-v0.1.md`
   保留第一次数据契约 Review 结论，仅作历史参考。

@@ -1,6 +1,6 @@
 # RME Memory Platform（云端记忆平台后端 v0）
 
-Reality Memory Engine 的第一个云端后端：把眼镜/戒指/手机采集的带时间戳照片，结构化为**可检索、可纠正、可删除、可审计**的现实记忆。首个场景是找物——"我的手机/钥匙上次放哪了？"
+RealGit 的第一个云端后端：把眼镜/戒指/手机采集的带时间戳照片，结构化为**可检索、可纠正、可删除、可审计**的现实记忆。首个场景是找物——"我的手机/钥匙上次放哪了？"
 
 ## 核心架构原则
 
@@ -114,7 +114,7 @@ iOS App 每次采集会话导出 `session.json`（采集清单）。上云时**�
 
 ## API 清单
 
-> 完整 API 参考（请求/响应字段、真实示例、错误码、幂等/去重/异步行为）：[docs/engineering/Reality-Memory-Platform-API-Reference-v0.1.md](../../docs/engineering/Reality-Memory-Platform-API-Reference-v0.1.md)
+> 完整 API 参考（请求/响应字段、真实示例、错误码、幂等/去重/异步行为）：[docs/engineering/RealGit-Platform-API-Reference-v0.1.md](../../docs/engineering/RealGit-Platform-API-Reference-v0.1.md)
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
