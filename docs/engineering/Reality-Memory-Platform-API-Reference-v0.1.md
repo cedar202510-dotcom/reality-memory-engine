@@ -40,6 +40,16 @@ Memory Platform 是 Reality Memory Engine 的后端沉淀服务，负责接收�
 | 7 | POST | `/v1/memory/correct` | query | 用户纠正（不改历史，重算投影） |
 | 8 | POST | `/v1/memory/forget-recent` | privacy | 遗忘最近 N 分钟（8 子系统删除流水线） |
 | 9 | GET | `/v1/memory/audit` | privacy | 审计记录查询 |
+| 10 | GET | `/internal/v1/devices` | capture-control | 设备列表（含运行时绑定与控制通道） |
+| 11 | PATCH | `/internal/v1/devices/{device_id}/binding` | capture-control | 绑定眼镜 App 运行时与控制通道 |
+| 12 | POST | `/internal/v1/devices/{device_id}/capture-requests` | capture-control | 下发采集请求并分发到 connector |
+| 13 | GET | `/internal/v1/devices/{device_id}/capture-requests` | capture-control | 近期采集请求与设备回执 |
+
+下行投递通道（`/internal/v1/devices/{id}/messages` `/inbox` `/receipts` `/stream`）与
+采集请求的载荷、状态机和 connector 语义见
+[设备与云端通信架构 §5](../architecture/05-Device-Cloud-Communication.md)。
+采集请求是**请求**不是命令：设备本地策略可以拒绝（`REJECTED`），云端不能强制打开
+相机或麦克风。
 
 ## 3. 通用约定
 

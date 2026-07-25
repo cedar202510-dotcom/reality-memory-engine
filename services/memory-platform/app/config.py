@@ -122,6 +122,17 @@ class Settings(BaseSettings):
     # 长连心跳间隔：服务端超过该秒数没收到任何客户端帧则主动断开，交给设备重连
     device_ws_idle_timeout_seconds: float = 90.0
 
+    # --- 采集控制 connector（设备接入架构 04） ---
+    # adb 通道要求后端进程与眼镜插在同一台机器上，是联调期形态；目标形态是 inbox。
+    adb_binary: str = "adb"
+    # 多台设备同时在线时指定序列号（adb devices 里那一列）；单设备留空即可
+    adb_serial: str = ""
+    # am start 正常在 1s 内返回；超时通常意味着 USB 掉了或设备卡死，早失败早暴露
+    adb_timeout_seconds: float = 10.0
+    # 发 intent 前先按 KEYCODE_WAKEUP 唤醒屏幕。熄屏时 Android 12 禁止后台启动
+    # camera/microphone 前台服务，`am start` 会假装成功而采集不发生（真机实测）。
+    adb_wake_before_dispatch: bool = True
+
     # --- 演示/测试用 Fake 行为由调用方注入，不在配置里 ---
 
 

@@ -177,10 +177,28 @@ delivery_policy），但 `payload` 里提醒的主题、理由、按钮和措辞
 属于下一步，需要先回答通信架构 §6 的开放问题——谁拥有提醒决定权、优先级与终端
 选择怎么定。
 
+### 采集控制（capture_control + connectors）
+
+前端控制台通过 `POST /internal/v1/devices/{id}/capture-requests` 下发 `CAPTURE_REQUEST`，
+按设备绑定的通道分发：`adb`（后端在本机把请求翻成 Android intent，要求与眼镜同机）或
+`inbox`（只落库，等设备自己来拉，架构目标形态）。两条通道共用 `device_messages` 表与
+回执语义，切换通道前端无感。
+
+**下发的是请求不是命令**（通信架构 §8）：设备本地策略有完整拒绝权，拒绝回 `REJECTED`，
+与链路故障的 `FAILED` 分开，事后审计才能区分「隐私生效」和「链路坏了」。
+
+`adb` 通道的 `EXECUTED` 只代表 intent 送到了运行时（`detail.execution_evidence =
+"intent_delivered_only"`），不代表采集成功。发 intent 前会先按 `KEYCODE_WAKEUP`：
+眼镜熄屏时 `am start` 会假装成功，但 Android 12 禁止后台启动 camera 前台服务，
+采集不会发生。
+
 未实现（明确的已知缺口）：
 
 - **设备身份**。`/internal/v1` 沿用本机/内网可信假设，没有 device token，任何能
-  访问该端口的调用方都能给任意设备下发消息。设备绑定与凭证撤销属于通信 review。
+  访问该端口的调用方都能给任意设备下发消息。这个缺口对采集控制比对提醒更要命——
+  任何能访问该端口的人都能让眼镜拍照。设备绑定与凭证撤销属于通信 review。
+- **设备端下行客户端**。眼镜端目前既没有 inbox 轮询也没有长连客户端，所以 `inbox`
+  通道下的请求只会排队等不到执行。今天能端到端跑通的只有 `adb` 通道。
 - **多副本**。`DeviceHub` 是进程内注册表，长连只在收到消息的那个进程可见。多副本
   部署需要换 Redis pub/sub 或粘性路由，替换范围限于 `DeviceHub` 这一个类。
 
@@ -203,6 +221,8 @@ app/
   auth/              # AgentGrant：token 签发/解析、grant_or_owner 依赖、grants 管理端点
   signals/           # Signal 规则引擎（确定性）+ 订阅/投递/ack API
   downlink/          # 下行设备通道：DeviceHub 长连注册表 + 注入/inbox/回执 API
+  capture_control/   # 采集控制面：CAPTURE_REQUEST 下发 + 设备运行时绑定 + 请求历史
+  connectors/        # 设备控制通道：adb（本机 USB 联调）/ inbox（设备自拉，目标形态）
   workers/           # outbox 轮询 + TTL 循环（投影重算后触发信号评估）
 scripts/smoke_demo.py
 scripts/downlink_smoke.py

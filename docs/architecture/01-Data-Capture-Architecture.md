@@ -179,6 +179,24 @@ Ring Sound
 
 它不能证明 RV101 原生 Runtime 的 BLE、后台、功耗或直传能力。
 
+### 3.5 运营路径：控制台远程请求采集
+
+```text
+前端采集控制台
+  -> POST /internal/v1/devices/{id}/capture-requests
+  -> CAPTURE_REQUEST（rme.capture-request.v0）
+  -> connector（inbox 设备自拉 / adb 本机联调）
+  -> 眼镜端 Local PolicyCheck
+  -> CaptureIntent -> CameraX / AudioRecord
+  -> EXECUTED / REJECTED 回执
+```
+
+这条路径用于按需采集演示数据和排障，不是自动触发路径的替代品。它的关键约束是
+**云端下发的是请求不是命令**：本地策略（权限、佩戴、会话状态、隐私暂停、采集预算）
+优先于云端请求，拒绝时回 `REJECTED` 而不是静默丢弃（通信架构 §5.5 与 §8）。
+
+`adb` 通道要求后端与眼镜同机，只能用于联调；目标形态是设备端轮询 `inbox`。
+
 ## 4. 戒指能力边界
 
 ### 4.1 当前协议事实

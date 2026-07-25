@@ -146,6 +146,7 @@ STAGED
 - 策略版本更新通知。
 - 隐私暂停、设备解绑或凭证撤销。
 - 采集预算和能力配置更新。
+- 采集请求（`CAPTURE_REQUEST`）：见 §5.5。
 - 仅限测试构建的诊断命令。
 
 云端不应把完整 `MemoryEvent` 或 `StateProjection` 数据库同步到眼镜。眼镜只保留
@@ -208,6 +209,56 @@ GET /internal/v1/devices/{device_id}/inbox?cursor=<opaque>
 
 回执只说明设备投递结果，不代表用户已经接受提醒内容，也不能直接修改记忆事实。
 
+### 5.5 采集请求（CAPTURE_REQUEST）
+
+用于「控制台点一下，眼镜采一次」。它受 §8 约束：**这是请求，不是命令**。云端表达
+「希望采一次」，设备端做本地 PolicyCheck（权限、佩戴、会话状态、隐私暂停、采集预算）
+后自行决定执行或拒绝。云端没有强制执行这个动作。
+
+载荷 `rme.capture-request.v0`：
+
+```json
+{
+  "schema_ref": "rme.capture-request.v0",
+  "action": "CAPTURE_PHOTO",
+  "interval_seconds": null,
+  "duration_seconds": null,
+  "trigger": "operator_console",
+  "requires_local_policy_check": true
+}
+```
+
+`action` 取值：`CAPTURE_PHOTO` / `CAPTURE_AUDIO` / `START_PERIODIC` / `PAUSE` /
+`RESUME` / `STOP`。`interval_seconds` 只对 `START_PERIODIC` 有效，`duration_seconds`
+只对 `CAPTURE_AUDIO` 有效；参数与动作不匹配时接口直接拒绝，不做静默忽略。
+
+回执在 §5.4 基础上增加两个终态：
+
+| 状态 | 中文含义 |
+| --- | --- |
+| `EXECUTED` | 设备本地策略允许并已执行 |
+| `REJECTED` | 设备本地策略拒绝，理由在回执 `detail` 里 |
+
+`REJECTED` 与 `FAILED` 必须分开：前者说明隐私设计在正常工作，后者说明链路坏了。
+合并成一个状态会让事后审计无法区分这两件性质完全相反的事。
+
+#### 5.5.1 控制通道（connector）
+
+同一份请求有两条送达路径，共用 `device_messages` 表与回执语义：
+
+| 通道 | 形态 | 说明 |
+| --- | --- | --- |
+| `inbox` | 架构目标形态 | 只落库；设备在线走长连即时推，离线等 `GET .../inbox` 拉走。终态只能由设备回执产生。 |
+| `adb` | 联调形态 | 后端在本机把请求翻成 Android intent。要求后端与眼镜插在同一台机器上，不能进生产。 |
+
+`adb` 通道的 `EXECUTED` 含义弱于 `inbox`：它只说明 intent 送到了运行时，设备是否真的
+采集云端并不知道，因此回执 `detail.execution_evidence = "intent_delivered_only"`，
+界面必须照实呈现，不能显示成「已采集」。
+
+真机注意：眼镜熄屏时 `am start` 会返回「intent has been delivered to currently running
+top-most instance」看起来成功，但 Android 12 禁止后台启动 camera/microphone 类型前台
+服务，采集不会发生。因此 adb connector 在发 intent 前先发 `KEYCODE_WAKEUP`。
+
 ## 6. 云端如何产生提醒
 
 当前建议链路是：
@@ -260,9 +311,9 @@ MemoryEvent
 4. 正常上传、配置更新和提醒投递。
 5. 调试命令。
 
-云端消息不能绕过眼镜本地策略远程强制打开相机或麦克风。未来若增加“请求现场
-确认”，也只能生成需要用户确认或本地策略允许的 `CaptureIntent`，不能直接调用
-媒体 API。
+云端消息不能绕过眼镜本地策略远程强制打开相机或麦克风。“请求现场确认”已按这条
+约束落地为 §5.5 的 `CAPTURE_REQUEST`：它只生成需要用户确认或本地策略允许的
+`CaptureIntent`，不能直接调用媒体 API，设备拒绝时回 `REJECTED` 而不是静默丢弃。
 
 ## 9. 联调验收
 

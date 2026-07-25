@@ -65,6 +65,18 @@ class Device(Base, UUIDPK):
     )
     kind: Mapped[str] = mapped_column(String(32), comment="设备类型：glasses/ring/phone")
     name: Mapped[str] = mapped_column(String(128), comment="设备名")
+    # 控制面绑定：connector 靠这两列知道「命令该发给谁、怎么发」。
+    # 一台眼镜上可能装探针也可能装正式 App，两者的 intent 契约不同，不能靠 kind 猜。
+    runtime_package: Mapped[str | None] = mapped_column(
+        String(128),
+        nullable=True,
+        comment="设备端 App 包名：com.realitymemory.glassprobe / com.realitymemory.glasses",
+    )
+    control_transport: Mapped[str | None] = mapped_column(
+        String(16),
+        nullable=True,
+        comment="控制通道：adb（本机 USB 联调）/ inbox（设备自拉，架构目标形态）",
+    )
 
 
 # ---------------------------------------------------------------- 入口：信封与证据
@@ -454,7 +466,8 @@ class DeviceMessage(Base, UUIDPK):
         ForeignKey("devices.id"), comment="目标设备"
     )
     message_type: Mapped[str] = mapped_column(
-        String(64), comment="REMINDER_SIGNAL/POLICY_UPDATE/PRIVACY_PAUSE/CAPTURE_BUDGET_UPDATE/DIAGNOSTIC"
+        String(64),
+        comment="REMINDER_SIGNAL/POLICY_UPDATE/PRIVACY_PAUSE/CAPTURE_BUDGET_UPDATE/CAPTURE_REQUEST/DIAGNOSTIC",
     )
     payload_schema_ref: Mapped[str] = mapped_column(
         String(128), default="rme.reminder-signal.draft", comment="载荷版本（业务字段待 review）"
@@ -504,9 +517,12 @@ class DeviceDeliveryReceipt(Base, UUIDPK):
         ForeignKey("device_messages.id", ondelete="CASCADE"), comment="对应下行消息"
     )
     status: Mapped[str] = mapped_column(
-        String(32), comment="RECEIVED/PRESENTED/SPOKEN/DISMISSED/EXPIRED/FAILED"
+        String(32),
+        comment="RECEIVED/PRESENTED/SPOKEN/DISMISSED/EXPIRED/FAILED/EXECUTED/REJECTED",
     )
-    detail: Mapped[dict] = mapped_column(JSONB, default=dict, comment="失败原因等附加信息")
+    detail: Mapped[dict] = mapped_column(
+        JSONB, default=dict, comment="失败原因、本地策略拒绝理由等附加信息"
+    )
     device_reported_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, comment="设备本地上报时间（不覆盖服务端接收时间）"
     )
