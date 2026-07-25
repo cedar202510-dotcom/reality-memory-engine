@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, Outlet, useNavigate, useLocation, useOutletContext, useSearchParams } from "react-router-dom";
-import { Mic, Keyboard, Send, Maximize2, X, Check, Coffee, Zap, MapPin, SlidersHorizontal, ChevronRight, Radio, ArrowLeft, Camera } from "lucide-react";
+import { Mic, Keyboard, Send, Maximize2, X, Check, Coffee, Zap, MapPin, PieChart, ChevronRight, Radio, ArrowLeft, Camera } from "lucide-react";
 import { CirclesFour, Compass, Path, UserCircle } from "@phosphor-icons/react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import "./styles.css";
@@ -515,46 +515,30 @@ function TimelineView() {
     }
   };
 
-  const selectDayFromY = (clientY) => {
-    const rect = floatingScrubberRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const progress = (clientY - rect.top) / rect.height;
-    const index = Math.min(
-      timelineDays.length - 1,
-      Math.max(0, Math.round(progress * (timelineDays.length - 1)))
-    );
-    setSelectedDayId(timelineDays[index].id);
-  };
 
-  const handleScrubberPointerDown = (event) => {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    selectDayFromY(event.clientY);
-  };
-
-  const handleScrubberPointerMove = (event) => {
-    if (event.buttons !== 1) return;
-    selectDayFromY(event.clientY);
-  };
-
-  const handleScrubberWheel = (event) => {
-    event.preventDefault();
-    const direction = event.deltaY > 0 ? 1 : -1;
-    const nextIndex = Math.min(
-      timelineDays.length - 1,
-      Math.max(0, selectedDayIndex + direction)
-    );
-    setSelectedDayId(timelineDays[nextIndex].id);
-  };
 
   return (
     <div className="page-view timeline-page">
-      <header className="top">
+      <header className="top timeline-header">
         <div className="brand">
           <b>轨迹</b>
           <span>日常留下的片段</span>
         </div>
-        <button className="icon-btn"><SlidersHorizontal size={18} /></button>
+        <div className="timeline-top-right">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={selectedDay.id}
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.15 }}
+              className="timeline-date-badge"
+            >
+              {selectedDay.month}{selectedDay.day}日 · {selectedDay.weekday}
+            </motion.div>
+          </AnimatePresence>
+          <button className="icon-btn" aria-label="分析聚类"><PieChart size={18} /></button>
+        </div>
       </header>
 
       <div className="timeline-container">
@@ -567,10 +551,6 @@ function TimelineView() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
           >
-            <div className="timeline-date-caption">
-              <span>{selectedDay.month}{selectedDay.day}日 · {selectedDay.weekday}</span>
-            </div>
-
             {selectedItems.map((item, index) => (
               <motion.div
                 layout
@@ -637,22 +617,16 @@ function TimelineView() {
               transition={{ type: "spring", duration: 0.32, bounce: 0.08 }}
             >
               <div
-                ref={floatingScrubberRef}
                 className="floating-scrubber"
-                role="slider"
-                aria-label="上下滑动切换日期"
-                aria-valuemin={1}
-                aria-valuemax={timelineDays.length}
-                aria-valuenow={selectedDayIndex + 1}
+                role="listbox"
+                aria-label="滑动切换日期"
                 tabIndex={0}
-                onPointerDown={handleScrubberPointerDown}
-                onPointerMove={handleScrubberPointerMove}
-                onWheel={handleScrubberWheel}
               >
                 {timelineDays.map((day, index) => (
                   <div
                     key={day.id}
                     className={`floating-scrubber-mark ${day.id === selectedDay.id ? "active" : ""}`}
+                    onClick={() => setSelectedDayId(day.id)}
                     style={{
                       "--wave": `${Math.max(12, 42 - Math.abs(index - selectedDayIndex) * 8)}px`,
                       "--distance": Math.abs(index - selectedDayIndex)

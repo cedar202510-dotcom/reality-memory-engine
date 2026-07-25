@@ -223,9 +223,6 @@ header.top {
   filter: saturate(1.04);
 }
 
-.presence-orb--thinking {
-  --orb-rgb: 218, 146, 75;
-}
 
 .presence-orb__ripple {
   position: absolute;
@@ -251,14 +248,14 @@ header.top {
   opacity: 0.82;
   transform: scale(1);
   box-shadow: 0 0 12px rgba(var(--orb-rgb), 0.22);
-  animation: presence-idle-core 8s ease-in-out infinite;
+  animation: presence-idle-core 4s ease-in-out infinite;
 }
 
 .presence-orb--listening .presence-orb__core {
-  opacity: 0.76;
-  transform: scale(1);
+  opacity: 0.88;
+  transform: scale(1.15);
   animation: none;
-  box-shadow: 0 0 10px rgba(var(--orb-rgb), 0.18);
+  box-shadow: 0 0 32px rgba(var(--orb-rgb), 0.6), 0 0 16px rgba(var(--orb-rgb), 0.3);
 }
 
 .presence-orb--thinking .presence-orb__ripple {
@@ -734,6 +731,7 @@ header.top {
   opacity: 0;
   transform: scale(0.98);
   pointer-events: none;
+  position: absolute;
 }
 
 .composer--voice .voice,
@@ -790,7 +788,7 @@ header.top {
   flex: 1;
   position: relative;
   overflow-y: auto;
-  padding: 24px 20px 112px;
+  padding: 24px 20px 112px 10px;
   scrollbar-width: none;
 }
 
@@ -809,43 +807,43 @@ header.top {
 .timeline-list::before {
   content: "";
   position: absolute;
-  top: 44px;
+  top: 14px;
   bottom: 14px;
-  left: 60px;
+  left: 56px;
   width: 1px;
   background: linear-gradient(to bottom, rgba(248, 255, 250, 0.16), rgba(248, 255, 250, 0.04));
 }
 
-.timeline-date-caption {
-  position: relative;
-  z-index: 2;
+.timeline-top-right {
   display: flex;
-  padding-left: 77px;
+  align-items: center;
+  gap: 12px;
 }
 
-.timeline-date-caption span {
-  min-height: 28px;
+.timeline-date-badge {
   display: inline-flex;
   align-items: center;
-  padding: 0 11px;
-  border: 1px solid rgba(248, 255, 250, 0.09);
-  border-radius: 999px;
-  background: rgba(248, 255, 250, 0.045);
-  color: rgba(248, 255, 250, 0.52);
+  padding: 0 10px;
+  height: 26px;
+  border: 1px solid rgba(248, 255, 250, 0.12);
+  border-radius: 13px;
+  background: rgba(248, 255, 250, 0.05);
+  color: rgba(248, 255, 250, 0.7);
   font-size: 11px;
   font-weight: 680;
+  white-space: nowrap;
 }
 
 .timeline-node {
   position: relative;
   z-index: 2;
   display: flex;
-  gap: 14px;
+  gap: 10px;
   align-items: flex-start;
 }
 
 .node-time-badge {
-  width: 48px;
+  width: 42px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -873,31 +871,20 @@ header.top {
   margin-top: 10px;
   border: 2px solid #101814;
   border-radius: 50%;
-  background: rgba(248, 255, 250, 0.34);
+  background: rgba(248, 255, 250, 0.85);
   flex: none;
 }
-
-.node-bullet.tone-green { background: var(--green); box-shadow: 0 0 12px rgba(86, 235, 142, 0.44); }
-.node-bullet.tone-aqua { background: var(--aqua); box-shadow: 0 0 12px rgba(78, 178, 204, 0.4); }
-.node-bullet.tone-warm { background: var(--warm); box-shadow: 0 0 12px rgba(218, 146, 75, 0.38); }
-.node-bullet.tone-dim { background: rgba(248, 255, 250, 0.42); }
 
 .dark-card {
   flex: 1;
   min-width: 0;
   padding: 15px;
-  border: 1px solid rgba(248, 255, 250, 0.095);
-  border-left-color: rgba(248, 255, 250, 0.16);
-  border-radius: 18px;
+  border: 2px solid rgba(248, 255, 250, 0.18);
+  border-radius: 14px;
   background: var(--timeline-card);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.2);
+  box-shadow: 3px 3px 0 rgba(248, 255, 250, 0.06), 0 14px 34px rgba(0, 0, 0, 0.2);
   transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
 }
-
-.dark-card.tone-green { border-left-color: rgba(86, 235, 142, 0.38); }
-.dark-card.tone-aqua { border-left-color: rgba(78, 178, 204, 0.38); }
-.dark-card.tone-warm { border-left-color: rgba(218, 146, 75, 0.46); }
-.dark-card.tone-dim { border-left-color: rgba(248, 255, 250, 0.18); }
 
 .dark-card.clickable {
   cursor: pointer;
@@ -1042,11 +1029,16 @@ header.top {
 
 .floating-scrubber {
   position: relative;
-  height: 140px;
+  max-height: 140px;
   padding: 3px 0;
-  touch-action: none;
-  cursor: ns-resize;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
   outline: none;
+}
+
+.floating-scrubber::-webkit-scrollbar {
+  display: none;
 }
 
 .floating-scrubber::before {
