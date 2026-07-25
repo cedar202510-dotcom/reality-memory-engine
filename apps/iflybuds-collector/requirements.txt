@@ -1,0 +1,9 @@
+# 运行时依赖只有两个：HTTP 上行与长连下行。
+# 音频进出口用系统自带的 ffmpeg / afplay / say，不引入 PortAudio 系的原生轮子——
+# 这个采集器要能被扔到任意一台连着耳机的机器上跑，装不上依赖就等于接不进设备。
+httpx>=0.27
+websockets>=12.0
+
+# 测试
+pytest>=8.2
+pytest-asyncio>=0.23

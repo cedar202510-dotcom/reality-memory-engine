@@ -14,6 +14,7 @@ from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import get_settings
 from ..llm.base import LLMClient
 from ..memory.gate import PREDICATE_TO_EVENT_TYPE, evaluate_candidate
 from ..memory.seed import get_default_household_id
@@ -26,7 +27,11 @@ from ..models import (
 )
 from ..schemas import ALLOWED_PREDICATES
 from ..vision.base import VisionEncoder
+from .detect import enqueue_detect
+from .ocr import enqueue_ocr
+from .regions import enqueue_regionize
 from .stages import PARSER_VERSION, ExtractInput, CaptionInput, build_captioner, build_extractor
+from .vectorize import enqueue_vectorize
 
 
 def _to_data_url(path: str) -> str:
@@ -37,12 +42,12 @@ def _to_data_url(path: str) -> str:
     """
     import io
 
-    from PIL import Image
-
     from ..config import get_settings
+    from ..media import open_image
 
     settings = get_settings()
-    img = Image.open(path).convert("RGB")
+    # open_image 而非 Image.open：老数据里可能还躺着入库归一化上线前存下的 HEIC
+    img = open_image(path).convert("RGB")
     img.thumbnail((settings.vlm_image_max_side, settings.vlm_image_max_side))
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=settings.vlm_image_jpeg_quality)
@@ -55,8 +60,13 @@ async def process_evidence_item(
     evidence_item_id: uuid.UUID,
     llm: LLMClient,
     vision: VisionEncoder | None = None,
+    audio_context: str = "",
 ) -> FrameAsset | None:
-    """处理单个证据帧；任何阶段失败都不抛出（worker 语义：弃帧但继续）。"""
+    """处理单个证据帧；任何阶段失败都不抛出（worker 语义：弃帧但继续）。
+
+    audio_context：同一来源的语音转写。独立照片没有这个东西（传空串），
+    视频关键帧则由 video worker 把整段音轨的转写传进来做视觉命名的依据。
+    """
     item = await session.get(EvidenceItem, evidence_item_id)
     if item is None or item.retention_state != "ACTIVE":
         return None
@@ -75,6 +85,7 @@ async def process_evidence_item(
             file_name=file_name,
             captured_at=envelope.occurred_at.isoformat(),
             meta_hint=json.dumps(envelope.meta or {}, ensure_ascii=False),
+            audio_context=audio_context or "（无）",
         ),
         images=images,
     )
@@ -103,6 +114,24 @@ async def process_evidence_item(
     session.add(frame)
     await session.flush()
 
+    # 内联那次没编出来（编码器刚在加载权重、sidecar 还没起、网络抖动）：转成独立的
+    # outbox 任务重试。否则这帧的视觉检索就永久失明了，而且外部完全看不出来——
+    # caption 有、媒体库里也在，只是「东西掉哪里」再也搜不到它。
+    if visual_embedding is None and vision is not None and media_readable:
+        enqueue_vectorize(session, frame.id)
+
+    # 区域级向量（小物体检索的唯一入口）一律走 outbox，不内联：一帧十几次 CLIP，
+    # 内联会把帧处理延迟拉长一个量级，而摄入侧是采集端在等的同步路径。
+    # 但必须在 TTL 删掉原件之前跑完——过期之后没有输入，任何回填都补不回来。
+    settings = get_settings()
+    if vision is not None and media_readable and settings.vision_tiling_enabled:
+        enqueue_regionize(session, frame.id)
+
+    # OCR 同理走 outbox：带字的小物体（身份证/银行卡/快递单）只有这条路能搜到，
+    # 而它的输入同样受证据 TTL 管辖，必须赶在原件被删之前跑完。
+    if media_readable and (settings.ocr_provider or "none").lower() != "none":
+        enqueue_ocr(session, frame.id)
+
     # ---- 阶段 3：高价值帧结构化抽取 ----
     high_value = envelope.trigger == "explicit" or bool(cap.scene_tags)
     if not high_value:
@@ -116,6 +145,7 @@ async def process_evidence_item(
             caption=cap.caption,
             scene_tags="、".join(cap.scene_tags),
             captured_at=envelope.occurred_at.isoformat(),
+            audio_context=audio_context or "（无）",
         ),
         images=images,
     )
@@ -163,6 +193,11 @@ async def process_evidence_item(
             object_embedding=obj_vec[0] if obj_vec else None,
             frame_visual_embedding=visual_embedding,
         )
+
+    # 物件检测排在最后：它拿这一帧抽出来的物品名当 prompt，观察还没写就没东西可检。
+    # 同样走 outbox 不内联（一次前向 ~1s），同样必须赶在 TTL 删原件之前跑完。
+    if media_readable and get_settings().detector_provider.lower() != "none":
+        enqueue_detect(session, frame.id)
 
     await session.commit()
     return frame

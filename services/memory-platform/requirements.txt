@@ -7,6 +7,7 @@ pydantic>=2.7
 pydantic-settings>=2.3
 httpx>=0.27
 pillow>=10.3
+pillow-heif>=0.16          # iPhone HEIC/HEIF 解码；入库边界转 JPEG（app/media/images.py）
 pgvector>=0.3
 python-multipart>=0.0.9
 pytest>=8.2
@@ -15,6 +16,11 @@ pytest-asyncio>=0.23
 # --- 可选：本地 CLIP 推理（仅 vision_provider=local 时需要；fake/http/none 路径不依赖） ---
 # open-clip-torch>=2.26
 # torch>=2.2  # 按目标平台官方指引安装（CPU/CUDA/ARM 轮子不同），本仓库不强依赖
+
+# --- 可选：本地 OCR（仅 ocr_provider=local 时需要；fake/none 路径不依赖） ---
+# 纯 CPU、~50MB 权重，中文识别效果好；不拖 Paddle 全家桶进来
+# rapidocr>=2.0
+# onnxruntime>=1.17
 
 # --- 可选：ASR sidecar 自建（仅 asr_provider=http 的服务端需要；平台本身只走 HTTP 不依赖） ---
 # faster-whisper>=1.0

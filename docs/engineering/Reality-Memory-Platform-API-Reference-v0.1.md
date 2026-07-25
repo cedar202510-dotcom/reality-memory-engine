@@ -35,6 +35,7 @@ Memory Platform 是 Reality Memory Engine 的后端沉淀服务，负责接收�
 | 2a | POST | `/internal/v1/device-evidence` | gateway | RV101 正式 v1 契约 Debug 联调入口 |
 | 3 | GET | `/v1/memory/objects/where-is` | query | "东西在哪"双通道查询 |
 | 4 | POST | `/v1/memory/scene-search` | query | 文本 / 图片跨模态场景检索 |
+| 4a | POST | `/v1/memory/transcribe` | query | 一次性语音转写（只转写、不入库；owner 专用） |
 | 5 | GET | `/v1/memory/frames/{frame_asset_id}/evidence` | query | 读取帧的原始证据媒体 |
 | 6 | GET | `/v1/memory/objects/{entity_id}/timeline` | query | 实体事实事件时间线 |
 | 7 | POST | `/v1/memory/correct` | query | 用户纠正（不改历史，重算投影） |
@@ -366,6 +367,29 @@ RV101 Debug APK 的正式契约联调入口。请求为 multipart：
 
 **行为说明**：检索对象是 `frame_assets.visual_embedding`（CLIP 向量，512 维）。
 若服务未配置视觉编码器（`VISION_PROVIDER=none`），视觉检索整体关闭，返回空 hits。
+
+### 5.2a POST /v1/memory/transcribe
+
+把一段录音转成文字。前端「在场」页的语音输入走这里：说话 → 转写 → 拿转写结果去问
+`where-is`。
+
+**请求**：`multipart/form-data`，单个 form 字段 `audio`（浏览器 `MediaRecorder` 产出的
+webm/ogg/mp4，或任何带容器的音频；裸 PCM 不接受）。上限 10 MB。
+
+**响应**：`{"text": "我的充电器在哪里"}`。
+
+**错误**：
+
+- 403：请求带了 `Authorization`。转写不是记忆访问，只对 owner 直通开放，不给 agent
+  当通用 ASR 服务用；
+- 413：音频超过 10 MB；
+- 422：`audio` 缺省或字节为空；
+- 503：ASR 不可用（`ASR_PROVIDER=none`，或 sidecar 不可达）。**不返回空串**——
+  空串会被界面显示成「你没说话」，把配置问题伪装成用户问题。
+
+**行为说明**：这条路径与音频摄入流水线（`app/perception/audio.py`）刻意分开。音频**不
+落盘、不进 `evidence_items`、不生成记忆候选**，用完即弃；审计只记字节数与字符数，不记
+转写内容。对着界面问一句话不等于授权把自己的声音存进记忆库，两件事分开授权。
 
 ### 5.3 GET /v1/memory/frames/{frame_asset_id}/evidence
 

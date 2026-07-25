@@ -2,58 +2,76 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Box, RotateCcw, Search, X } from "lucide-react";
+import { apiUrl, objectGraph } from "./api";
 
-const layers = [
-  { id: "digital", label: "数码设备", color: "#5fd7c0" },
-  { id: "power", label: "电源线材", color: "#69a8ff" },
-  { id: "carry", label: "随身物品", color: "#f4c56a" },
-  { id: "daily", label: "居家日用", color: "#ef8c94" },
-  { id: "media", label: "影音娱乐", color: "#b998ef" },
-  { id: "study", label: "阅读工具", color: "#72c9e8" },
-];
+// 层的颜色只是分辨用的，没有语义（真实数据里没有「品类」这个维度）。
+const PALETTE = ["#5fd7c0", "#69a8ff", "#f4c56a", "#ef8c94", "#b998ef", "#72c9e8"];
 
-const nodes = [
-  ["charger", "充电器", "power", "书房", "工作桌下方", "10:18"],
-  ["cable", "数据线", "power", "卧室", "床头柜抽屉", "周一"],
-  ["laptop", "笔记本电脑", "digital", "书房", "工作桌中央", "10:21"],
-  ["mouse", "鼠标", "digital", "书房", "工作桌右侧", "10:21"],
-  ["keyboard", "键盘", "digital", "书房", "工作桌中央", "10:21"],
-  ["drive", "移动硬盘", "digital", "书房", "左侧抽屉", "周二"],
-  ["headphones", "耳机", "digital", "书房", "显示器旁", "09:12"],
-  ["watch", "手表", "carry", "卧室", "床头柜上", "07:48"],
-  ["glasses", "眼镜", "carry", "卧室", "床头柜上", "07:51"],
-  ["wallet", "钱包", "carry", "玄关", "托盘左侧", "08:12"],
-  ["keys", "钥匙", "carry", "玄关", "玄关托盘", "08:12"],
-  ["access", "门禁卡", "carry", "玄关", "钱包夹层", "08:12"],
-  ["backpack", "背包", "carry", "玄关", "换鞋凳旁", "08:15"],
-  ["umbrella", "雨伞", "carry", "玄关", "入户门右侧", "周四"],
-  ["cup", "水杯", "daily", "书房", "工作桌右侧", "10:04"],
-  ["tissue", "纸巾盒", "daily", "客厅", "茶几上", "08:40"],
-  ["perfume", "香水", "daily", "卧室", "衣柜内侧", "周四"],
-  ["medicine", "药盒", "daily", "卧室", "床头柜第二层", "周四"],
-  ["remote", "遥控器", "media", "客厅", "沙发右侧", "昨晚"],
-  ["controller", "游戏手柄", "media", "客厅", "电视柜第二层", "周三"],
-  ["book", "《设计中的设计》", "study", "书房", "书架第二层", "昨晚"],
-  ["pen", "钢笔", "study", "书房", "笔筒里", "周四"],
-  ["scissors", "剪刀", "study", "书房", "工具抽屉", "周三"],
-].map(([id, name, layer, room, location, seen]) => ({ id, name, layer, room, location, seen }));
+const SINGLE_LAYER = "__single__";
+const UNKNOWN_LAYER = "__unknown__";
 
-const relations = [
-  ["laptop", "keyboard", "配套使用", 3], ["laptop", "mouse", "配套使用", 3],
-  ["laptop", "charger", "供电", 3], ["laptop", "drive", "数据备份", 2],
-  ["laptop", "headphones", "音频输出", 2], ["charger", "cable", "组合收纳", 3],
-  ["remote", "controller", "客厅娱乐", 2], ["wallet", "access", "随身收纳", 3],
-  ["wallet", "keys", "共同携带", 2], ["wallet", "backpack", "出门携带", 2],
-  ["keys", "access", "进出家门", 3], ["umbrella", "backpack", "雨天出门", 2],
-  ["watch", "glasses", "晨间佩戴", 2], ["perfume", "glasses", "出门准备", 1],
-  ["medicine", "cup", "服药", 3], ["book", "pen", "阅读批注", 3],
-  ["scissors", "tissue", "日常整理", 1], ["cup", "laptop", "桌面相邻", 1],
-  ["tissue", "remote", "客厅同区", 1], ["cable", "drive", "数据连接", 2],
-].map(([source, target, label, weight]) => {
-  const sourceNode = nodes.find((node) => node.id === source);
-  const targetNode = nodes.find((node) => node.id === target);
-  return { source, target, label, weight, type: sourceNode.layer === targetNode.layer ? "same" : "cross" };
-});
+/** 把 /objects 的返回投成三维图要的 {layers, nodes, relations}。
+ *
+ *  层 = 放了 2 件以上东西的位置，加上「单独存放」和「位置未知」两个兜底层。
+ *  不给每个位置都开一层：真实数据里一多半位置只有一件东西，全开出来图会被压成
+ *  十几张几乎空的平面，什么都看不出来。
+ *
+ *  边 = 同一位置内两两相连。这是用户选定的语义：连线代表「这些东西放在一起」，
+ *  不代表用途相关、也不代表先后顺序——所以是完全图，不是链。 */
+function deriveGraph(data) {
+  if (!data) return { layers: [], nodes: [], relations: [] };
+
+  const grouped = new Map(data.groups.map(g => [g.location, g.entity_ids]));
+  const layers = data.groups.map((g, i) => ({
+    id: `loc:${g.location}`,
+    label: `${g.location}（${g.entity_ids.length} 件）`,
+    color: PALETTE[i % PALETTE.length],
+  }));
+
+  const layerOf = (node) => {
+    if (!node.location) return UNKNOWN_LAYER;
+    return grouped.has(node.location) ? `loc:${node.location}` : SINGLE_LAYER;
+  };
+
+  const nodes = data.nodes.map(n => ({
+    id: n.entity_id,
+    name: n.canonical_name,
+    layer: layerOf(n),
+    location: n.location || "没有解析出位置",
+    seen: n.last_seen_time,
+    eventCount: n.event_count,
+    confidence: n.confidence,
+    corrected: n.corrected,
+    thumb: apiUrl(n.thumb_url),
+  }));
+
+  // 兜底层只在真的有成员时才加，否则图里会挂着空平面
+  if (nodes.some(n => n.layer === SINGLE_LAYER)) {
+    layers.push({ id: SINGLE_LAYER, label: "各自单独放着", color: "#8ea2c6" });
+  }
+  if (nodes.some(n => n.layer === UNKNOWN_LAYER)) {
+    layers.push({ id: UNKNOWN_LAYER, label: "位置未知", color: "#5b6480" });
+  }
+
+  const relations = [];
+  for (const [location, ids] of grouped) {
+    for (let i = 0; i < ids.length; i += 1) {
+      for (let j = i + 1; j < ids.length; j += 1) {
+        relations.push({ source: ids[i], target: ids[j], label: `同在${location}`, weight: 3, type: "same" });
+      }
+    }
+  }
+  return { layers, nodes, relations };
+}
+
+function seenText(iso) {
+  if (!iso) return "没有观察记录";
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return iso;
+  const sameDay = t.toDateString() === new Date().toDateString();
+  const clock = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  return sameDay ? `今天 ${clock}` : `${t.toLocaleDateString("zh-CN", { month: "long", day: "numeric" })} ${clock}`;
+}
 
 function createTextSprite(text, color, small = false) {
   const canvas = document.createElement("canvas");
@@ -76,7 +94,40 @@ function createTextSprite(text, color, small = false) {
   return sprite;
 }
 
-function Scene({ activeLayer, relationMode, focusId, onNode, onHover, focusSignal, resetSignal }) {
+/** 实拍缩略图 → 圆形贴片。后端裁出来的就是正方形，这里只负责套圆 + 描边。
+ *
+ *  描边用所在层的颜色：套上照片之后，节点原来靠球体颜色传达的「在哪一层」就没了，
+ *  一圈色环把这个信息补回来，同时让深色照片不至于糊进深色背景里。 */
+function createThumbSprite(image, color, size) {
+  const canvas = document.createElement("canvas");
+  const side = 256;
+  canvas.width = side;
+  canvas.height = side;
+  const context = canvas.getContext("2d");
+  const radius = side / 2 - 9;
+  context.save();
+  context.beginPath();
+  context.arc(side / 2, side / 2, radius, 0, Math.PI * 2);
+  context.clip();
+  context.drawImage(image, 0, 0, side, side);
+  context.restore();
+  context.beginPath();
+  context.arc(side / 2, side / 2, radius, 0, Math.PI * 2);
+  context.lineWidth = 8;
+  context.strokeStyle = color;
+  context.stroke();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }),
+  );
+  // 贴片要盖住整个球，否则会看见球从照片边缘露出来一圈
+  sprite.scale.set(size * 2.4, size * 2.4, 1);
+  return sprite;
+}
+
+function Scene({ layers, nodes, relations, activeLayer, focusId, onNode, onHover, focusSignal, resetSignal }) {
   const mountRef = useRef(null);
   const apiRef = useRef(null);
   const onNodeRef = useRef(onNode);
@@ -84,9 +135,11 @@ function Scene({ activeLayer, relationMode, focusId, onNode, onHover, focusSigna
   onNodeRef.current = onNode;
   onHoverRef.current = onHover;
 
+  // 依赖真实数据：第一次拿到 /objects 时重建整个场景。数据是异步来的，
+  // 空依赖数组会让场景永远停在「零个节点」。
   useEffect(() => {
     const mount = mountRef.current;
-    if (!mount) return undefined;
+    if (!mount || nodes.length === 0) return undefined;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#070611");
     scene.fog = new THREE.FogExp2("#070611", 0.0045);
@@ -118,6 +171,7 @@ function Scene({ activeLayer, relationMode, focusId, onNode, onHover, focusSigna
     const nodeObjects = new Map();
     const linkObjects = [];
     const clickTargets = [];
+    let disposed = false;
     const spacing = 15;
     const top = ((layers.length - 1) * spacing) / 2;
 
@@ -143,7 +197,7 @@ function Scene({ activeLayer, relationMode, focusId, onNode, onHover, focusSigna
     });
 
     nodes.forEach((node) => {
-      const layerIndex = layers.findIndex((layer) => layer.id === node.layer);
+      const layerIndex = Math.max(layers.findIndex((layer) => layer.id === node.layer), 0);
       const peers = nodes.filter((entry) => entry.layer === node.layer);
       const index = peers.findIndex((entry) => entry.id === node.id);
       const angle = index / peers.length * Math.PI * 2 + layerIndex * 0.7;
@@ -167,21 +221,37 @@ function Scene({ activeLayer, relationMode, focusId, onNode, onHover, focusSigna
       mesh.add(label);
       root.add(mesh);
       clickTargets.push(mesh);
-      nodeObjects.set(node.id, { mesh, material, halo, label, position, node });
+      const entry = { mesh, material, halo, label, position, node, thumb: null };
+      nodeObjects.set(node.id, entry);
+
+      // 实拍图异步进来：不能进 useEffect 依赖，否则每张图加载完都要重建整个场景。
+      // 先显示纯色球，图到了再换成圆形贴片——加载失败/没有图就一直是球，
+      // 不放占位图（占位图会让「没拍到这件东西」看起来像「拍到了，长这样」）。
+      if (node.thumb) {
+        const image = new Image();
+        image.onload = () => {
+          if (disposed) return;
+          const sprite = createThumbSprite(image, color, size);
+          sprite.material.opacity = material.opacity;
+          mesh.add(sprite);
+          entry.thumb = sprite;
+          // 球退成纯粹的点击靶：留着可见就会从贴片边缘露出一圈色环
+          material.opacity = 0;
+          material.depthWrite = false;
+        };
+        image.src = node.thumb;
+      }
     });
 
     relations.forEach((relation) => {
       const source = nodeObjects.get(relation.source);
       const target = nodeObjects.get(relation.target);
+      if (!source || !target) return;
       const midpoint = source.position.clone().add(target.position).multiplyScalar(0.5);
-      midpoint.y += relation.type === "cross" ? 6 : 2;
+      midpoint.y += 2;
       midpoint.x += (source.position.z - target.position.z) * 0.12;
       const curve = new THREE.QuadraticBezierCurve3(source.position, midpoint, target.position);
-      const material = new THREE.LineBasicMaterial({
-        color: relation.type === "cross" ? "#7da9ff" : "#74e4c4",
-        transparent: true,
-        opacity: relation.weight === 3 ? 0.72 : relation.weight === 2 ? 0.42 : 0.2,
-      });
+      const material = new THREE.LineBasicMaterial({ color: "#74e4c4", transparent: true, opacity: 0.52 });
       const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(22)), material);
       line.userData = { ...relation, baseOpacity: material.opacity };
       root.add(line);
@@ -218,7 +288,6 @@ function Scene({ activeLayer, relationMode, focusId, onNode, onHover, focusSigna
     observer.observe(mount);
     resize();
     let frame;
-    let disposed = false;
     const render = () => {
       if (disposed) return;
       raycaster.setFromCamera(pointer, camera);
@@ -248,7 +317,7 @@ function Scene({ activeLayer, relationMode, focusId, onNode, onHover, focusSigna
       renderer.domElement.remove();
       apiRef.current = null;
     };
-  }, []);
+  }, [layers, nodes, relations]);
 
   useEffect(() => {
     const api = apiRef.current;
@@ -262,22 +331,24 @@ function Scene({ activeLayer, relationMode, focusId, onNode, onHover, focusSigna
       const layerVisible = activeLayer === "all" || entry.node.layer === activeLayer;
       const related = !focusId || connected.has(id);
       entry.mesh.visible = layerVisible;
-      entry.material.opacity = related ? 1 : 0.11;
+      // 有实拍图时球本身是透明的点击靶，淡入淡出要作用在贴片上，
+      // 否则筛选一层会把别的层的球重新点亮成色块
+      entry.material.opacity = entry.thumb ? 0 : related ? 1 : 0.11;
+      if (entry.thumb) entry.thumb.material.opacity = related ? 1 : 0.13;
       entry.label.material.opacity = related ? 1 : 0.13;
       entry.halo.material.opacity = id === focusId ? 0.24 : related ? 0.09 : 0.01;
       entry.mesh.scale.setScalar(id === focusId ? 1.3 : 1);
     });
     api.layerGroups.forEach((group, id) => { group.visible = activeLayer === "all" || activeLayer === id; });
     api.linkObjects.forEach((line) => {
-      const modeVisible = relationMode === "all" || relationMode === line.userData.type;
       const source = nodes.find((node) => node.id === line.userData.source);
       const target = nodes.find((node) => node.id === line.userData.target);
-      const layerVisible = activeLayer === "all" || source.layer === activeLayer || target.layer === activeLayer;
+      const layerVisible = activeLayer === "all" || source?.layer === activeLayer || target?.layer === activeLayer;
       const related = !focusId || line.userData.source === focusId || line.userData.target === focusId;
-      line.visible = modeVisible && layerVisible;
+      line.visible = layerVisible;
       line.material.opacity = related ? Math.min(line.userData.baseOpacity * 1.45, 1) : line.userData.baseOpacity * 0.08;
     });
-  }, [activeLayer, focusId, relationMode]);
+  }, [activeLayer, focusId, nodes]);
 
   useEffect(() => {
     const api = apiRef.current;
@@ -302,41 +373,86 @@ function Scene({ activeLayer, relationMode, focusId, onNode, onHover, focusSigna
 }
 
 export default function TopologyGraph({ onOpenItem }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
   const [activeLayer, setActiveLayer] = useState("all");
-  const [relationMode, setRelationMode] = useState("all");
-  const [selectedId, setSelectedId] = useState("laptop");
+  const [selectedId, setSelectedId] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
   const [query, setQuery] = useState("");
-  const [focusSignal, setFocusSignal] = useState({ id: "laptop", tick: 0 });
+  const [focusSignal, setFocusSignal] = useState({ id: null, tick: 0 });
   const [resetSignal, setResetSignal] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    objectGraph()
+      .then(d => { if (alive) { setData(d); setError(null); } })
+      .catch(e => { if (alive) setError(String(e.message || e)); });
+    return () => { alive = false; };
+  }, []);
+
+  const { layers, nodes, relations } = useMemo(() => deriveGraph(data), [data]);
+
+  // 默认选中最近看到的那个（后端已按新鲜度排序），而不是写死某个物品
+  useEffect(() => {
+    if (!selectedId && nodes.length > 0) setSelectedId(nodes[0].id);
+  }, [nodes, selectedId]);
+
   const selected = nodes.find((node) => node.id === selectedId) || nodes[0];
-  const selectedLayer = layers.find((layer) => layer.id === selected.layer);
-  const related = useMemo(() => relations.filter((relation) => relation.source === selected.id || relation.target === selected.id).map((relation) => ({
-    ...relation,
-    node: nodes.find((node) => node.id === (relation.source === selected.id ? relation.target : relation.source)),
-  })), [selected.id]);
-  const results = query.trim() ? nodes.filter((node) => `${node.name}${node.room}${node.location}`.includes(query.trim())).slice(0, 5) : [];
+  const selectedLayer = layers.find((layer) => layer.id === selected?.layer) || layers[0];
+  const related = useMemo(() => {
+    if (!selected) return [];
+    return relations
+      .filter((relation) => relation.source === selected.id || relation.target === selected.id)
+      .map((relation) => ({
+        ...relation,
+        node: nodes.find((node) => node.id === (relation.source === selected.id ? relation.target : relation.source)),
+      }))
+      .filter(r => r.node);
+  }, [selected, relations, nodes]);
+
+  const results = query.trim()
+    ? nodes.filter((node) => `${node.name}${node.location}`.includes(query.trim())).slice(0, 5)
+    : [];
   const focusNode = (id) => {
     setSelectedId(id);
     setFocusSignal({ id, tick: Date.now() });
   };
+
+  if (error) {
+    return <div className="graph-shell"><div className="graph-empty">
+      <p>拿不到物品分布。</p>
+      <small>确认 memory-platform 在跑，且 <code>/api</code> 代理指向它。<br />{error}</small>
+    </div></div>;
+  }
+  if (!data) {
+    return <div className="graph-shell"><div className="graph-empty"><p>正在读物品分布…</p></div></div>;
+  }
+  if (nodes.length === 0) {
+    return <div className="graph-shell"><div className="graph-empty">
+      <p>还没有任何物品。</p>
+      <small>去「采集」页拍一张，感知跑完这里就会长出来。</small>
+    </div></div>;
+  }
+
   return <div className="graph-shell">
     <div className="graph-toolbar">
       <label className="graph-search"><Search size={14}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索物品" aria-label="搜索物品"/>{query && <button onClick={() => setQuery("")} aria-label="清空搜索"><X size={13}/></button>}
-        {results.length > 0 && <span className="graph-results">{results.map((node) => <button key={node.id} onClick={() => { focusNode(node.id); setQuery(""); }}><i style={{ background: layers.find((layer) => layer.id === node.layer).color }}/><b>{node.name}</b><small>{node.room}</small></button>)}</span>}
+        {results.length > 0 && <span className="graph-results">{results.map((node) => <button key={node.id} onClick={() => { focusNode(node.id); setQuery(""); }}><i style={{ background: (layers.find((layer) => layer.id === node.layer) || layers[0]).color }}/><b>{node.name}</b><small>{node.location}</small></button>)}</span>}
       </label>
-      <div className="graph-mode">{[["all","全部"],["same","同层"],["cross","跨层"]].map(([id,label]) => <button key={id} className={relationMode === id ? "active" : ""} onClick={() => setRelationMode(id)}>{label}</button>)}</div>
+      {/* 「同层/跨层」在真实数据下没有意义了：所有连线都是同一位置内的，本来就只有一种 */}
       <button className="graph-reset" onClick={() => setResetSignal((value) => value + 1)} aria-label="复位视角"><RotateCcw size={15}/></button>
     </div>
     <div className="graph-layer-strip"> <button className={activeLayer === "all" ? "active" : ""} onClick={() => setActiveLayer("all")}>全部层</button>{layers.map((layer) => <button key={layer.id} className={activeLayer === layer.id ? "active" : ""} onClick={() => setActiveLayer(layer.id)}><i style={{ background: layer.color }}/>{layer.label}</button>)}</div>
     <div className="graph-stage">
-      <Scene activeLayer={activeLayer} relationMode={relationMode} focusId={hoveredId || (focusSignal.tick ? selectedId : null)} onNode={focusNode} onHover={setHoveredId} focusSignal={focusSignal} resetSignal={resetSignal}/>
-      <div className="graph-count">{nodes.length} 节点 · {relations.length} 关系</div>
-      <aside className="graph-inspector">
-        <div className="graph-node-title"><span style={{ background: selectedLayer.color }}><Box size={14}/></span><div><small>{selectedLayer.label}</small><h2>{selected.name}</h2></div><button onClick={() => onOpenItem(selected.name)}>详情</button></div>
-        <p>{selected.room} · {selected.location}<span>最后确认 {selected.seen}</span></p>
-        <div className="graph-relations">{related.slice(0, 3).map((relation) => <button key={`${relation.source}-${relation.target}`} onClick={() => focusNode(relation.node.id)}><i className={relation.type}/><span>{relation.node.name}</span><small>{relation.label}</small></button>)}</div>
-      </aside>
+      <Scene layers={layers} nodes={nodes} relations={relations} activeLayer={activeLayer} focusId={hoveredId || (focusSignal.tick ? selectedId : null)} onNode={focusNode} onHover={setHoveredId} focusSignal={focusSignal} resetSignal={resetSignal}/>
+      <div className="graph-count">{nodes.length} 件物品 · {relations.length} 组同位关系</div>
+      {selected && selectedLayer && (
+        <aside className="graph-inspector">
+          <div className="graph-node-title"><span style={{ background: selectedLayer.color }}>{selected.thumb ? <img src={selected.thumb} alt=""/> : <Box size={14}/>}</span><div><small>{selectedLayer.label}</small><h2>{selected.name}</h2></div><button onClick={() => onOpenItem(selected.id)}>详情</button></div>
+          <p>{selected.location}<span>最后确认 {seenText(selected.seen)} · {selected.eventCount} 条事件{selected.corrected ? " · 你纠正过" : ""}</span></p>
+          <div className="graph-relations">{related.slice(0, 3).map((relation) => <button key={`${relation.source}-${relation.target}`} onClick={() => focusNode(relation.node.id)}><i className={relation.type}/><span>{relation.node.name}</span><small>{relation.label}</small></button>)}</div>
+        </aside>
+      )}
     </div>
   </div>;
 }
