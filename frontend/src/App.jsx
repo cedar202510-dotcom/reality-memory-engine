@@ -10,7 +10,6 @@ import {
   Maximize2,
   Mic,
   Send,
-  SlidersHorizontal,
   X,
 } from "lucide-react";
 import { CirclesFour, Path, Robot, UserCircle } from "@phosphor-icons/react";
@@ -975,7 +974,6 @@ function TimelineView() {
           <span>日常留下的片段</span>
         </div>
         <div className="timeline-top-right">
-          <button className="icon-btn" aria-label="轨迹筛选"><SlidersHorizontal size={18} /></button>
           <AnimatePresence mode="wait">
             <motion.div
               key={selectedDay.id}
