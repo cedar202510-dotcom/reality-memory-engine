@@ -1533,7 +1533,7 @@ function AppShell() {
   return (
     <div className={`app-shell premium-dark mode-${activeTab}`}>
       <div className="status-bar">
-        <span>Real Kit</span><span>{clock}</span>
+        <span>RealGit</span><span>{clock}</span>
       </div>
 
       <main className="main-content">
