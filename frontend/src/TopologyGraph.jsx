@@ -1,59 +1,68 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { Box, RotateCcw, Search, X } from "lucide-react";
+import { Box, RotateCcw, Search, X, ChevronDown, ChevronUp } from "lucide-react";
+import { apiUrl, objectGraph } from "./api";
 
-const layers = [
-  { id: "digital", label: "数码设备", color: "#5fd7c0" },
-  { id: "power", label: "电源线材", color: "#69a8ff" },
-  { id: "carry", label: "随身物品", color: "#f4c56a" },
-  { id: "daily", label: "居家日用", color: "#ef8c94" },
-  { id: "media", label: "影音娱乐", color: "#b998ef" },
-  { id: "study", label: "阅读工具", color: "#72c9e8" },
-];
+// 层的颜色只是分辨用的，没有语义（真实数据里没有「品类」这个维度）。
+const PALETTE = ["#5fd7c0", "#69a8ff", "#f4c56a", "#ef8c94", "#b998ef", "#72c9e8"];
 
-const nodes = [
-  ["charger", "充电器", "power", "书房", "工作桌下方", "10:18"],
-  ["cable", "数据线", "power", "卧室", "床头柜抽屉", "周一"],
-  ["laptop", "笔记本电脑", "digital", "书房", "工作桌中央", "10:21"],
-  ["mouse", "鼠标", "digital", "书房", "工作桌右侧", "10:21"],
-  ["keyboard", "键盘", "digital", "书房", "工作桌中央", "10:21"],
-  ["drive", "移动硬盘", "digital", "书房", "左侧抽屉", "周二"],
-  ["headphones", "耳机", "digital", "书房", "显示器旁", "09:12"],
-  ["watch", "手表", "carry", "卧室", "床头柜上", "07:48"],
-  ["glasses", "眼镜", "carry", "卧室", "床头柜上", "07:51"],
-  ["wallet", "钱包", "carry", "玄关", "托盘左侧", "08:12"],
-  ["keys", "钥匙", "carry", "玄关", "玄关托盘", "08:12"],
-  ["access", "门禁卡", "carry", "玄关", "钱包夹层", "08:12"],
-  ["backpack", "背包", "carry", "玄关", "换鞋凳旁", "08:15"],
-  ["umbrella", "雨伞", "carry", "玄关", "入户门右侧", "周四"],
-  ["cup", "水杯", "daily", "书房", "工作桌右侧", "10:04"],
-  ["tissue", "纸巾盒", "daily", "客厅", "茶几上", "08:40"],
-  ["perfume", "香水", "daily", "卧室", "衣柜内侧", "周四"],
-  ["medicine", "药盒", "daily", "卧室", "床头柜第二层", "周四"],
-  ["remote", "遥控器", "media", "客厅", "沙发右侧", "昨晚"],
-  ["controller", "游戏手柄", "media", "客厅", "电视柜第二层", "周三"],
-  ["book", "《设计中的设计》", "study", "书房", "书架第二层", "昨晚"],
-  ["pen", "钢笔", "study", "书房", "笔筒里", "周四"],
-  ["scissors", "剪刀", "study", "书房", "工具抽屉", "周三"],
-].map(([id, name, layer, room, location, seen]) => ({ id, name, layer, room, location, seen }));
+const SINGLE_LAYER = "__single__";
+const UNKNOWN_LAYER = "__unknown__";
 
-const relations = [
-  ["laptop", "keyboard", "配套使用", 3], ["laptop", "mouse", "配套使用", 3],
-  ["laptop", "charger", "供电", 3], ["laptop", "drive", "数据备份", 2],
-  ["laptop", "headphones", "音频输出", 2], ["charger", "cable", "组合收纳", 3],
-  ["remote", "controller", "客厅娱乐", 2], ["wallet", "access", "随身收纳", 3],
-  ["wallet", "keys", "共同携带", 2], ["wallet", "backpack", "出门携带", 2],
-  ["keys", "access", "进出家门", 3], ["umbrella", "backpack", "雨天出门", 2],
-  ["watch", "glasses", "晨间佩戴", 2], ["perfume", "glasses", "出门准备", 1],
-  ["medicine", "cup", "服药", 3], ["book", "pen", "阅读批注", 3],
-  ["scissors", "tissue", "日常整理", 1], ["cup", "laptop", "桌面相邻", 1],
-  ["tissue", "remote", "客厅同区", 1], ["cable", "drive", "数据连接", 2],
-].map(([source, target, label, weight]) => {
-  const sourceNode = nodes.find((node) => node.id === source);
-  const targetNode = nodes.find((node) => node.id === target);
-  return { source, target, label, weight, type: sourceNode.layer === targetNode.layer ? "same" : "cross" };
-});
+function deriveGraph(data) {
+  if (!data) return { layers: [], nodes: [], relations: [] };
+
+  const grouped = new Map(data.groups.map(g => [g.location, g.entity_ids]));
+  const layers = data.groups.map((g, i) => ({
+    id: `loc:${g.location}`,
+    label: `${g.location}（${g.entity_ids.length} 件）`,
+    color: PALETTE[i % PALETTE.length],
+  }));
+
+  const layerOf = (node) => {
+    if (!node.location) return UNKNOWN_LAYER;
+    return grouped.has(node.location) ? `loc:${node.location}` : SINGLE_LAYER;
+  };
+
+  const nodes = data.nodes.map(n => ({
+    id: n.entity_id,
+    name: n.canonical_name,
+    layer: layerOf(n),
+    location: n.location || "没有解析出位置",
+    seen: n.last_seen_time,
+    eventCount: n.event_count,
+    confidence: n.confidence,
+    corrected: n.corrected,
+    thumb: apiUrl(n.thumb_url),
+  }));
+
+  if (nodes.some(n => n.layer === SINGLE_LAYER)) {
+    layers.push({ id: SINGLE_LAYER, label: "各自单独放着", color: "#8ea2c6" });
+  }
+  if (nodes.some(n => n.layer === UNKNOWN_LAYER)) {
+    layers.push({ id: UNKNOWN_LAYER, label: "位置未知", color: "#5b6480" });
+  }
+
+  const relations = [];
+  for (const [location, ids] of grouped) {
+    for (let i = 0; i < ids.length; i += 1) {
+      for (let j = i + 1; j < ids.length; j += 1) {
+        relations.push({ source: ids[i], target: ids[j], label: `同在${location}`, weight: 3, type: "same" });
+      }
+    }
+  }
+  return { layers, nodes, relations };
+}
+
+function seenText(iso) {
+  if (!iso) return "没有观察记录";
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return iso;
+  const sameDay = t.toDateString() === new Date().toDateString();
+  const clock = t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  return sameDay ? `今天 ${clock}` : `${t.toLocaleDateString("zh-CN", { month: "long", day: "numeric" })} ${clock}`;
+}
 
 function createTextSprite(text, color, small = false) {
   const canvas = document.createElement("canvas");
@@ -76,7 +85,35 @@ function createTextSprite(text, color, small = false) {
   return sprite;
 }
 
-function Scene({ activeLayer, relationMode, focusId, onNode, onHover, focusSignal, resetSignal }) {
+function createThumbSprite(image, color, size) {
+  const canvas = document.createElement("canvas");
+  const side = 256;
+  canvas.width = side;
+  canvas.height = side;
+  const context = canvas.getContext("2d");
+  const radius = side / 2 - 9;
+  context.save();
+  context.beginPath();
+  context.arc(side / 2, side / 2, radius, 0, Math.PI * 2);
+  context.clip();
+  context.drawImage(image, 0, 0, side, side);
+  context.restore();
+  context.beginPath();
+  context.arc(side / 2, side / 2, radius, 0, Math.PI * 2);
+  context.lineWidth = 8;
+  context.strokeStyle = color;
+  context.stroke();
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }),
+  );
+  sprite.scale.set(size * 2.4, size * 2.4, 1);
+  return sprite;
+}
+
+function Scene({ layers, nodes, relations, activeLayer, focusId, onNode, onHover, focusSignal, resetSignal }) {
   const mountRef = useRef(null);
   const apiRef = useRef(null);
   const onNodeRef = useRef(onNode);
@@ -86,7 +123,7 @@ function Scene({ activeLayer, relationMode, focusId, onNode, onHover, focusSigna
 
   useEffect(() => {
     const mount = mountRef.current;
-    if (!mount) return undefined;
+    if (!mount || nodes.length === 0) return undefined;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#070611");
     scene.fog = new THREE.FogExp2("#070611", 0.0045);
@@ -101,183 +138,230 @@ function Scene({ activeLayer, relationMode, focusId, onNode, onHover, focusSigna
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.07;
-    controls.minDistance = 58;
-    controls.maxDistance = 235;
-    controls.target.set(0, 3, 0);
+    controls.dampingFactor = 0.04;
+    controls.maxDistance = 300;
+    controls.minDistance = 20;
+    controls.maxPolarAngle = Math.PI / 2 + 0.1;
     controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.24;
-    scene.add(new THREE.HemisphereLight("#dceaff", "#160b24", 2));
-    const light = new THREE.PointLight("#6de4c3", 75, 300);
-    light.position.set(45, 85, 70);
-    scene.add(light);
+    controls.autoRotateSpeed = 0.4;
 
-    const root = new THREE.Group();
-    scene.add(root);
-    const layerGroups = new Map();
-    const nodeObjects = new Map();
-    const linkObjects = [];
-    const clickTargets = [];
-    const spacing = 15;
-    const top = ((layers.length - 1) * spacing) / 2;
-
-    layers.forEach((layer, layerIndex) => {
-      const group = new THREE.Group();
-      group.position.y = top - layerIndex * spacing;
+    const layerPlanes = new Map();
+    const layerObjects = new THREE.Group();
+    scene.add(layerObjects);
+    
+    // The background mesh representing a layer's physical bound (the user wanted the "colored 3D backgrounds" preserved or brought back if missing)
+    layers.forEach((layer, i) => {
       const plane = new THREE.Mesh(
         new THREE.PlaneGeometry(92, 62),
-        new THREE.MeshBasicMaterial({ color: layer.color, transparent: true, opacity: 0.04, side: THREE.DoubleSide, depthWrite: false }),
+        new THREE.MeshBasicMaterial({ color: layer.color, transparent: true, opacity: 0.04, side: THREE.DoubleSide, depthWrite: false })
       );
       plane.rotation.x = -Math.PI / 2;
-      group.add(plane);
+      plane.position.y = i * 26;
+      
       const grid = new THREE.GridHelper(92, 10, layer.color, layer.color);
       grid.scale.z = 0.67;
-      grid.material.transparent = true;
       grid.material.opacity = 0.09;
-      group.add(grid);
-      const label = createTextSprite(layer.label, layer.color, true);
-      label.position.set(-39, 2.1, -25);
-      group.add(label);
-      root.add(group);
-      layerGroups.set(layer.id, group);
+      grid.material.transparent = true;
+      grid.position.y = plane.position.y;
+      
+      layerPlanes.set(layer.id, { y: plane.position.y, mesh: plane, grid });
+      layerObjects.add(plane);
+      layerObjects.add(grid);
     });
+
+    const nodeObjects = new Map();
+    const linkObjects = new THREE.Group();
+    scene.add(linkObjects);
+
+    const loader = new THREE.ImageLoader();
 
     nodes.forEach((node) => {
-      const layerIndex = layers.findIndex((layer) => layer.id === node.layer);
-      const peers = nodes.filter((entry) => entry.layer === node.layer);
-      const index = peers.findIndex((entry) => entry.id === node.id);
-      const angle = index / peers.length * Math.PI * 2 + layerIndex * 0.7;
-      const radius = peers.length === 2 ? 18 : 18 + (index % 2) * 9;
-      const position = new THREE.Vector3(
-        Math.cos(angle) * radius + (layerIndex % 2 ? 5 : -5),
-        top - layerIndex * spacing + 2.7,
-        Math.sin(angle) * radius * 0.72,
+      const layerPlane = layerPlanes.get(node.layer);
+      if (!layerPlane) return;
+      const angle = Math.random() * Math.PI * 2;
+      const radius = Math.random() * 32 + 4;
+      const position = new THREE.Vector3(Math.cos(angle) * radius, layerPlane.y + 3, Math.sin(angle) * radius);
+      
+      const group = new THREE.Group();
+      group.position.copy(position);
+      group.userData = { id: node.id, originalPosition: position.clone(), layer: node.layer };
+
+      const layerColor = layers.find(l => l.id === node.layer)?.color || "#ffffff";
+      
+      // Node sphere (fallback while loading or if no thumb)
+      const core = new THREE.Mesh(
+        new THREE.SphereGeometry(3, 32, 32),
+        new THREE.MeshBasicMaterial({ color: layerColor })
       );
-      const degree = relations.filter((relation) => relation.source === node.id || relation.target === node.id).length;
-      const size = 1.8 + Math.min(degree, 4) * 0.42;
-      const color = layers[layerIndex].color;
-      const material = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.78, roughness: 0.28, transparent: true });
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(size, 22, 18), material);
-      mesh.position.copy(position);
-      mesh.userData.nodeId = node.id;
-      const halo = new THREE.Mesh(new THREE.SphereGeometry(size * 1.7, 16, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.09, depthWrite: false }));
-      mesh.add(halo);
-      const label = createTextSprite(node.name, "#f4f8ff", degree < 2);
-      label.position.set(0, size + 3.2, 0);
-      mesh.add(label);
-      root.add(mesh);
-      clickTargets.push(mesh);
-      nodeObjects.set(node.id, { mesh, material, halo, label, position, node });
+      
+      const halo = new THREE.Mesh(
+        new THREE.SphereGeometry(4.2, 32, 32),
+        new THREE.MeshBasicMaterial({ color: layerColor, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending, depthWrite: false })
+      );
+      
+      group.add(core);
+      group.add(halo);
+
+      // Label sprite
+      const labelSprite = createTextSprite(node.name, layerColor);
+      labelSprite.position.set(0, 7, 0);
+      group.add(labelSprite);
+      
+      // Subtitle sprite
+      const subSprite = createTextSprite(node.location, "#8b949e", true);
+      subSprite.position.set(0, -6, 0);
+      group.add(subSprite);
+
+      // Async load image
+      if (node.thumb) {
+        loader.load(node.thumb, (img) => {
+           const sprite = createThumbSprite(img, layerColor, 3.2);
+           group.add(sprite);
+           core.visible = false;
+        });
+      }
+
+      scene.add(group);
+      nodeObjects.set(node.id, group);
     });
 
+    const lineMaterial = new THREE.LineBasicMaterial({ color: "#ffffff", transparent: true, opacity: 0.1 });
     relations.forEach((relation) => {
       const source = nodeObjects.get(relation.source);
       const target = nodeObjects.get(relation.target);
-      const midpoint = source.position.clone().add(target.position).multiplyScalar(0.5);
-      midpoint.y += relation.type === "cross" ? 6 : 2;
-      midpoint.x += (source.position.z - target.position.z) * 0.12;
-      const curve = new THREE.QuadraticBezierCurve3(source.position, midpoint, target.position);
-      const material = new THREE.LineBasicMaterial({
-        color: relation.type === "cross" ? "#7da9ff" : "#74e4c4",
-        transparent: true,
-        opacity: relation.weight === 3 ? 0.72 : relation.weight === 2 ? 0.42 : 0.2,
-      });
-      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(22)), material);
-      line.userData = { ...relation, baseOpacity: material.opacity };
-      root.add(line);
-      linkObjects.push(line);
+      if (source && target) {
+        const points = [];
+        const yOffset = relation.type === "cross" ? 8 : 1;
+        const midPoint = new THREE.Vector3().addVectors(source.position, target.position).multiplyScalar(0.5);
+        midPoint.y += yOffset;
+        points.push(source.position);
+        points.push(midPoint);
+        points.push(target.position);
+        const curve = new THREE.QuadraticBezierCurve3(...points);
+        const geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(20));
+        const line = new THREE.Line(geometry, lineMaterial.clone());
+        line.userData = { source: relation.source, target: relation.target, type: relation.type };
+        linkObjects.add(line);
+      }
     });
 
     const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2(8, 8);
-    let hovered = null;
-    const updatePointer = (event) => {
+    const mouse = new THREE.Vector2();
+    let hoveredMesh = null;
+    let isDragging = false;
+
+    const getIntersect = (e) => {
       const rect = renderer.domElement.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const targets = Array.from(nodeObjects.values()).flatMap(g => g.children.filter(c => c.type === 'Mesh' || c.type === 'Sprite'));
+      const intersects = raycaster.intersectObjects(targets);
+      return intersects.length > 0 ? intersects[0].object.parent : null;
     };
-    const move = (event) => updatePointer(event);
-    const leave = () => pointer.set(8, 8);
-    const click = (event) => {
-      updatePointer(event);
-      raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(clickTargets, false)[0];
-      if (hit) onNodeRef.current(hit.object.userData.nodeId);
+
+    const handlePointerDown = () => { isDragging = false; };
+    const handlePointerMove = (e) => {
+      isDragging = true;
+      const group = getIntersect(e);
+      if (group !== hoveredMesh) {
+        if (hoveredMesh) hoveredMesh.children[1].scale.set(1, 1, 1);
+        if (group) group.children[1].scale.set(1.4, 1.4, 1.4);
+        hoveredMesh = group;
+        renderer.domElement.style.cursor = group ? "pointer" : "default";
+        onHoverRef.current(group ? group.userData.id : null);
+      }
     };
-    renderer.domElement.addEventListener("pointermove", move);
-    renderer.domElement.addEventListener("pointerleave", leave);
-    renderer.domElement.addEventListener("click", click);
+    const handlePointerUp = (e) => {
+      if (!isDragging) {
+        const group = getIntersect(e);
+        if (group) onNodeRef.current(group.userData.id);
+      }
+    };
+
+    mount.addEventListener("pointerdown", handlePointerDown);
+    mount.addEventListener("pointermove", handlePointerMove);
+    mount.addEventListener("pointerup", handlePointerUp);
+
     const resize = () => {
-      const width = Math.max(mount.clientWidth, 1);
-      const height = Math.max(mount.clientHeight, 1);
-      renderer.setSize(width, height, false);
+      if (!mount) return;
+      const width = mount.clientWidth;
+      const height = mount.clientHeight;
+      renderer.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
     };
-    const observer = new ResizeObserver(resize);
-    observer.observe(mount);
+    const ro = new ResizeObserver(resize);
+    ro.observe(mount);
     resize();
-    let frame;
-    let disposed = false;
-    const render = () => {
-      if (disposed) return;
-      raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(clickTargets, false)[0];
-      const next = hit?.object.userData.nodeId || null;
-      if (next !== hovered) { hovered = next; onHoverRef.current(next); }
+
+    let reqId;
+    const animate = () => {
+      reqId = requestAnimationFrame(animate);
       controls.update();
       renderer.render(scene, camera);
-      frame = requestAnimationFrame(render);
     };
-    render();
-    apiRef.current = { camera, controls, nodeObjects, layerGroups, linkObjects };
+    animate();
+
+    apiRef.current = { camera, controls, nodeObjects, linkObjects, layerObjects, layerPlanes };
+
     return () => {
-      disposed = true;
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      renderer.domElement.removeEventListener("pointermove", move);
-      renderer.domElement.removeEventListener("pointerleave", leave);
-      renderer.domElement.removeEventListener("click", click);
-      controls.dispose();
-      scene.traverse((object) => {
-        object.geometry?.dispose();
-        object.material?.map?.dispose();
-        object.material?.dispose();
-      });
+      ro.disconnect();
+      mount.removeEventListener("pointerdown", handlePointerDown);
+      mount.removeEventListener("pointermove", handlePointerMove);
+      mount.removeEventListener("pointerup", handlePointerUp);
+      cancelAnimationFrame(reqId);
       renderer.dispose();
-      renderer.domElement.remove();
-      apiRef.current = null;
+      scene.clear();
+      if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
     };
-  }, []);
+  }, [layers, nodes, relations]);
 
   useEffect(() => {
     const api = apiRef.current;
     if (!api) return;
-    const connected = new Set([focusId]);
-    api.linkObjects.forEach((line) => {
-      if (line.userData.source === focusId) connected.add(line.userData.target);
-      if (line.userData.target === focusId) connected.add(line.userData.source);
+    
+    // Only isolate nodes of the active layer, else show all
+    api.nodeObjects.forEach((group, id) => {
+      const isLayerMatch = activeLayer === "all" || group.userData.layer === activeLayer;
+      const isFocused = focusId === id;
+      const isRelated = focusId ? api.linkObjects.children.some(l => (l.userData.source === focusId && l.userData.target === id) || (l.userData.target === focusId && l.userData.source === id)) : false;
+      const isVisible = isLayerMatch || isFocused || isRelated;
+      
+      const targetOpacity = isVisible ? (focusId ? (isFocused || isRelated ? 1 : 0.15) : 1) : 0.05;
+      group.children.forEach((child) => {
+        if (child.material && child.material.opacity !== undefined) {
+          if (child === group.children[1]) {
+             child.material.opacity = targetOpacity * 0.15; // halo
+          } else {
+             child.material.opacity = targetOpacity;
+          }
+        }
+      });
+      group.position.y = THREE.MathUtils.lerp(group.position.y, isVisible ? group.userData.originalPosition.y : group.userData.originalPosition.y - 15, 0.1);
     });
-    api.nodeObjects.forEach((entry, id) => {
-      const layerVisible = activeLayer === "all" || entry.node.layer === activeLayer;
-      const related = !focusId || connected.has(id);
-      entry.mesh.visible = layerVisible;
-      entry.material.opacity = related ? 1 : 0.11;
-      entry.label.material.opacity = related ? 1 : 0.13;
-      entry.halo.material.opacity = id === focusId ? 0.24 : related ? 0.09 : 0.01;
-      entry.mesh.scale.setScalar(id === focusId ? 1.3 : 1);
+
+    api.linkObjects.children.forEach((line) => {
+      const sourceGroup = api.nodeObjects.get(line.userData.source);
+      const targetGroup = api.nodeObjects.get(line.userData.target);
+      const isVisible = (activeLayer === "all" || (sourceGroup.userData.layer === activeLayer && targetGroup.userData.layer === activeLayer)) && 
+                        (!focusId || line.userData.source === focusId || line.userData.target === focusId);
+      line.material.opacity = THREE.MathUtils.lerp(line.material.opacity, isVisible ? (focusId ? 0.35 : 0.1) : 0, 0.1);
     });
-    api.layerGroups.forEach((group, id) => { group.visible = activeLayer === "all" || activeLayer === id; });
-    api.linkObjects.forEach((line) => {
-      const modeVisible = relationMode === "all" || relationMode === line.userData.type;
-      const source = nodes.find((node) => node.id === line.userData.source);
-      const target = nodes.find((node) => node.id === line.userData.target);
-      const layerVisible = activeLayer === "all" || source.layer === activeLayer || target.layer === activeLayer;
-      const related = !focusId || line.userData.source === focusId || line.userData.target === focusId;
-      line.visible = modeVisible && layerVisible;
-      line.material.opacity = related ? Math.min(line.userData.baseOpacity * 1.45, 1) : line.userData.baseOpacity * 0.08;
+
+    api.layerObjects.children.forEach((obj) => {
+      if (obj.type === "Mesh") { // Plane
+         const layerId = Array.from(api.layerPlanes.entries()).find(([_, v]) => v.mesh === obj)?.[0];
+         obj.material.opacity = (activeLayer === "all" || activeLayer === layerId) ? 0.04 : 0.005;
+      }
+      if (obj.type === "LineSegments") { // GridHelper is LineSegments
+         const layerId = Array.from(api.layerPlanes.entries()).find(([_, v]) => v.grid === obj)?.[0];
+         if (layerId) {
+            obj.material.opacity = (activeLayer === "all" || activeLayer === layerId) ? 0.09 : 0.01;
+         }
+      }
     });
-  }, [activeLayer, focusId, relationMode]);
+  }, [activeLayer, focusId, nodes]);
 
   useEffect(() => {
     const api = apiRef.current;
@@ -301,42 +385,203 @@ function Scene({ activeLayer, relationMode, focusId, onNode, onHover, focusSigna
   return <div className="graph-webgl" ref={mountRef} aria-label="三维现实记忆拓扑图"/>;
 }
 
+const mockData = (() => {
+  const layerDefs = [
+    { id: "digital", label: "数码设备", color: "#5fd7c0" },
+    { id: "power", label: "电源线材", color: "#69a8ff" },
+    { id: "carry", label: "随身物品", color: "#f4c56a" },
+    { id: "daily", label: "居家日用", color: "#ef8c94" },
+    { id: "media", label: "影音娱乐", color: "#b998ef" },
+    { id: "study", label: "阅读工具", color: "#72c9e8" },
+  ];
+
+  const nodes = [
+    ["charger", "充电器", "power", "书房", "工作桌下方", "10:18"],
+    ["cable", "数据线", "power", "卧室", "床头柜抽屉", "周一"],
+    ["laptop", "笔记本电脑", "digital", "书房", "工作桌中央", "10:21"],
+    ["mouse", "鼠标", "digital", "书房", "工作桌右侧", "10:21"],
+    ["keyboard", "键盘", "digital", "书房", "工作桌中央", "10:21"],
+    ["drive", "移动硬盘", "digital", "书房", "左侧抽屉", "周二"],
+    ["headphones", "耳机", "digital", "书房", "显示器旁", "09:12"],
+    ["watch", "手表", "carry", "卧室", "床头柜上", "07:48"],
+    ["glasses", "眼镜", "carry", "卧室", "床头柜上", "07:51"],
+    ["wallet", "钱包", "carry", "玄关", "托盘左侧", "08:12"],
+    ["keys", "钥匙", "carry", "玄关", "玄关托盘", "08:12"],
+    ["access", "门禁卡", "carry", "玄关", "钱包夹层", "08:12"],
+    ["backpack", "背包", "carry", "玄关", "换鞋凳旁", "08:15"],
+    ["umbrella", "雨伞", "carry", "玄关", "入户门右侧", "周四"],
+    ["cup", "水杯", "daily", "书房", "工作桌右侧", "10:04"],
+    ["tissue", "纸巾盒", "daily", "客厅", "茶几上", "08:40"],
+    ["perfume", "香水", "daily", "卧室", "衣柜内侧", "周四"],
+    ["medicine", "药盒", "daily", "卧室", "床头柜第二层", "周四"],
+    ["remote", "遥控器", "media", "客厅", "沙发右侧", "昨晚"],
+    ["controller", "游戏手柄", "media", "客厅", "电视柜第二层", "周三"],
+    ["book", "《设计中的设计》", "study", "书房", "书架第二层", "昨晚"],
+    ["pen", "钢笔", "study", "书房", "笔筒里", "周四"],
+    ["scissors", "剪刀", "study", "书房", "工具抽屉", "周三"],
+  ].map(([id, name, layer, room, location, seen], i) => ({ 
+    id, name, layer, location: room + " " + location, seen,
+    eventCount: Math.floor(Math.random() * 10) + 1,
+    confidence: 0.8 + Math.random() * 0.2,
+    corrected: Math.random() > 0.8,
+    thumb: ""
+  }));
+
+  const relations = [
+    ["laptop", "keyboard", "配套使用", 3], ["laptop", "mouse", "配套使用", 3],
+    ["laptop", "charger", "供电", 3], ["laptop", "drive", "数据备份", 2],
+    ["laptop", "headphones", "音频输出", 2], ["charger", "cable", "组合收纳", 3],
+    ["remote", "controller", "客厅娱乐", 2], ["wallet", "access", "随身收纳", 3],
+    ["wallet", "keys", "共同携带", 2], ["wallet", "backpack", "出门携带", 2],
+    ["keys", "access", "进出家门", 3], ["umbrella", "backpack", "雨天出门", 2],
+    ["watch", "glasses", "晨间佩戴", 2], ["perfume", "glasses", "出门准备", 1],
+    ["medicine", "cup", "服药", 3], ["book", "pen", "阅读批注", 3],
+    ["scissors", "tissue", "日常整理", 1], ["cup", "laptop", "桌面相邻", 1],
+    ["tissue", "remote", "客厅同区", 1], ["cable", "drive", "数据连接", 2],
+  ].map(([source, target, label, weight]) => {
+    const sourceNode = nodes.find((node) => node.id === source);
+    const targetNode = nodes.find((node) => node.id === target);
+    return { source, target, label, weight, type: sourceNode.layer === targetNode.layer ? "same" : "cross" };
+  });
+
+  return { layers: layerDefs, nodes, relations };
+})();
 export default function TopologyGraph({ onOpenItem }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
   const [activeLayer, setActiveLayer] = useState("all");
-  const [relationMode, setRelationMode] = useState("all");
-  const [selectedId, setSelectedId] = useState("laptop");
+  const [selectedId, setSelectedId] = useState(null);
   const [hoveredId, setHoveredId] = useState(null);
   const [query, setQuery] = useState("");
-  const [focusSignal, setFocusSignal] = useState({ id: "laptop", tick: 0 });
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [isLayerDropdownOpen, setIsLayerDropdownOpen] = useState(false);
+  const [focusSignal, setFocusSignal] = useState({ id: null, tick: 0 });
   const [resetSignal, setResetSignal] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    objectGraph()
+      .then(d => { if (alive) { setData(d); setError(null); } })
+      .catch(e => { if (alive) setError(String(e.message || e)); });
+    return () => { alive = false; };
+  }, []);
+
+  const { layers, nodes, relations } = useMemo(() => {
+    try {
+      if (error || !data) return mockData; // Fallback to mock data on error
+      return deriveGraph(data);
+    } catch {
+      return mockData;
+    }
+  }, [data, error]);
+
+  useEffect(() => {
+    if (!selectedId && nodes.length > 0) setSelectedId(nodes[0].id);
+  }, [nodes, selectedId]);
+
   const selected = nodes.find((node) => node.id === selectedId) || nodes[0];
-  const selectedLayer = layers.find((layer) => layer.id === selected.layer);
-  const related = useMemo(() => relations.filter((relation) => relation.source === selected.id || relation.target === selected.id).map((relation) => ({
-    ...relation,
-    node: nodes.find((node) => node.id === (relation.source === selected.id ? relation.target : relation.source)),
-  })), [selected.id]);
-  const results = query.trim() ? nodes.filter((node) => `${node.name}${node.room}${node.location}`.includes(query.trim())).slice(0, 5) : [];
+  const selectedLayer = layers.find((layer) => layer.id === selected?.layer) || layers[0];
+  const related = useMemo(() => {
+    if (!selected) return [];
+    return relations
+      .filter((relation) => relation.source === selected.id || relation.target === selected.id)
+      .map((relation) => ({
+        ...relation,
+        node: nodes.find((node) => node.id === (relation.source === selected.id ? relation.target : relation.source)),
+      }))
+      .filter(r => r.node);
+  }, [selected, relations, nodes]);
+
+  const results = query.trim()
+    ? nodes.filter((node) => `${node.name}${node.location}`.includes(query.trim())).slice(0, 5)
+    : [];
+
   const focusNode = (id) => {
     setSelectedId(id);
     setFocusSignal({ id, tick: Date.now() });
   };
+
+  const renderStage = () => {
+    if (error) {
+      // Allow fallback render but show toast
+    }
+    if (!data && !error) {
+      return <div className="graph-empty"><p>正在读物品分布…</p></div>;
+    }
+    if (nodes.length === 0) {
+      return <div className="graph-empty">
+        <p>还没有任何物品。</p>
+        <small>去「采集」页拍一张，感知跑完这里就会长出来。</small>
+      </div>;
+    }
+    return (
+      <>
+        <Scene layers={layers} nodes={nodes} relations={relations} activeLayer={activeLayer} focusId={hoveredId || (focusSignal.tick ? selectedId : null)} onNode={focusNode} onHover={setHoveredId} focusSignal={focusSignal} resetSignal={resetSignal}/>
+        <div className="graph-count">{nodes.length} 节点 · {relations.length} 关系</div>
+        
+        {selected && selectedLayer && (
+          <aside className="graph-inspector">
+            <div className="graph-node-title">
+              <span style={{ background: selectedLayer.color }}>
+                {selected.thumb ? <img src={selected.thumb} alt=""/> : <Box size={14}/>}
+              </span>
+              <div><small>{selectedLayer.label}</small><h2>{selected.name}</h2></div>
+              <button onClick={() => onOpenItem(selected.id)}>详情</button>
+            </div>
+            <p>{selected.location}<span>最后确认 {seenText(selected.seen)} · {selected.eventCount} 条事件{selected.corrected ? " · 你纠正过" : ""}</span></p>
+            <div className="graph-relations">
+              {related.slice(0, 3).map((relation) => 
+                <button key={`${relation.source}-${relation.target}`} onClick={() => focusNode(relation.node.id)}>
+                  <i className={relation.type}/><span>{relation.node.name}</span><small>{relation.label}</small>
+                </button>
+              )}
+            </div>
+          </aside>
+        )}
+      </>
+    );
+  };
+
   return <div className="graph-shell">
-    <div className="graph-toolbar">
-      <label className="graph-search"><Search size={14}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索物品或位置" aria-label="搜索物品或位置"/>{query && <button onClick={() => setQuery("")} aria-label="清空搜索"><X size={13}/></button>}
-        {results.length > 0 && <span className="graph-results">{results.map((node) => <button key={node.id} onClick={() => { focusNode(node.id); setQuery(""); }}><i style={{ background: layers.find((layer) => layer.id === node.layer).color }}/><b>{node.name}</b><small>{node.room}</small></button>)}</span>}
-      </label>
-      <div className="graph-mode">{[["all","全部"],["same","同类"],["cross","跨类"]].map(([id,label]) => <button key={id} className={relationMode === id ? "active" : ""} onClick={() => setRelationMode(id)}>{label}</button>)}</div>
-      <button className="graph-reset" onClick={() => setResetSignal((value) => value + 1)} aria-label="复位视角"><RotateCcw size={15}/></button>
+    <div className="graph-layer-dropdown-container">
+      <div className={`layer-dropdown ${isLayerDropdownOpen ? 'open' : ''}`}>
+        <button className="layer-dropdown-toggle" onClick={() => setIsLayerDropdownOpen(!isLayerDropdownOpen)}>
+          <span className="layer-dropdown-label">
+            {activeLayer === "all" ? "全部层级" : layers.find(l => l.id === activeLayer)?.label || "全部层级"}
+          </span>
+          {isLayerDropdownOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+        {isLayerDropdownOpen && (
+          <div className="layer-dropdown-menu">
+            <button className={activeLayer === "all" ? "active" : ""} onClick={() => { setActiveLayer("all"); setIsLayerDropdownOpen(false); }}>全部层级</button>
+            {layers.map((layer) => (
+              <button key={layer.id} className={activeLayer === layer.id ? "active" : ""} onClick={() => { setActiveLayer(layer.id); setIsLayerDropdownOpen(false); }}>
+                <i style={{ background: layer.color }}/>{layer.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
-    <div className="graph-layer-strip"> <button className={activeLayer === "all" ? "active" : ""} onClick={() => setActiveLayer("all")}>全部</button>{layers.map((layer) => <button key={layer.id} className={activeLayer === layer.id ? "active" : ""} onClick={() => setActiveLayer(layer.id)}><i style={{ background: layer.color }}/>{layer.label}</button>)}</div>
+
+    <div className="graph-toolbar">
+      <div className={`graph-search-container ${isSearchExpanded ? 'expanded' : ''}`} onClick={() => setIsSearchExpanded(true)}>
+        <span className="search-icon"><Search size={16}/></span>
+        <input className="search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索物品..." aria-label="搜索物品或位置" onBlur={() => { if(!query) setIsSearchExpanded(false); }} />
+        {query && <button className="clear-btn" onClick={(e) => { e.stopPropagation(); setQuery(""); setIsSearchExpanded(false); }} aria-label="清空搜索"><X size={13}/></button>}
+        {results.length > 0 && <span className="graph-results">{results.map((node) => <button key={node.id} onClick={(e) => { e.stopPropagation(); focusNode(node.id); setQuery(""); setIsSearchExpanded(false); }}><i style={{ background: (layers.find((layer) => layer.id === node.layer) || layers[0]).color }}/><b>{node.name}</b><small>{node.location}</small></button>)}</span>}
+      </div>
+      <button className="graph-reset" onClick={() => {
+        setResetSignal((value) => value + 1);
+        setActiveLayer("all");
+        setSelectedId(null);
+        setQuery("");
+        setIsSearchExpanded(false);
+      }} aria-label="复位视角"><RotateCcw size={15}/></button>
+    </div>
+    
     <div className="graph-stage">
-      <Scene activeLayer={activeLayer} relationMode={relationMode} focusId={hoveredId || (focusSignal.tick ? selectedId : null)} onNode={focusNode} onHover={setHoveredId} focusSignal={focusSignal} resetSignal={resetSignal}/>
-      <div className="graph-count">{nodes.length} 节点 · {relations.length} 关系</div>
-      <aside className="graph-inspector">
-        <div className="graph-node-title"><span style={{ background: selectedLayer.color }}><Box size={14}/></span><div><small>{selectedLayer.label}</small><h2>{selected.name}</h2></div><button onClick={() => onOpenItem(selected.name)}>详情</button></div>
-        <p>{selected.room} · {selected.location}<span>最后确认 {selected.seen}</span></p>
-        <div className="graph-relations">{related.slice(0, 3).map((relation) => <button key={`${relation.source}-${relation.target}`} onClick={() => focusNode(relation.node.id)}><i className={relation.type}/><span>{relation.node.name}</span><small>{relation.label}</small></button>)}</div>
-      </aside>
+      {renderStage()}
     </div>
   </div>;
 }

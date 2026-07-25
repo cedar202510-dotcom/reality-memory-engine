@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Routes, Route, Navigate, Outlet, useNavigate, useLocation, useOutletContext, useSearchParams } from "react-router-dom";
 import { Mic, Keyboard, Send, Maximize2, X, Check, Coffee, Zap, MapPin, PieChart, ChevronRight, Radio, ArrowLeft, Camera } from "lucide-react";
 import { CirclesFour, Compass, Path, UserCircle } from "@phosphor-icons/react";
@@ -10,7 +10,10 @@ import CaptureConsole from "./CaptureConsole";
 import PresenceOrb from "./PresenceOrb";
 import MyPage from "./MyPage";
 import IconPreview from "./IconPreview";
-import { mockWhereIs, whereIs } from "./api";
+import XRRoomPreview from "./XRRoomPreview";
+import PicoMode from "./PicoMode";
+import { whereIs, recentEvents, objectTimeline, evidenceUrl, apiUrl, transcribe } from "./api";
+import { PreviewImage } from "./ImageLightbox";
 
 const timelineDays = [
   {
@@ -18,14 +21,30 @@ const timelineDays = [
     month: "十一月",
     day: 29,
     weekday: "周六",
-    title: "低速整理日",
-    summary: "家务、补觉和零散移动比较多，系统只保留了几个确定片段。",
-    intensity: 0.38,
+    title: "休息与整理",
+    summary: "早上补觉，下午进行了简短的家务整理。",
+    intensity: 0.2,
     confirmations: 0,
     places: ["卧室", "客厅"],
-    items: [
-      { id: "d1129-1", time: "10:46", period: "起床后", category: "作息", title: "补觉结束", detail: "卧室环境音变弱，手机被拿起，推测结束一段较长休息。", tone: "dim" },
-      { id: "d1129-2", time: "17:20", period: "家务", category: "空间", title: "客厅短时整理", detail: "连续移动水杯、纸巾和遥控器，客厅桌面状态更新。", tone: "green" }
+    events: [
+      {
+        event_id: "m-d1129-1",
+        event_time_from: "2025-11-29T10:46:00Z",
+        event_type: "OBJECT_OBSERVED_AT",
+        entity_name: "手机",
+        location: "卧室",
+        payload: { detail: "卧室环境音变弱，推测结束一段较长休息。" },
+        confidence: 0.95,
+      },
+      {
+        event_id: "m-d1129-2",
+        event_time_from: "2025-11-29T17:20:00Z",
+        event_type: "OBJECT_OBSERVED_AT",
+        entity_name: "水杯、纸巾",
+        location: "客厅",
+        payload: { detail: "连续移动水杯、纸巾和遥控器，客厅桌面状态更新。" },
+        confidence: 0.88,
+      }
     ]
   },
   {
@@ -38,9 +57,26 @@ const timelineDays = [
     intensity: 0.48,
     confirmations: 1,
     places: ["玄关", "楼下"],
-    items: [
-      { id: "d1130-1", time: "09:12", period: "出门前", category: "物品", title: "随身物品确认", detail: "背包、钥匙、水杯被连续带离玄关。", tone: "aqua" },
-      { id: "d1130-2", time: "21:08", period: "回家后", category: "线索", title: "水杯位置待确认", detail: "回家后未再次捕获水杯，建议确认是否仍在包里。", tone: "warm", needsConfirmation: true }
+    events: [
+      {
+        event_id: "m-d1130-1",
+        event_time_from: "2025-11-30T09:12:00Z",
+        event_type: "OBJECT_OBSERVED_AT",
+        entity_name: "背包、钥匙",
+        location: "玄关",
+        payload: { detail: "背包、钥匙、水杯被连续带离玄关。" },
+        confidence: 0.9,
+      },
+      {
+        event_id: "m-d1130-2",
+        event_time_from: "2025-11-30T21:08:00Z",
+        event_type: "OBJECT_MISSING",
+        entity_name: "水杯",
+        location: "包内?",
+        payload: { detail: "回家后未再次捕获水杯，建议确认是否仍在包里。" },
+        confidence: 0.6,
+        needsConfirmation: true
+      }
     ]
   },
   {
@@ -53,72 +89,26 @@ const timelineDays = [
     intensity: 0.72,
     confirmations: 1,
     places: ["书房", "工作桌"],
-    items: [
-      { id: "d1201-1", time: "09:40", period: "上午", category: "专注", title: "书房深工作开始", detail: "键盘输入持续，背景噪声稳定，系统标记为一段连续工作。", tone: "green" },
-      { id: "d1201-2", time: "15:28", period: "下午", category: "物品", title: "充电器被移动", detail: "充电器从书房桌面移动到工作桌下方。", tone: "aqua", objectName: "充电器" },
-      { id: "d1201-3", time: "22:12", period: "夜间", category: "状态", title: "房间恢复安静", detail: "主要设备停止移动，灯光变化后进入低活动状态。", tone: "dim" }
-    ]
-  },
-  {
-    id: "2025-12-02",
-    month: "十二月",
-    day: 2,
-    weekday: "周二",
-    title: "饮食偏好浮现",
-    summary: "午餐评价被捕获，适合沉淀成餐饮偏好，但需要用户确认。",
-    intensity: 0.64,
-    confirmations: 2,
-    places: ["餐桌", "书房"],
-    items: [
-      { id: "d1202-1", time: "12:30", period: "午餐", category: "饮食", title: "外卖偏好记录", detail: "语音捕获：“这家胡辣汤不好喝”。", tone: "warm", needsConfirmation: true, objectName: "胡辣汤" },
-      { id: "d1202-2", time: "16:55", period: "下午", category: "线索", title: "咖啡摄入偏晚", detail: "连续两天在 17 点前后饮用咖啡，可能影响晚间入睡。", tone: "green", needsConfirmation: true }
-    ]
-  },
-  {
-    id: "2025-12-03",
-    month: "十二月",
-    day: 3,
-    weekday: "周三",
-    title: "空间线索清晰",
-    summary: "这一天的记录更像生活现场索引，物品和空间关系比较完整。",
-    intensity: 0.58,
-    confirmations: 0,
-    places: ["客厅", "厨房", "玄关"],
-    items: [
-      { id: "d1203-1", time: "08:06", period: "早晨", category: "物品", title: "钥匙出现在玄关", detail: "钥匙最后一次被看见在玄关托盘内。", tone: "aqua" },
-      { id: "d1203-2", time: "19:42", period: "晚间", category: "饮食", title: "晚餐后厨房清理", detail: "厨房台面物品减少，餐具进入水槽区域。", tone: "green" }
-    ]
-  },
-  {
-    id: "2025-12-04",
-    month: "十二月",
-    day: 4,
-    weekday: "周四",
-    title: "今天的生活截面",
-    summary: "从工作、午餐到出门准备，几条关键线索已经能拼出当天节奏。",
-    intensity: 0.9,
-    confirmations: 2,
-    places: ["书房", "餐桌", "玄关"],
-    items: [
-      { id: "d1204-1", time: "08:00", period: "早晨", category: "出行", title: "随身物品确认", detail: "带走背包、钥匙与水杯。", tone: "aqua" },
-      { id: "d1204-2", time: "10:18", period: "工作", category: "物品", title: "充电器位置变更", detail: "书房桌面移动到工作桌下方。", tone: "green", objectName: "充电器" },
-      { id: "d1204-3", time: "12:30", period: "午餐", category: "饮食", title: "外卖偏好记录", detail: "语音捕获：“这家胡辣汤不好喝”。", tone: "warm", needsConfirmation: true, objectName: "胡辣汤" },
-      { id: "d1204-4", time: "18:46", period: "傍晚", category: "状态", title: "回到低干扰环境", detail: "客厅与书房的环境音下降，系统标记为可休息窗口。", tone: "dim" }
-    ]
-  },
-  {
-    id: "2025-12-05",
-    month: "十二月",
-    day: 5,
-    weekday: "周五",
-    title: "轻量复盘",
-    summary: "记录数量不多，但出现了一次和设备相关的确认。",
-    intensity: 0.42,
-    confirmations: 1,
-    places: ["书房"],
-    items: [
-      { id: "d1205-1", time: "11:22", period: "上午", category: "设备", title: "耳机短时离线", detail: "耳机离开电脑附近 23 分钟，随后回到书房。", tone: "aqua", needsConfirmation: true },
-      { id: "d1205-2", time: "23:10", period: "夜间", category: "作息", title: "夜间设备收束", detail: "手机接入床头充电，电脑进入休眠。", tone: "dim" }
+    events: [
+      {
+        event_id: "m-d1201-1",
+        event_time_from: "2025-12-01T09:40:00Z",
+        event_type: "USER_STATE",
+        entity_name: "工作环境",
+        location: "书房",
+        payload: { detail: "键盘输入持续，背景噪声稳定，系统标记为一段连续工作。" },
+        confidence: 0.99,
+      },
+      {
+        event_id: "m-d1201-2",
+        event_time_from: "2025-12-01T15:28:00Z",
+        event_type: "OBJECT_MOVED",
+        entity_name: "充电器",
+        location: "工作桌下方",
+        payload: { detail: "充电器从书房桌面移动到工作桌下方。" },
+        confidence: 0.92,
+        entity_id: "mock-charger"
+      }
     ]
   }
 ];
@@ -157,8 +147,34 @@ function extractObjectName(text) {
   return stripped || text;
 }
 
+
+function pickRecordingMime() {
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
+  return candidates.find(t => window.MediaRecorder?.isTypeSupported?.(t)) || "";
+}
+
 const FALLBACK_ANSWER = "最后一次确认在客厅工作桌下方。今天 10:18 之后没有新的移动记录。";
 const INITIAL_GREETING = "我在。你可以直接问现实里的事。";
+
+export const mockWhereIs = async (name) => {
+  await new Promise(resolve => setTimeout(resolve, 320));
+  if (/身份证|证件/.test(name)) {
+    return {
+      answer_text: "最后一次确认在书房右侧抽屉的证件袋里。下面是昨天记录到的位置画面。",
+      media: [
+        {
+          id: "mock-id-card-location",
+          type: "image",
+          url: "/mock/id-card-location.png",
+          alt: "书房抽屉内的证件袋",
+          captured_at: "昨天 21:46",
+          source_label: "书房右侧抽屉",
+        },
+      ],
+    };
+  }
+  return { answer_text: FALLBACK_ANSWER, media: [] };
+};
 
 function AgentHome() {
   const { messages, setMessages, isTyping, setIsTyping, setShowClues } = useOutletContext();
@@ -176,9 +192,14 @@ function AgentHome() {
   const voiceTimerRef = useRef(null);
   const agentSpeechTimerRef = useRef(null);
   const textInputRef = useRef(null);
+  const recorderRef = useRef(null);
+  const [notice, setNotice] = useState("");
   const reduceMotion = useReducedMotion();
 
   useEffect(() => () => {
+    const rec = recorderRef.current;
+    if (rec && rec.state !== "inactive") rec.stop();
+    rec?.stream?.getTracks?.().forEach(t => t.stop());
     interactionRef.current += 1;
     window.clearTimeout(voiceTimerRef.current);
     window.clearTimeout(agentSpeechTimerRef.current);
@@ -245,12 +266,48 @@ function AgentHome() {
     }, speakingDuration);
   };
 
-  const handleVoice = () => {
-    setListening(true);
-    voiceTimerRef.current = window.setTimeout(() => {
-      handleSend();
-    }, 1000);
-  }
+  const handleVoice = async () => {
+    if (listening) {
+      if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      const mime = pickRecordingMime();
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      recorderRef.current = rec;
+      const chunks = [];
+      rec.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunks, { type: rec.mimeType });
+        if (blob.size < 400) {
+          setListening(false);
+          return;
+        }
+        setIsTyping(true);
+        setListening(false);
+        try {
+          const { transcribe } = await import("./api");
+          const text = await transcribe(blob);
+          if (text) {
+            handleSend(text);
+          } else {
+            setIsTyping(false);
+          }
+        } catch (err) {
+          console.warn("Transcription failed, falling back", err);
+          handleSend("我的充电器在哪里？");
+        }
+      };
+      rec.start();
+      setListening(true);
+      setNotice("");
+    } catch (err) {
+      setNotice("无法使用麦克风");
+      setListening(false);
+    }
+  };
 
   const openKeyboard = () => {
     setInputMode("text");
@@ -277,6 +334,7 @@ function AgentHome() {
 
   return (
     <div className="page-view agent-page">
+      {notice && <div className="toast-notice">{notice}</div>}
       <div className="agent-orb-stage">
         <PresenceOrb state={listening ? "listening" : isTyping || agentSpeaking ? "thinking" : "idle"} />
       </div>
@@ -484,16 +542,52 @@ function AgentHome() {
 
 function TimelineView() {
   const { setSelectedObject } = useOutletContext();
-  const [selectedDayId, setSelectedDayId] = useState("2025-12-04");
+  
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    recentEvents(100)
+      .then(data => { if (alive) { setEvents(data.events); setApiError(null); } })
+      .catch(e => { if (alive) setApiError(String(e.message || e)); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, []);
+
+  const realTimelineDays = useMemo(() => {
+    if (!events.length) return [];
+    const daysMap = new Map();
+    events.forEach(ev => {
+      const date = new Date(ev.event_time_from);
+      if (Number.isNaN(date.getTime())) return;
+      const dayId = date.toISOString().split("T")[0];
+      if (!daysMap.has(dayId)) {
+        daysMap.set(dayId, {
+          id: dayId,
+          month: date.toLocaleDateString("zh-CN", { month: "long" }),
+          day: date.getDate(),
+          weekday: date.toLocaleDateString("zh-CN", { weekday: "short" }),
+          events: []
+        });
+      }
+      daysMap.get(dayId).events.push(ev);
+    });
+    return Array.from(daysMap.values()).sort((a, b) => b.id.localeCompare(a.id));
+  }, [events]);
+
+  const activeTimelineDays = realTimelineDays.length > 0 ? realTimelineDays : timelineDays; // fallback to mock timelineDays if empty/error
+
+  const [selectedDayId, setSelectedDayId] = useState("");
   const [scrubberOpen, setScrubberOpen] = useState(false);
   const floatingScrubberRef = useRef(null);
-  const [itemsByDay, setItemsByDay] = useState(() =>
-    Object.fromEntries(timelineDays.map(day => [day.id, day.items]))
-  );
+  const [itemsByDay, setItemsByDay] = useState(() => Object.fromEntries(activeTimelineDays.map(day => [day.id, day.events])));
+  useEffect(() => { if (activeTimelineDays.length > 0 && !selectedDayId) setSelectedDayId(activeTimelineDays[0].id); }, [activeTimelineDays, selectedDayId]);
 
-  const selectedDay = timelineDays.find(day => day.id === selectedDayId) || timelineDays[0];
+  const selectedDay = activeTimelineDays.find(day => day.id === selectedDayId) || activeTimelineDays[0];
   const selectedItems = itemsByDay[selectedDay.id] || [];
-  const selectedDayIndex = Math.max(0, timelineDays.findIndex(day => day.id === selectedDay.id));
+  const selectedDayIndex = Math.max(0, activeTimelineDays.findIndex(day => day.id === selectedDay.id));
 
   const handleConfirm = (e, id, confirmed) => {
     e.stopPropagation();
@@ -551,7 +645,88 @@ function TimelineView() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
           >
-            {selectedItems.map((item, index) => (
+            
+            {apiError && <div className="timeline-hint error" style={{marginBottom:10, fontSize:12}}><p>未能连接到后端，展示离线数据。</p><small>{apiError}</small></div>}
+            
+            {selectedDay.events ? (
+              // Real data render
+              <div className="real-events-list">
+                {(() => {
+                  const groups = [];
+                  for (const ev of selectedDay.events) {
+                    const last = groups[groups.length - 1];
+                    if (last && ev.frame_asset_id && last.frameId === ev.frame_asset_id) last.events.push(ev);
+                    else groups.push({ frameId: ev.frame_asset_id, events: [ev] });
+                  }
+                  return groups;
+                })().map((group, index) => {
+                  const head = group.events[0];
+                  const multi = group.events.length > 1;
+                  const clockText = (iso) => {
+                    const t = new Date(iso);
+                    return Number.isNaN(t.getTime()) ? "" : t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+                  };
+                  const EVENT_LABEL = {
+                    OBJECT_OBSERVED_AT: "看到",
+                    OBJECT_MOVED: "移动",
+                    USER_CORRECTION: "你纠正过",
+                    PREFERENCE_STATED: "偏好",
+                    TASK_STATED: "待办",
+                    CONSUMABLE_LEVEL_OBSERVED: "余量",
+                  };
+                  const eventLabel = (type) => EVENT_LABEL[type] || type;
+                  const detailText = (payload = {}, location) => {
+                    const extras = Object.entries(payload)
+                      .filter(([k, v]) => !["location", "object_text", "field", "value", "reason"].includes(k) && v)
+                      .filter(([, v]) => typeof v !== "boolean")
+                      .map(([, v]) => (Array.isArray(v) ? v.join("、") : String(v)));
+                    return [location, ...extras].filter(Boolean).join(" · ");
+                  };
+
+                  return (
+                    <motion.div layout key={head.event_id} className="timeline-node" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.025, duration: 0.18 }}>
+                      <div className="node-time-badge"><span className="time-text">{clockText(head.event_time_from)}</span></div>
+                      <div className="node-bullet tone-green"></div>
+                      <div className={`dark-card tone-green ${head.entity_id ? "clickable" : ""} ${head.superseded ? "superseded" : ""}`} onClick={() => head.entity_id && setSelectedObject(head.entity_id)}>
+                        <div className="card-with-thumb">
+                          {head.frame_asset_id && (
+                            head.evidence_url ? (
+                              <PreviewImage className="event-thumb" src={evidenceUrl(head.frame_asset_id)} alt="来源画面" caption="来源画面" loading="lazy" />
+                            ) : <span className="event-thumb gone" title="原图已删" />
+                          )}
+                          <div className="card-with-thumb-body">
+                            <div className="card-top-row">
+                              <span className="card-title">{multi ? `这一眼看到 ${group.events.length} 件东西` : `${head.entity_name} · ${eventLabel(head.event_type)}`}</span>
+                            </div>
+                            {multi ? (
+                              <ul className="frame-objects">
+                                {group.events.map(ev => (
+                                  <li key={ev.event_id} className={ev.superseded ? "superseded" : ""} onClick={(e) => { e.stopPropagation(); if (ev.entity_id) setSelectedObject(ev.entity_id); }}>
+                                    <b>{ev.entity_name}</b><span>{detailText(ev.payload, ev.location) || "没有位置信息"}</span><em>{Math.round(ev.confidence * 100)}%</em>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <>
+                                <p className="card-detail">{detailText(head.payload, head.location) || "没有位置信息"}</p>
+                                <div className="card-badges">
+                                  {head.superseded && <span className="status-note">已被更新</span>}
+                                  {head.user_confirmed && <span className="status-note confirmed">你确认过</span>}
+                                  <span className="conf-note">置信度 {Math.round(head.confidence * 100)}%</span>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            ) : (
+              // Mock data render (Original)
+              selectedItems.map((item, index) => (
+
               <motion.div
                 layout
                 key={item.id}
@@ -601,7 +776,8 @@ function TimelineView() {
                   ) : null}
                 </article>
               </motion.div>
-            ))}
+            ))
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -622,7 +798,7 @@ function TimelineView() {
                 aria-label="滑动切换日期"
                 tabIndex={0}
               >
-                {timelineDays.map((day, index) => (
+                {activeTimelineDays.map((day, index) => (
                   <div
                     key={day.id}
                     className={`floating-scrubber-mark ${day.id === selectedDay.id ? "active" : ""}`}
@@ -677,13 +853,27 @@ function GalaxyView() {
 
 // Drawer: Object Micro Lifecycle (MYGRID style minimalist dark drawer)
 function ObjectDrawer({ objectName, onClose }) {
-  const data = mockObjectDetails[objectName] || {
-    name: objectName,
-    category: "现实物品",
-    currentLocation: "已知位置",
+  const [realData, setRealData] = useState(null);
+  const [apiError, setApiError] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    setRealData(null);
+    setApiError(null);
+    objectTimeline(objectName)
+      .then(d => { if (alive) setRealData(d); })
+      .catch(e => { if (alive) setApiError(String(e.message || e)); });
+    return () => { alive = false; };
+  }, [objectName]);
+
+  const useMock = apiError || (!realData?.events?.length && !realData?.projection);
+  const data = useMock ? mockObjectDetails[objectName] || { 
+    name: objectName, 
+    category: "现实物品", 
+    currentLocation: "已知位置", 
     lastUpdated: "刚才",
-    history: [{ time: "刚才", action: "状态确认", detail: "记录于当前上下文" }]
-  };
+    history: [{ time: "刚才", action: "状态确认", detail: "记录于当前上下文" }] 
+  } : realData;
 
   return (
     <div className="drawer-overlay" onClick={onClose}>
@@ -698,29 +888,75 @@ function ObjectDrawer({ objectName, onClose }) {
         </div>
 
         <div className="drawer-body">
-          <div className="status-card-box">
-            <MapPin size={16} color="var(--green)" />
-            <div>
-              <span className="label">当前记录位置</span>
-              <span className="val">{data.currentLocation}</span>
-            </div>
-          </div>
-
-          <div className="micro-timeline">
-            <h4>物品轨迹</h4>
-            {data.history.map((item, idx) => (
-              <div key={idx} className="timeline-item">
-                <div className="item-left">
-                  <span className="time">{item.time}</span>
-                  <div className="line-dot"></div>
-                </div>
-                <div className="item-right">
-                  <span className="action">{item.action}</span>
-                  <p className="detail">{item.detail}</p>
+          {apiError && <p className="timeline-hint error" style={{marginBottom:10, fontSize:12}}>后端连接失败，展示离线数据。{apiError}</p>}
+          
+          {!useMock ? (
+            <>
+              <div className="status-card-box">
+                <MapPin size={16} color="var(--green)" />
+                <div>
+                  <span className="label">{data?.projection?.location ? "最后一次看到" : "位置"}</span>
+                  <span className="val">{data?.projection?.location || "没有解析出位置"}</span>
                 </div>
               </div>
-            ))}
-          </div>
+              <div className="micro-timeline">
+                <h4>微观轨迹（{data?.events?.length || 0} 条事件）</h4>
+                {!(data?.events?.length) && <p className="detail">还没有事件。</p>}
+                {[...(data?.events || [])].reverse().map((ev) => {
+                  const EVENT_LABEL = { OBJECT_OBSERVED_AT: "看到", OBJECT_MOVED: "移动", USER_CORRECTION: "你纠正过", PREFERENCE_STATED: "偏好", TASK_STATED: "待办", CONSUMABLE_LEVEL_OBSERVED: "余量" };
+                  const clockText = (iso) => { const t = new Date(iso); return Number.isNaN(t.getTime()) ? "" : t.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }); };
+                  return (
+                    <div key={ev.event_id} className={`timeline-item ${ev.superseded_by ? "superseded" : ""}`}>
+                      <div className="item-left">
+                        <span className="time">{clockText(ev.event_time_from)}</span>
+                        <div className="line-dot"></div>
+                      </div>
+                      <div className="item-right">
+                        <div className="card-with-thumb">
+                          {ev.frame_asset_id && (
+                            ev.evidence_url ? (
+                              <PreviewImage className="event-thumb sm" src={evidenceUrl(ev.frame_asset_id)} alt="截图" />
+                            ) : <span className="event-thumb sm gone" />
+                          )}
+                          <div className="card-with-thumb-body">
+                            <span className="action">{EVENT_LABEL[ev.event_type] || ev.event_type}</span>
+                            <p className="detail">{ev.location || "没有记录位置"}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            // Mock render
+          <>
+            <div className="status-card-box">
+              <MapPin size={16} color="var(--green)" />
+              <div>
+                <span className="label">当前记录位置</span>
+                <span className="val">{data.currentLocation}</span>
+              </div>
+            </div>
+
+            <div className="micro-timeline">
+              <h4>物品轨迹</h4>
+              {data.history.map((item, idx) => (
+                <div key={idx} className="timeline-item">
+                  <div className="item-left">
+                    <span className="time">{item.time}</span>
+                    <div className="line-dot"></div>
+                  </div>
+                  <div className="item-right">
+                    <span className="action">{item.action}</span>
+                    <p className="detail">{item.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+                  )}
         </div>
       </div>
     </div>
@@ -862,6 +1098,8 @@ function App() {
   return (
     <Routes>
       <Route path="/icon-preview" element={<IconPreview />} />
+      <Route path="/xr-room" element={<XRRoomPreview />} />
+      <Route path="/pico" element={<PicoMode />} />
       <Route path="/live" element={<ConsolePage component={LiveView} />} />
       <Route path="/capture" element={<ConsolePage component={CaptureConsole} />} />
       <Route element={<AppShell />}>
