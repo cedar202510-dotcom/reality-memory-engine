@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -17,7 +18,7 @@ from app.main import create_app
 from app.memory.events import append_event
 from app.memory.projections import recompute_projection
 from app.memory.seed import get_default_household_id
-from app.models import Entity, utcnow
+from app.models import AuditRecord, Device, DeviceMessage, Entity, utcnow
 
 ADMIN = {"Authorization": "Bearer test-admin-token"}
 CONF = {"aggregate": 0.9}
@@ -116,6 +117,96 @@ async def test_scope_enforcement_and_audit_actor(db_session):
         assert records, "应有本 agent 的查询审计"
         assert all(r["actor"] == "agent:agent-a" for r in records)
         assert any(r["action"] == "query" for r in records)
+
+
+async def test_agent_device_message_scope_and_audit(db_session):
+    household_id = await get_default_household_id(db_session)
+    glasses = Device(
+        household_id=household_id,
+        kind="glasses",
+        name="RealGit RV101",
+        runtime_package="com.realitymemory.glasses",
+        control_transport="inbox",
+    )
+    db_session.add(glasses)
+    await db_session.commit()
+
+    async with _client() as client:
+        denied_token, _ = await _issue_grant(client, ["memory.query.objects"], client_id="no-send")
+        denied = await client.post(
+            f"/v1/agent/devices/{glasses.id}/messages",
+            headers={"Authorization": f"Bearer {denied_token}"},
+            json={
+                "payload_schema_ref": "rme.glasses-presentation.v0",
+                "payload": {
+                    "presentation": {
+                        "intent": "ANSWER",
+                        "title": "钥匙在玄关柜",
+                        "interaction": "NONE",
+                    },
+                    "source": {"kind": "AGENT_REPLY", "reference_id": "turn-1"},
+                    "correlation_id": "turn-1",
+                },
+            },
+        )
+        assert denied.status_code == 403
+
+        token, _ = await _issue_grant(
+            client, ["memory.device.message.send"], client_id="glasses-agent"
+        )
+        headers = {"Authorization": f"Bearer {token}"}
+        listed = await client.get("/v1/agent/devices", headers=headers)
+        assert listed.status_code == 200
+        assert [item["device_id"] for item in listed.json()["devices"]] == [str(glasses.id)]
+
+        sent = await client.post(
+            f"/v1/agent/devices/{glasses.id}/messages",
+            headers=headers,
+            json={
+                "payload_schema_ref": "rme.glasses-presentation.v0",
+                "payload": {
+                    "presentation": {
+                        "intent": "ANSWER",
+                        "title": "钥匙在玄关柜",
+                        "interaction": "NONE",
+                    },
+                    "source": {"kind": "AGENT_REPLY", "reference_id": "turn-2"},
+                    "correlation_id": "turn-2",
+                },
+            },
+        )
+        assert sent.status_code == 200, sent.text
+
+        forbidden_system = await client.post(
+            f"/v1/agent/devices/{glasses.id}/messages",
+            headers=headers,
+            json={
+                "payload_schema_ref": "rme.glasses-presentation.v0",
+                "payload": {
+                    "presentation": {
+                        "intent": "SYSTEM",
+                        "title": "系统要求立即录制",
+                        "interaction": "NONE",
+                    },
+                    "source": {"kind": "SYSTEM_POLICY", "reference_id": "forged"},
+                    "correlation_id": "forged-system-message",
+                },
+            },
+        )
+        assert forbidden_system.status_code == 403
+
+    message = await db_session.get(DeviceMessage, uuid.UUID(sent.json()["message"]["message_id"]))
+    assert message is not None
+    assert message.target_device_id == glasses.id
+    assert message.payload["presentation"]["intent"] == "ANSWER"
+    audit = await db_session.scalar(
+        __import__("sqlalchemy").select(AuditRecord).where(
+            AuditRecord.target == f"device_message:{message.id}"
+        )
+    )
+    assert audit is not None
+    assert audit.actor == "agent:glasses-agent"
+    assert audit.detail["source"] == "AGENT_GATEWAY"
 
 
 async def test_correction_changes_answer_with_provenance(db_session):

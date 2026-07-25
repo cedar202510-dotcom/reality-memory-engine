@@ -5,15 +5,15 @@
 电脑端后端和配套脚本必须使用以下分支：
 
 ```text
-codex/glasses-backend-integration
+codex/full-stack-integration
 ```
 
 在测试电脑上执行：
 
 ```bash
 git fetch origin
-git switch codex/glasses-backend-integration
-git pull --ff-only origin codex/glasses-backend-integration
+git switch codex/full-stack-integration
+git pull --ff-only origin codex/full-stack-integration
 ```
 
 后续命令都在该分支的仓库根目录执行。不要从 `main` 或其他分支启动本轮联调后端。
@@ -67,12 +67,11 @@ curl http://127.0.0.1:8765/healthz
 adb devices -l
 adb reverse tcp:8765 tcp:8765
 adb reverse --list
-adb install -r reality-memory-glasses-debug.apk
-adb shell am force-stop com.realitymemory.glasses
-adb shell monkey -p com.realitymemory.glasses 1
+./scripts/install-on-rv101.sh ./reality-memory-glasses-debug.apk
 ```
 
-也可以直接运行测试包中的安装脚本，它会自动建立 `8765` 端口映射。
+安装脚本会保留原有 App 数据、建立 `8765` 端口映射，并为 Debug 联调开启短时纯黑
+独立提醒显示层权限。正式发布不能依赖 ADB 授权，需要用户授权流程或 Rokid 系统白名单。
 
 ## 4. 测试内容
 

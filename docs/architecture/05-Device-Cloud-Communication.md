@@ -4,7 +4,7 @@
 > 更新日期：2026-07-24  
 > 负责范围：设备绑定、上行证据、下行消息、投递回执和手机兼容中继  
 > 当前状态：上行对象与流程可实施；云端沉淀规则、下行提醒业务字段和实时通道待 review  
-> 数据对象依据：[多模态数据契约 v1.0](../engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md)
+> 数据对象依据：[多模态数据契约 v1.0](../engineering/RealGit-Multimodal-Data-Contract-v1.0.md)
 
 ## 1. 结论
 

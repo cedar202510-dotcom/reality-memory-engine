@@ -1,4 +1,4 @@
-# Reality Memory for Glasses
+# RealGit for Glasses
 
 这是运行在 Rokid Glasses RV101 本机上的正式 Android App 工程。它与
 `apps/rokid-glass-probe/` 的关系是：
@@ -7,7 +7,7 @@
 - `reality-memory-glasses`：面向真实产品演进，负责端侧感知、用户交互、提醒呈现
   和短期证据交付。
 
-它不是只面向研发的数据采集器。对用户而言，它首先是 Reality Memory 在眼镜上的
+它不是只面向研发的数据采集器。对用户而言，它首先是 RealGit 在眼镜上的
 体验入口：明确告知何时开始、允许取消本次感知、支持用户主动“记一下”，并能显示
 或播报后端 Agent 产生的提醒。当前阶段优先实现可靠采集，AI 判断和事实沉淀仍在
 云端完成。当前“测试提醒”只验证本地文字和 TTS 呈现，真实云端下行通道与提醒
@@ -168,5 +168,5 @@ adb exec-out run-as com.realitymemory.glasses \
 - [RV101 眼镜与电脑后端联调](docs/RV101-LOCAL-BACKEND-LINK-v0.1.md)
 - [数据采集架构](../../docs/architecture/01-Data-Capture-Architecture.md)
 - [设备与云端通信](../../docs/architecture/05-Device-Cloud-Communication.md)
-- [多模态数据契约 v1.0](../../docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md)
+- [多模态数据契约 v1.0](../../docs/engineering/RealGit-Multimodal-Data-Contract-v1.0.md)
 - [机器 Schema](../../contracts/reality-memory/v1/README.md)

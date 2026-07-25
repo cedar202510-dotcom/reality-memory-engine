@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     # --- 主动式 ---
     proactive_llm_wording: bool = False     # False = 确定性模板措辞（可测试）；True = LLM 润色
 
+    # --- 眼镜结果投递 ---
+    # 默认关闭，避免 Web/手机端对话在没有明确路由时突然打断眼镜用户。请求体显式传
+    # delivery 时不受此开关影响；本地整链联调可打开并配置默认眼镜。
+    glasses_auto_delivery_enabled: bool = False
+    glasses_default_device_id: str = ""
+    glasses_default_allow_tts: bool = False
+    glasses_answer_ttl_seconds: int = 90
+    glasses_reminder_ttl_seconds: int = 300
+
 
 @lru_cache
 def get_settings() -> Settings:

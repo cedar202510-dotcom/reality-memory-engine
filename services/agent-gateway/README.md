@@ -17,12 +17,15 @@
 | `app/memory_client.py` | 平台 HTTP 客户端;401/403/不可用 → 结构化 error 返回给模型转达,不重试不绕过 |
 | `app/llm.py` | 对话 LLM(OpenAI tools 协议;`fake` provider 用于测试) |
 | `app/proactive.py` | 信号 → 提醒措辞(默认确定性模板;`PROACTIVE_LLM_WORDING=true` 时 LLM 润色);只建议,不执行 |
+| `app/glasses_delivery.py` | Agent 回答/主动建议 → 受约束的眼镜呈现契约；选择目标设备并调用平台消息接口 |
 | `app/sessions.py` | 内存会话 + TTL |
 
 ## API
 
-- `POST /v1/chat` — `{message, session_id?}` → `{session_id, reply, tool_trace}`
-- `POST /v1/proactive/check` — 拉取平台待投递信号 → `{suggestions[], suppressed}`
+- `POST /v1/chat` — `{message, session_id?, delivery?}` →
+  `{session_id, reply, tool_trace, delivery?}`
+- `POST /v1/proactive/check` — 拉取平台待投递信号，可选自动发到眼镜 →
+  `{suggestions[], suppressed, deliveries[]}`
 - `POST /v1/signals/{id}/ack` — 用户确认提醒后回执(gateway 不代替用户 ack)
 - `GET /healthz`
 
@@ -35,7 +38,7 @@ curl -X POST localhost:8000/v1/agent/grants \
   -d '{"agent_client_id": "proactive-agent-demo",
        "scopes": ["memory.query.objects", "memory.query.preferences",
                   "memory.timeline.read", "memory.correction.submit",
-                  "memory.signal.subscribe"],
+                  "memory.signal.subscribe", "memory.device.message.send"],
        "purpose": "PERSONAL_ASSISTANCE"}'
 # 响应里的 token 只出现一次
 
@@ -49,9 +52,36 @@ LLM_PROVIDER=kimi-coding LLM_API_KEY=... LLM_MODEL=k3 \
 
 # 3. 对话
 curl -X POST localhost:8200/v1/chat -d '{"message": "我的钥匙在哪?"}'
+
+# 4. Agent 回答自动进入指定眼镜的后端 inbox
+curl -X POST localhost:8200/v1/chat \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "message": "我的钥匙在哪？",
+    "delivery": {
+      "device_id": "<后端登记的 RV101 device_id>",
+      "allow_tts": false
+    }
+  }'
 ```
 
 `LLM_PROVIDER=fake` 时无需任何 API key(工具循环由测试脚本驱动,见 `tests/`)。
+
+`delivery` 不是第二次人工下发：它只指定本次回答应该回到哪台眼镜。Agent Gateway
+完成回答后会立即生成 `rme.glasses-presentation.v0`，调用受
+`memory.device.message.send` scope 保护的平台接口。响应中的 `delivery.status=QUEUED`
+表示消息已经进入 `device_messages`；当前 RV101 每约 3 秒轮询一次 inbox。
+
+本地单眼镜联调也可以设置：
+
+```bash
+GLASSES_AUTO_DELIVERY_ENABLED=true
+GLASSES_DEFAULT_DEVICE_ID=<RV101 device_id>
+GLASSES_DEFAULT_ALLOW_TTS=false
+```
+
+开启后，请求不传 `delivery` 也会自动投到默认眼镜。正式多终端产品应根据本次交互的
+来源显式传目标设备，不能在多副眼镜之间猜测。
 
 ## 测试
 

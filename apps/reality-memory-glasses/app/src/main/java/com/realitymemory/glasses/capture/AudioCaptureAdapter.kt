@@ -1,7 +1,9 @@
 package com.realitymemory.glasses.capture
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Handler
@@ -16,11 +18,18 @@ import java.io.FileOutputStream
 import java.time.Instant
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
+import kotlin.math.log10
+import kotlin.math.sqrt
 
-class AudioCaptureAdapter(private val repository: EvidenceRepository) {
+class AudioCaptureAdapter(
+    context: Context,
+    private val repository: EvidenceRepository,
+) {
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val recording = AtomicBoolean(false)
+    private val audioManager = context.getSystemService(AudioManager::class.java)
 
     @SuppressLint("MissingPermission")
     fun capture(
@@ -56,12 +65,37 @@ class AudioCaptureAdapter(private val repository: EvidenceRepository) {
                 val buffer = ByteArray(configuration.bufferSize)
                 val deadline = System.nanoTime() + requestedDurationMs * 1_000_000L
                 var bytesWritten = 0L
+                var sampleCount = 0L
+                var sumSquares = 0.0
+                var peakAmplitude = 0
+                var systemSilenced: Boolean? = null
                 FileOutputStream(file).use { output ->
                     while (System.nanoTime() < deadline && recording.get()) {
                         val read = recorder.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
                         if (read > 0) {
+                            val currentSilenced = detectSystemSilenced(recorder)
+                            systemSilenced = when {
+                                currentSilenced == true -> true
+                                systemSilenced == null -> currentSilenced
+                                else -> systemSilenced
+                            }
                             output.write(buffer, 0, read)
                             bytesWritten += read
+                            var offset = 0
+                            while (offset + 1 < read) {
+                                val raw = (buffer[offset].toInt() and 0xff) or
+                                    (buffer[offset + 1].toInt() shl 8)
+                                val sample = raw.toShort().toInt()
+                                val amplitude = if (sample == Short.MIN_VALUE.toInt()) {
+                                    Short.MAX_VALUE.toInt()
+                                } else {
+                                    abs(sample)
+                                }
+                                peakAmplitude = maxOf(peakAmplitude, amplitude)
+                                sumSquares += sample.toDouble() * sample.toDouble()
+                                sampleCount += 1
+                                offset += BYTES_PER_SAMPLE
+                            }
                         } else if (read < 0) {
                             error("AudioRecord read failed: $read")
                         }
@@ -73,7 +107,22 @@ class AudioCaptureAdapter(private val repository: EvidenceRepository) {
                 } else {
                     requestedDurationMs
                 }
+                val rmsAmplitude = if (sampleCount > 0) sqrt(sumSquares / sampleCount) else 0.0
+                val peakDbfs = amplitudeToDbfs(peakAmplitude.toDouble())
+                val rmsDbfs = amplitudeToDbfs(rmsAmplitude)
+                val finalSystemSilenced = detectSystemSilenced(recorder)
+                if (finalSystemSilenced == true) systemSilenced = true
+                val likelySilent = peakDbfs < SILENCE_PEAK_DBFS
                 val capturedMonotonicEndNs = SystemClock.elapsedRealtimeNanos()
+                if (systemSilenced == true) {
+                    repository.appendRuntimeAudit(
+                        "AUDIO_CAPTURE_SYSTEM_SILENCED",
+                        JSONObject()
+                            .put("audio_session_id", recorder.audioSessionId)
+                            .put("peak_dbfs", peakDbfs)
+                            .put("rms_dbfs", rmsDbfs),
+                    )
+                }
                 val evidenceId = repository.finalizeEvidence(
                     window = window,
                     modality = CaptureModality.AUDIO,
@@ -89,7 +138,21 @@ class AudioCaptureAdapter(private val repository: EvidenceRepository) {
                         .put("channel_mask", configuration.channelMaskLabel)
                         .put("channel_layout", configuration.channelLayout)
                         .put("audio_source", "MIC")
-                        .put("capture_mode", configuration.captureMode),
+                        .put("capture_mode", configuration.captureMode)
+                        .put(
+                            "signal_quality",
+                            JSONObject()
+                                .put("peak_amplitude_pcm16", peakAmplitude)
+                                .put("rms_amplitude_pcm16", rmsAmplitude)
+                                .put("peak_dbfs", peakDbfs)
+                                .put("rms_dbfs", rmsDbfs)
+                                .put("sample_count", sampleCount)
+                                .put("likely_silent", likelySilent)
+                                .put(
+                                    "system_silenced",
+                                    systemSilenced ?: JSONObject.NULL,
+                                ),
+                        ),
                     monotonicStartNs = capturedMonotonicStartNs,
                     monotonicEndNs = capturedMonotonicEndNs,
                 )
@@ -133,8 +196,10 @@ class AudioCaptureAdapter(private val repository: EvidenceRepository) {
     }
 
     private fun buildRecorder(): AudioConfiguration {
-        return runCatching { buildEightChannelRecorder() }
-            .getOrElse { buildMonoRecorder() }
+        // Android AudioRecord only guarantees standard mono/stereo input on RV101.
+        // The vendor eight-channel mask can initialize while returning near-zero samples,
+        // so semantic capture uses mono until Rokid exposes a verified array interface.
+        return buildMonoRecorder()
     }
 
     @SuppressLint("MissingPermission")
@@ -197,7 +262,7 @@ class AudioCaptureAdapter(private val repository: EvidenceRepository) {
             channelCount = recorder.channelCount,
             channelMaskLabel = "CHANNEL_IN_MONO",
             channelLayout = JSONArray(listOf("MONO")),
-            captureMode = "ANDROID_MONO_FALLBACK",
+            captureMode = "ANDROID_MONO_PRIMARY",
         )
     }
 
@@ -206,6 +271,18 @@ class AudioCaptureAdapter(private val repository: EvidenceRepository) {
     }
 
     private fun elapsedMs(startedNs: Long) = (System.nanoTime() - startedNs) / 1_000_000L
+
+    private fun amplitudeToDbfs(amplitude: Double): Double {
+        if (amplitude <= 0.0) return MIN_DBFS
+        return maxOf(MIN_DBFS, 20.0 * log10(amplitude / PCM_FULL_SCALE))
+    }
+
+    private fun detectSystemSilenced(recorder: AudioRecord): Boolean? =
+        runCatching {
+            audioManager?.activeRecordingConfigurations
+                ?.firstOrNull { it.clientAudioSessionId == recorder.audioSessionId }
+                ?.isClientSilenced
+        }.getOrNull()
 
     private data class AudioConfiguration(
         val recorder: AudioRecord,
@@ -220,5 +297,8 @@ class AudioCaptureAdapter(private val repository: EvidenceRepository) {
         private const val SAMPLE_RATE = 16_000
         private const val BYTES_PER_SAMPLE = 2
         private const val ROKID_EIGHT_CHANNEL_MASK = 0x6000FC
+        private const val PCM_FULL_SCALE = 32_768.0
+        private const val MIN_DBFS = -120.0
+        private const val SILENCE_PEAK_DBFS = -50.0
     }
 }

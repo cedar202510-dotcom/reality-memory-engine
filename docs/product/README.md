@@ -2,7 +2,7 @@
 
 ## 当前母版
 
-- [Reality Memory Engine PRD v1.3](Reality-Memory-Engine-PRD-v1.3.md)
+- [RealGit PRD v1.3](RealGit-PRD-v1.3.md)
 
 该 PRD 只负责产品定位、用户价值、设备角色、隐私原则、主动服务边界和阶段目标。
 采集实现、云端沉淀和 Agent 接口不再塞入产品母版，分别由 `docs/architecture/`

@@ -89,6 +89,12 @@ class HeartRateBroadcastCollector(
         @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             if (!active || !hasBlePermissions()) return
+            if (status != BluetoothGatt.GATT_SUCCESS) {
+                onStatus("心率服务发现失败：$status")
+                closeGatt()
+                scheduleRescan()
+                return
+            }
             val service = gatt.getService(HEART_RATE_SERVICE_UUID)
             val characteristic = service?.getCharacteristic(HEART_RATE_MEASUREMENT_UUID)
             if (characteristic == null) {
@@ -168,7 +174,7 @@ class HeartRateBroadcastCollector(
         }
         scanner = adapter.bluetoothLeScanner
         if (scanner == null) {
-            onStatus("无法获取 BLE scanner")
+            onStatus("无法获取 BLE 扫描器")
             return
         }
         active = true
@@ -241,17 +247,6 @@ class HeartRateBroadcastCollector(
                     PackageManager.PERMISSION_GRANTED
                 )
 
-    private fun parseHeartRateMeasurement(value: ByteArray): Int? {
-        if (value.size < 2) return null
-        val flags = value[0].toInt()
-        return if (flags and HEART_RATE_VALUE_UINT16_FLAG == 0) {
-            value[1].toInt() and 0xff
-        } else {
-            if (value.size < 3) return null
-            (value[1].toInt() and 0xff) or ((value[2].toInt() and 0xff) shl 8)
-        }
-    }
-
     private fun ByteArray.toHex(): String =
         joinToString("") { String.format(Locale.US, "%02x", it.toInt() and 0xff) }
 
@@ -263,7 +258,19 @@ class HeartRateBroadcastCollector(
         private val CLIENT_CHARACTERISTIC_CONFIG_UUID =
             UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
 
-        private const val HEART_RATE_VALUE_UINT16_FLAG = 0x01
         private const val RESCAN_DELAY_MS = 2_000L
     }
 }
+
+internal fun parseHeartRateMeasurement(value: ByteArray): Int? {
+    if (value.size < 2) return null
+    val flags = value[0].toInt()
+    return if (flags and HEART_RATE_VALUE_UINT16_FLAG == 0) {
+        value[1].toInt() and 0xff
+    } else {
+        if (value.size < 3) return null
+        (value[1].toInt() and 0xff) or ((value[2].toInt() and 0xff) shl 8)
+    }
+}
+
+private const val HEART_RATE_VALUE_UINT16_FLAG = 0x01

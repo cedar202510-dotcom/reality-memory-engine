@@ -1,6 +1,6 @@
 # Agent Memory 平台与开源方案竞争格局调研（截至 2026 年中）
 
-> 调研目的：评估 Reality Memory Engine（ontology + 事件溯源 + 候选门 + 五段时间模型 + 删除回执）推广为通用 agent memory 方案的差异化空间。
+> 调研目的：评估 RealGit（ontology + 事件溯源 + 候选门 + 五段时间模型 + 删除回执）推广为通用 agent memory 方案的差异化空间。
 
 ---
 
@@ -99,7 +99,7 @@
 5. **记忆污染/投毒**：MemGuard、PersistBench 等 2026 论文专门立项，说明已是现实威胁。
 6. **可审计性倒退**：Dreaming V3 用合成换新鲜度、主动放弃逐条审计——大平台在往反方向走，留下治理型记忆的市场空位。
 
-### Reality Memory Engine 的差异化判定
+### RealGit 的差异化判定
 
 | 设计要素 | 场上最接近的等价物 | 判定 |
 |---|---|---|

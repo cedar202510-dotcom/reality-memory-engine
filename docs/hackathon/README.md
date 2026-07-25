@@ -3,7 +3,7 @@
 这里放参赛相关的赛道选择、演示编排和现场预案。
 
 **这一层不是产品或工程口径。** 产品定位以
-[产品 PRD v1.3](../product/Reality-Memory-Engine-PRD-v1.3.md) 为母版，
+[产品 PRD v1.3](../product/RealGit-PRD-v1.3.md) 为母版，
 系统边界以 [分层技术架构](../architecture/README.md) 为准。
 本目录中提到的任何功能增量，未进入上述两处之前都不构成实现依据。
 

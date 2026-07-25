@@ -18,6 +18,7 @@ from .capture_control import router as capture_control_router
 from .config import get_settings
 from .db import SessionLocal, ensure_extensions
 from .downlink import DeviceHub
+from .downlink import agent_router as agent_downlink_router
 from .downlink import router as downlink_router
 from .gateway import router as gateway_router
 from .llm import build_llm_client
@@ -91,6 +92,7 @@ def create_app(
     app.include_router(grants_router)
     app.include_router(signals_router)
     app.include_router(downlink_router)
+    app.include_router(agent_downlink_router)
     app.include_router(capture_control_router)
 
     @app.get("/healthz")

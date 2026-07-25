@@ -1,6 +1,6 @@
-# Reality Memory Engine 多模态测试数据包
+# RealGit 多模态测试数据包
 
-这个目录保存 Reality Memory Engine 早期真机采集样本，用于后续验证图片、短音频、戒指事件、时间对齐、解析器和记忆沉淀流程。
+这个目录保存 RealGit 早期真机采集样本，用于后续验证图片、短音频、戒指事件、时间对齐、解析器和记忆沉淀流程。
 
 当前数据集：
 
@@ -52,7 +52,7 @@ multimodal-test-data/
 `sessions/.../session.json` 和 `evidence/*` 是从手机 App 沙盒拉出的原始数据。`derived/wav/*` 是为了人工试听额外生成的 WAV 包装文件，不是手机端原始证据格式。
 
 第二个数据集中的 `raw/` 同样不改写原始导出，`normalized/` 是按
-[`Reality-Memory-Multimodal-Data-Contract-v1.0.md`](../docs/engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md)
+[`RealGit-Multimodal-Data-Contract-v1.0.md`](../docs/engineering/RealGit-Multimodal-Data-Contract-v1.0.md)
 生成的兼容输入。历史数据没有记录手机单调时钟，因此对应字段明确为 `null`，不能用
 上传时间补造。
 

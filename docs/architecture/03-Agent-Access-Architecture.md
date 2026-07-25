@@ -28,7 +28,7 @@ agent-gateway harness（有界 tool-use 循环 + 主动式措辞）。
 
 ## 1. 目标
 
-Reality Memory Engine 是独立的云端记忆平台。手机 App、眼镜 Agent、主动式
+RealGit 是独立的云端记忆平台。手机 App、眼镜 Agent、主动式
 Agent 和未来合作方都是它的客户端，不是记忆本体本身。
 
 数据调用层负责：

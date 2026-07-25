@@ -11,6 +11,7 @@ import MediaLibrary from "./MediaLibrary";
 import PreferencePanel from "./PreferencePanel";
 import PresenceOrb from "./PresenceOrb";
 import MyPage from "./MyPage";
+import PicoMode from "./PicoMode";
 import { LightboxProvider, PreviewImage } from "./ImageLightbox";
 import { whereIs, recentEvents, objectTimeline, listClues, resolveClue, evidenceUrl, apiUrl, transcribe } from "./api";
 
@@ -1005,6 +1006,7 @@ function App() {
         <Route path="/live" element={<ConsolePage component={LiveView} />} />
         <Route path="/capture" element={<ConsolePage component={CaptureConsole} />} />
         <Route path="/media" element={<ConsolePage component={MediaLibrary} />} />
+        <Route path="/pico" element={<PicoMode />} />
         <Route element={<AppShell />}>
           <Route path="/agent" element={<AgentHome />} />
           <Route path="/timeline" element={<TimelineView />} />

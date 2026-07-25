@@ -1,0 +1,140 @@
+{
+  "license": "CC0 via Poly Haven",
+  "assets": [
+    {
+      "id": "binder_notebook",
+      "title": "Binder Notebook",
+      "source": "https://polyhaven.com/a/binder_notebook",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/binder_notebook/binder_notebook_1k.gltf",
+      "bytes": 1889775
+    },
+    {
+      "id": "brass_goblets",
+      "title": "Brass Goblets",
+      "source": "https://polyhaven.com/a/brass_goblets",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/brass_goblets/brass_goblets_1k.gltf",
+      "bytes": 4776478
+    },
+    {
+      "id": "ceramic_vase_04",
+      "title": "Ceramic Vase 04",
+      "source": "https://polyhaven.com/a/ceramic_vase_04",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/ceramic_vase_04/ceramic_vase_04_1k.gltf",
+      "bytes": 596053
+    },
+    {
+      "id": "CheeseBox_01",
+      "title": "CheeseBox_01",
+      "source": "https://polyhaven.com/a/CheeseBox_01",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/CheeseBox_01/CheeseBox_01_1k.gltf",
+      "bytes": 493852
+    },
+    {
+      "id": "ClassicNightstand_01",
+      "title": "Classic Nightstand 01",
+      "source": "https://polyhaven.com/a/ClassicNightstand_01",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/ClassicNightstand_01/ClassicNightstand_01_1k.gltf",
+      "bytes": 444940
+    },
+    {
+      "id": "digital_wrist_watch",
+      "title": "Digital Wrist Watch",
+      "source": "https://polyhaven.com/a/digital_wrist_watch",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/digital_wrist_watch/digital_wrist_watch_1k.gltf",
+      "bytes": 2163708
+    },
+    {
+      "id": "postcard_set_01",
+      "title": "Postcard Set 01",
+      "source": "https://polyhaven.com/a/postcard_set_01",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/postcard_set_01/postcard_set_01_1k.gltf",
+      "bytes": 520503
+    },
+    {
+      "id": "relax_inn_seaview_suite",
+      "title": "Relax Inn Seaview Suite",
+      "source": "https://polyhaven.com/a/relax_inn_seaview_suite",
+      "license": "CC0",
+      "type": "image/hdr",
+      "entry": "/assets/xr-room/polyhaven/_hdris/relax_inn_seaview_suite_2k.hdr",
+      "bytes": 6469115
+    },
+    {
+      "id": "SchoolDesk_01",
+      "title": "School Desk 01",
+      "source": "https://polyhaven.com/a/SchoolDesk_01",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/SchoolDesk_01/SchoolDesk_01_1k.gltf",
+      "bytes": 421623
+    },
+    {
+      "id": "Shelf_01",
+      "title": "Shelf 01",
+      "source": "https://polyhaven.com/a/Shelf_01",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/Shelf_01/Shelf_01_1k.gltf",
+      "bytes": 605448
+    },
+    {
+      "id": "Sofa_01",
+      "title": "Sofa 01",
+      "source": "https://polyhaven.com/a/Sofa_01",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/Sofa_01/Sofa_01_1k.gltf",
+      "bytes": 517935
+    },
+    {
+      "id": "standing_picture_frame_01",
+      "title": "Standing Picture Frame 01",
+      "source": "https://polyhaven.com/a/standing_picture_frame_01",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/standing_picture_frame_01/standing_picture_frame_01_1k.gltf",
+      "bytes": 447425
+    },
+    {
+      "id": "tea_set_01",
+      "title": "Tea Set 01",
+      "source": "https://polyhaven.com/a/tea_set_01",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/tea_set_01/tea_set_01_1k.gltf",
+      "bytes": 2282591
+    },
+    {
+      "id": "Television_01",
+      "title": "Television 01",
+      "source": "https://polyhaven.com/a/Television_01",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/Television_01/Television_01_1k.gltf",
+      "bytes": 531294
+    },
+    {
+      "id": "WoodenTable_01",
+      "title": "Wooden Table 01",
+      "source": "https://polyhaven.com/a/WoodenTable_01",
+      "license": "CC0",
+      "type": "model/gltf",
+      "entry": "/assets/xr-room/polyhaven/WoodenTable_01/WoodenTable_01_1k.gltf",
+      "bytes": 554348
+    }
+  ]
+}

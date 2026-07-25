@@ -1,6 +1,6 @@
-# Reality Memory iOS App
+# RealGit iOS App
 
-统一的 Reality Memory 手机 App。当前 iOS 版本通过 CXR-L iOS SDK 1.0.4 接入 Rokid Glasses，并通过 CoreBluetooth 接入 Ring Sound 戒指，用来验证图片、短音频/VAD、戒指六轴传感器、跨设备触发、采集 Session 和本地证据清单；它不是眼镜专用 App，也不与音频、图片等模态拆成多个用户 App。
+统一的 RealGit 手机 App。当前 iOS 版本通过 CXR-L iOS SDK 1.0.4 接入 Rokid Glasses，并通过 CoreBluetooth 接入 Ring Sound 戒指，用来验证图片、短音频/VAD、戒指六轴传感器、跨设备触发、采集 Session 和本地证据清单；它不是眼镜专用 App，也不与音频、图片等模态拆成多个用户 App。
 
 验证顺序：
 
