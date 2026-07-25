@@ -3,7 +3,7 @@ set -euo pipefail
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 repo_root="$(cd "$project_dir/../.." && pwd)"
-version="${1:-0.1.6-debug}"
+version="${1:-0.1.7-debug}"
 apk_path="${2:-$project_dir/app/build/outputs/apk/debug/app-debug.apk}"
 bundle_root="$project_dir/release-bundles"
 bundle_name="reality-memory-glasses-$version"

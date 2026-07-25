@@ -306,7 +306,11 @@ async def device_receipt_endpoint(
         actor=f"device:{device_id}",
         action="device_message_receipt",
         target=f"device_message:{msg.id}",
-        detail={"status": receipt.status, "duplicate": duplicate},
+        detail={
+            "status": receipt.status,
+            "duplicate": duplicate,
+            "receipt_detail": receipt.detail,
+        },
     )
     await session.commit()
     return DeliveryReceiptOut(

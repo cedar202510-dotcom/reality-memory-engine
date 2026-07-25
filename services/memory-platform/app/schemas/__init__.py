@@ -815,8 +815,8 @@ class ClueResolveResponse(BaseModel):
 # ---------------------------------------------------------------- 下行：设备消息与回执
 #
 # 注意：这里只冻结通用信封字段（通信架构 §5.2 `rme.device-message.v0`）。
-# payload 内的提醒主题、理由、按钮、措辞和交互动作仍待产品与 Agent 专项 review，
-# 不要把 REMINDER_SIGNAL 的 payload 当成已冻结的 v1 业务契约。
+# payload 内的眼镜呈现已由 `rme.glasses-presentation.v0` 约束；其它 REMINDER_SIGNAL
+# 草稿载荷仍不能当成已冻结的 v1 业务契约。
 
 DEVICE_MESSAGE_SCHEMA_REF = "rme.device-message.v0"
 GLASSES_PRESENTATION_SCHEMA_REF = "rme.glasses-presentation.v0"
@@ -856,6 +856,20 @@ class DeliveryPolicy(BaseModel):
     allow_tts: bool = False
 
 
+class GlassesPresentationInteraction(BaseModel):
+    """用户可执行的单一主动作；显示文案和图标由眼镜本地映射。"""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    type: Literal[
+        "DISMISS",
+        "ACKNOWLEDGE",
+        "COMPLETE_TASK",
+        "ADD_TO_SHOPPING_LIST",
+    ]
+    action_id: str = Field(min_length=1, max_length=128)
+
+
 class GlassesPresentationContent(BaseModel):
     """眼镜本地固定组件需要的最小语义，不允许后端下发自由样式。"""
 
@@ -872,7 +886,7 @@ class GlassesPresentationContent(BaseModel):
     title: str = Field(min_length=1, max_length=42)
     body: str | None = Field(default=None, max_length=80)
     speech_text: str | None = Field(default=None, max_length=100)
-    interaction: Literal["NONE", "DISMISS", "ACKNOWLEDGE"]
+    interaction: Literal["NONE"] | GlassesPresentationInteraction
 
 
 class GlassesPresentationSource(BaseModel):
@@ -907,6 +921,21 @@ class GlassesPresentationPayload(BaseModel):
         source = self.source.kind
         if source not in allowed_sources[intent]:
             raise ValueError(f"{source} 不能生成 {intent} 眼镜消息")
+
+        interaction = self.presentation.interaction
+        interaction_type = (
+            interaction if isinstance(interaction, str) else interaction.type
+        )
+        allowed_interactions = {
+            "ANSWER": {"NONE"},
+            "REMINDER": {"NONE", "ACKNOWLEDGE"},
+            "TASK": {"NONE", "COMPLETE_TASK"},
+            "CONSUMABLE": {"NONE", "ADD_TO_SHOPPING_LIST"},
+            "PRIVACY": {"NONE", "DISMISS", "ACKNOWLEDGE"},
+            "SYSTEM": {"NONE", "DISMISS", "ACKNOWLEDGE"},
+        }
+        if interaction_type not in allowed_interactions[intent]:
+            raise ValueError(f"{intent} 不允许使用 {interaction_type} 用户动作")
         return self
 
 

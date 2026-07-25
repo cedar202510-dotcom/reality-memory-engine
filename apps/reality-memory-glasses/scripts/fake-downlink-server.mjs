@@ -10,22 +10,31 @@ const fixtures = {
   ANSWER: {
     title: "钥匙上次在客厅茶几右侧",
     body: "这是最近一次确认的位置",
-    interaction: "ACKNOWLEDGE",
+    interaction: "NONE",
   },
   REMINDER: {
     title: "出门前记得带上资料",
     body: "十点的会议快开始了",
-    interaction: "ACKNOWLEDGE",
+    interaction: {
+      type: "ACKNOWLEDGE",
+      action_id: "fake-reminder-acknowledge",
+    },
   },
   TASK: {
     title: "记得把资料给小王",
     body: "你已经到公司了",
-    interaction: "ACKNOWLEDGE",
+    interaction: {
+      type: "COMPLETE_TASK",
+      action_id: "fake-task-complete",
+    },
   },
   CONSUMABLE: {
     title: "洗衣液大约只够这次",
-    body: "需要时可以加入采购清单",
-    interaction: "NONE",
+    body: "采购提醒",
+    interaction: {
+      type: "ADD_TO_SHOPPING_LIST",
+      action_id: "fake-shopping-list-add",
+    },
   },
 };
 
@@ -132,8 +141,12 @@ const server = createServer(async (request, response) => {
         return;
       }
       receipts.push(receipt);
+      const action =
+        receipt.detail?.user_action === true
+          ? ` action=${receipt.detail.interaction || "UNKNOWN"} action_id=${receipt.detail.action_id || ""}`
+          : "";
       console.log(
-        `[眼镜回执] ${receipt.status || "UNKNOWN"} message_id=${receipt.message_id || ""}`,
+        `[眼镜回执] ${receipt.status || "UNKNOWN"} message_id=${receipt.message_id || ""}${action}`,
       );
       if (["DISMISSED", "EXPIRED", "FAILED"].includes(receipt.status)) {
         terminal = true;

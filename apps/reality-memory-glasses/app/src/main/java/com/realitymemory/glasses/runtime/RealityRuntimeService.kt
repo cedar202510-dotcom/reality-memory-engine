@@ -22,6 +22,7 @@ import com.realitymemory.glasses.capture.CameraCaptureAdapter
 import com.realitymemory.glasses.downlink.DeviceDownlinkClient
 import com.realitymemory.glasses.downlink.DownlinkPresentation
 import com.realitymemory.glasses.downlink.PresentationIntent
+import com.realitymemory.glasses.downlink.PresentationInteraction
 import com.realitymemory.glasses.evidence.DebugBackendUploader
 import com.realitymemory.glasses.evidence.EvidenceRepository
 import com.realitymemory.glasses.interaction.GlassesOverlayPresenter
@@ -53,14 +54,13 @@ class RealityRuntimeService : LifecycleService() {
     private val wearStateReceiver: BroadcastReceiver = WearStateReceiver()
     private val presentationInputReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            val presentation = activePresentation
             if (
                 intent?.action == ACTION_SPRITE_BUTTON_CLICK &&
-                activePresentation != null
+                presentation != null &&
+                presentation.interaction != PresentationInteraction.NONE
             ) {
-                dismissPresentation(
-                    activePresentation?.messageId.orEmpty(),
-                    "SINGLE_CLICK",
-                )
+                performPresentationPrimaryAction(presentation.messageId)
                 if (isOrderedBroadcast) abortBroadcast()
             }
         }
@@ -196,7 +196,7 @@ class RealityRuntimeService : LifecycleService() {
             }
             ACTION_DISMISS_PRESENTATION -> {
                 val messageId = intent.getStringExtra(EXTRA_MESSAGE_ID).orEmpty()
-                dismissPresentation(messageId, "SINGLE_CLICK")
+                performPresentationPrimaryAction(messageId)
             }
             ACTION_START_HEART_RATE_BROADCAST_POC -> startHeartRateBroadcastPoc()
             ACTION_STOP_HEART_RATE_BROADCAST_POC -> stopHeartRateBroadcastPoc()
@@ -448,19 +448,29 @@ class RealityRuntimeService : LifecycleService() {
                 presentation = next,
             )
             updateNotification(next.title)
-            val overlayResult = overlayPresenter.show(presentationStatus) {
-                reportPresentationVisible(
-                    next.messageId,
-                    "SYSTEM_ALERT_WINDOW_OVERLAY",
-                )
-            }
+            val visibleDurationMs = presentationDurationMs(next)
+            val overlayResult = overlayPresenter.show(
+                presentationStatus,
+                visibleDurationMs,
+                onVisible = {
+                    reportPresentationVisible(
+                        next.messageId,
+                        "SYSTEM_ALERT_WINDOW_OVERLAY",
+                    )
+                },
+                onPrimaryAction = {
+                    performPresentationPrimaryAction(next.messageId)
+                },
+            )
             if (overlayResult.shown) {
                 repository.appendRuntimeAudit(
                     "DOWNLINK_PRESENTATION_UI_REQUESTED",
                     JSONObject()
                         .put("message_id", next.messageId)
                         .put("intent", next.intent.name)
-                        .put("strategy", "SYSTEM_ALERT_WINDOW_OVERLAY"),
+                        .put("strategy", "SYSTEM_ALERT_WINDOW_OVERLAY")
+                        .put("initially_interactive", overlayResult.initiallyInteractive)
+                        .put("wake_requested", overlayResult.wakeRequested),
                 )
             } else {
                 requestPresentationUi(next, overlayResult.reason)
@@ -496,7 +506,7 @@ class RealityRuntimeService : LifecycleService() {
                         }
                     }
                 },
-                presentationDurationMs(next.intent),
+                visibleDurationMs,
             )
             return
         }
@@ -600,12 +610,29 @@ class RealityRuntimeService : LifecycleService() {
             "DISMISSED",
             JSONObject()
                 .put("reason", reason)
-                .put("interaction", current.interaction.name),
+                .put("interaction", current.interaction.name)
+                .put("action_id", current.actionId ?: JSONObject.NULL)
+                .put("user_action", reason == "PRIMARY_ACTION"),
         )
         if (state == SessionState.ACTIVE) {
             publish(state, "现实感知运行中", RuntimeDisplayKind.NONE)
         }
         handler.postDelayed({ showNextPresentation() }, PRESENTATION_GAP_MS)
+    }
+
+    private fun performPresentationPrimaryAction(messageId: String) {
+        val current = activePresentation ?: return
+        if (messageId.isNotBlank() && current.messageId != messageId) return
+        if (current.interaction == PresentationInteraction.NONE) return
+
+        repository.appendRuntimeAudit(
+            "DOWNLINK_PRESENTATION_USER_ACTION",
+            JSONObject()
+                .put("message_id", current.messageId)
+                .put("interaction", current.interaction.name)
+                .put("action_id", current.actionId ?: JSONObject.NULL),
+        )
+        dismissPresentation(current.messageId, "PRIMARY_ACTION")
     }
 
     private fun startHeartRateBroadcastPoc() {
@@ -965,13 +992,16 @@ class RealityRuntimeService : LifecycleService() {
         )
     }
 
-    private fun presentationDurationMs(intent: PresentationIntent): Long = when (intent) {
-        PresentationIntent.CONSUMABLE -> 6_000L
-        PresentationIntent.PRIVACY,
-        PresentationIntent.SYSTEM,
-        -> 12_000L
-        else -> 8_000L
-    }
+    private fun presentationDurationMs(presentation: DownlinkPresentation): Long =
+        when {
+            presentation.interaction != PresentationInteraction.NONE -> 12_000L
+            presentation.intent == PresentationIntent.CONSUMABLE -> 6_000L
+            presentation.intent in setOf(
+                PresentationIntent.PRIVACY,
+                PresentationIntent.SYSTEM,
+            ) -> 12_000L
+            else -> 8_000L
+        }
 
     private fun requestWearDisclosureUi() {
         wearDisclosureRequestGeneration += 1

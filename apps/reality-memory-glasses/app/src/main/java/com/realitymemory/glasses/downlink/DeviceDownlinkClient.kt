@@ -236,9 +236,28 @@ class DeviceDownlinkClient(
             .trim()
             .take(MAX_SPEECH_CHARS)
             .takeIf(String::isNotBlank)
+        val interactionValue = content.opt("interaction")
+        val interactionName = when (interactionValue) {
+            is JSONObject -> interactionValue.optString(
+                "type",
+                PresentationInteraction.NONE.name,
+            )
+            is String -> interactionValue
+            else -> PresentationInteraction.NONE.name
+        }
+        val actionId = (interactionValue as? JSONObject)
+            ?.optNullableString("action_id")
         val interaction = runCatching {
-            PresentationInteraction.valueOf(content.getString("interaction"))
+            PresentationInteraction.valueOf(interactionName)
         }.getOrDefault(PresentationInteraction.NONE)
+        require(
+            interaction !in ACTIONS_REQUIRING_ID || !actionId.isNullOrBlank(),
+        ) {
+            "$interaction 缺少 action_id"
+        }
+        require(interaction in allowedInteractions(intent)) {
+            "$intent 不允许使用 $interaction"
+        }
 
         return DownlinkPresentation(
             messageId = envelope.getString("message_id"),
@@ -247,6 +266,7 @@ class DeviceDownlinkClient(
             body = body,
             speechText = speechText,
             interaction = interaction,
+            actionId = actionId,
             allowText = allowText,
             allowTts = allowTts,
             expiresAtEpochMs = expiresAt,
@@ -436,6 +456,36 @@ class DeviceDownlinkClient(
         private const val MAX_BODY_CHARS = 80
         private const val MAX_SPEECH_CHARS = 100
         private const val MAX_ERROR_CHARS = 1_000
+        private val ACTIONS_REQUIRING_ID = setOf(
+            PresentationInteraction.ACKNOWLEDGE,
+            PresentationInteraction.COMPLETE_TASK,
+            PresentationInteraction.ADD_TO_SHOPPING_LIST,
+        )
         private val TERMINAL_STATUSES = setOf("DISMISSED", "EXPIRED", "FAILED")
+
+        private fun allowedInteractions(
+            intent: PresentationIntent,
+        ): Set<PresentationInteraction> = when (intent) {
+            PresentationIntent.ANSWER -> setOf(PresentationInteraction.NONE)
+            PresentationIntent.REMINDER -> setOf(
+                PresentationInteraction.NONE,
+                PresentationInteraction.ACKNOWLEDGE,
+            )
+            PresentationIntent.TASK -> setOf(
+                PresentationInteraction.NONE,
+                PresentationInteraction.COMPLETE_TASK,
+            )
+            PresentationIntent.CONSUMABLE -> setOf(
+                PresentationInteraction.NONE,
+                PresentationInteraction.ADD_TO_SHOPPING_LIST,
+            )
+            PresentationIntent.PRIVACY,
+            PresentationIntent.SYSTEM,
+            -> setOf(
+                PresentationInteraction.NONE,
+                PresentationInteraction.DISMISS,
+                PresentationInteraction.ACKNOWLEDGE,
+            )
+        }
     }
 }

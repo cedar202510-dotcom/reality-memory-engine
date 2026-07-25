@@ -314,7 +314,10 @@ async def test_glasses_presentation_payload_is_validated_and_normalized(db_sessi
                         "title": "记得把资料给小王",
                         "body": "你已经到公司了",
                         "speech_text": "这段文字不应在 TTS 关闭时继续下发",
-                        "interaction": "ACKNOWLEDGE",
+                        "interaction": {
+                            "type": "COMPLETE_TASK",
+                            "action_id": "task-complete-1",
+                        },
                     },
                     "source": {
                         "kind": "MEMORY_SIGNAL",
@@ -328,6 +331,10 @@ async def test_glasses_presentation_payload_is_validated_and_normalized(db_sessi
     assert created.status_code == 200
     presentation = created.json()["message"]["payload"]["presentation"]
     assert presentation["intent"] == "TASK"
+    assert presentation["interaction"] == {
+        "type": "COMPLETE_TASK",
+        "action_id": "task-complete-1",
+    }
     assert "speech_text" not in presentation
 
 
@@ -382,11 +389,91 @@ async def test_glasses_presentation_rejects_free_style_and_overflow(db_session):
                     "presentation": {
                         "intent": "REMINDER",
                         "title": "过长" * 30,
-                        "interaction": "ACKNOWLEDGE",
+                        "interaction": {
+                            "type": "ACKNOWLEDGE",
+                            "action_id": "reminder-acknowledge-1",
+                        },
                         "icon": "<svg>not allowed</svg>",
                     },
                     "source": {"kind": "MEMORY_SIGNAL"},
                     "correlation_id": "invalid-style",
+                },
+            },
+        )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("intent", "interaction"),
+    [
+        (
+            "REMINDER",
+            {"type": "COMPLETE_TASK", "action_id": "wrong-reminder-action"},
+        ),
+        (
+            "TASK",
+            {"type": "ADD_TO_SHOPPING_LIST", "action_id": "wrong-task-action"},
+        ),
+        (
+            "CONSUMABLE",
+            {"type": "ACKNOWLEDGE", "action_id": "wrong-purchase-action"},
+        ),
+    ],
+)
+async def test_glasses_presentation_rejects_action_for_wrong_intent(
+    db_session,
+    intent: str,
+    interaction: dict[str, str],
+):
+    app = _app()
+    device_id = await _device_id(db_session)
+
+    async with _client(app) as client:
+        response = await client.post(
+            f"/internal/v1/devices/{device_id}/messages",
+            json={
+                "message_type": "REMINDER_SIGNAL",
+                "payload_schema_ref": "rme.glasses-presentation.v0",
+                "payload": {
+                    "presentation": {
+                        "intent": intent,
+                        "title": "不应通过",
+                        "interaction": interaction,
+                    },
+                    "source": {
+                        "kind": (
+                            "MEMORY_SIGNAL"
+                            if intent != "ANSWER"
+                            else "AGENT_REPLY"
+                        ),
+                    },
+                    "correlation_id": "invalid-interaction",
+                },
+            },
+        )
+
+    assert response.status_code == 422
+
+
+async def test_glasses_presentation_action_requires_id(db_session):
+    app = _app()
+    device_id = await _device_id(db_session)
+
+    async with _client(app) as client:
+        response = await client.post(
+            f"/internal/v1/devices/{device_id}/messages",
+            json={
+                "message_type": "REMINDER_SIGNAL",
+                "payload_schema_ref": "rme.glasses-presentation.v0",
+                "payload": {
+                    "presentation": {
+                        "intent": "TASK",
+                        "title": "缺少动作编号",
+                        "interaction": {"type": "COMPLETE_TASK"},
+                    },
+                    "source": {"kind": "MEMORY_SIGNAL"},
+                    "correlation_id": "missing-action-id",
                 },
             },
         )

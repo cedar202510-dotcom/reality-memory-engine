@@ -107,6 +107,7 @@ object RuntimeStatusStore {
             .put("body", value.body ?: JSONObject.NULL)
             .put("speech_text", value.speechText ?: JSONObject.NULL)
             .put("interaction", value.interaction.name)
+            .put("action_id", value.actionId ?: JSONObject.NULL)
             .put("allow_text", value.allowText)
             .put("allow_tts", value.allowTts)
             .put("expires_at_epoch_ms", value.expiresAtEpochMs)
@@ -125,6 +126,7 @@ object RuntimeStatusStore {
                 interaction = PresentationInteraction.valueOf(
                     value.getString("interaction"),
                 ),
+                actionId = value.optNullableString("action_id"),
                 allowText = value.optBoolean("allow_text", true),
                 allowTts = value.optBoolean("allow_tts", false),
                 expiresAtEpochMs = value.getLong("expires_at_epoch_ms"),

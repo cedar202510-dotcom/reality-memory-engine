@@ -70,8 +70,8 @@ adb reverse --list
 ./scripts/install-on-rv101.sh ./reality-memory-glasses-debug.apk
 ```
 
-安装脚本会保留原有 App 数据、建立 `8765` 端口映射，并为 Debug 联调开启短时透明
-提醒覆盖层权限。正式发布不能依赖 ADB 授权，需要用户授权流程或 Rokid 系统白名单。
+安装脚本会保留原有 App 数据、建立 `8765` 端口映射，并为 Debug 联调开启短时纯黑
+独立提醒显示层权限。正式发布不能依赖 ADB 授权，需要用户授权流程或 Rokid 系统白名单。
 
 ## 4. 测试内容
 

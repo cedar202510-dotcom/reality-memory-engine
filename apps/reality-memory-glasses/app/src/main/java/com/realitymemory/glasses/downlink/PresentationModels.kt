@@ -13,6 +13,8 @@ enum class PresentationInteraction {
     NONE,
     DISMISS,
     ACKNOWLEDGE,
+    COMPLETE_TASK,
+    ADD_TO_SHOPPING_LIST,
 }
 
 data class DownlinkPresentation(
@@ -22,6 +24,7 @@ data class DownlinkPresentation(
     val body: String?,
     val speechText: String?,
     val interaction: PresentationInteraction,
+    val actionId: String?,
     val allowText: Boolean,
     val allowTts: Boolean,
     val expiresAtEpochMs: Long,

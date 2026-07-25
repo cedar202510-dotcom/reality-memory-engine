@@ -11,11 +11,11 @@ android {
         applicationId = "com.realitymemory.glasses"
         minSdk = 31
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.1.6"
+        versionCode = 8
+        versionName = "0.1.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "RUNTIME_VERSION", "\"android-glasses/0.1.6\"")
+        buildConfigField("String", "RUNTIME_VERSION", "\"android-glasses/0.1.7\"")
         manifestPlaceholders["usesCleartextTraffic"] = "false"
     }
 

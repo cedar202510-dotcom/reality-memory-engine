@@ -43,7 +43,10 @@ Agent / 提醒决策
       "title": "记得把资料给小王",
       "body": "你已经到公司了",
       "speech_text": "记得把资料给小王",
-      "interaction": "ACKNOWLEDGE"
+      "interaction": {
+        "type": "COMPLETE_TASK",
+        "action_id": "task-complete-20260726-001"
+      }
     },
     "source": {
       "kind": "MEMORY_SIGNAL",
@@ -63,9 +66,9 @@ Agent / 提醒决策
 | `intent` | 中文含义 | 固定图标 | 允许来源 | 默认行为 |
 | --- | --- | --- | --- | --- |
 | `ANSWER` | 用户主动提问后的普通回答 | 顾问星芒 | Agent 对话 | 约 8 秒，可按策略播报 |
-| `REMINDER` | 需要及时看到的重要提醒 | 圆形感叹号 | 提醒决策 | 约 8 秒，可按策略播报 |
-| `TASK` | 明确任务或时间节点 | 勾选任务 | Agent / 任务信号 | 约 8 秒，右下角单击确认 |
-| `CONSUMABLE` | 耗材余量与补充建议 | 耗材电量 | 耗材信号 | 约 6 秒，默认不播报 |
+| `REMINDER` | 需要及时看到的重要提醒 | 圆形感叹号 | 提醒决策 | 有动作时约 12 秒，可显示“知道了” |
+| `TASK` | 明确任务或时间节点 | 勾选任务 | Agent / 任务信号 | 有动作时约 12 秒，可显示“完成” |
+| `CONSUMABLE` | 内部兼容枚举；用户侧称“采购提醒” | 购物袋 | 采购信号 | 有动作时约 12 秒，可显示“加入采购清单” |
 | `PRIVACY` | 隐私暂停、禁采空间或设备解绑 | 隐私盾牌 | 系统策略，不允许 Agent 伪造 | 保持到状态解除或用户确认 |
 | `SYSTEM` | 必须让用户知道的设备异常 | 圆形感叹号 | 眼镜 Runtime / 系统服务 | 按故障状态保持 |
 
@@ -82,7 +85,7 @@ Agent / 提醒决策
 | `ANSWER` | `icon_advisor_spark` | `MessageOverlay` |
 | `REMINDER` | `icon_alert_circle` | `MessageOverlay` |
 | `TASK` | `icon_task_check` | `MessageOverlay` |
-| `CONSUMABLE` | `icon_consumable_level` | `MessageOverlay` |
+| `CONSUMABLE` | `icon_purchase_bag` | `MessageOverlay` |
 | `PRIVACY` | `icon_privacy_shield` | `MessageOverlay` |
 | `SYSTEM` | `icon_alert_circle` | `MessageOverlay` |
 
@@ -96,7 +99,7 @@ Agent / 提醒决策
 | `presentation.title` | 是 | 1–42 个字符；结论优先，不放模型推理过程 |
 | `presentation.body` | 否 | 最多 80 个字符；只放一条必要依据或补充 |
 | `presentation.speech_text` | 否 | 最多 100 个字符；仅在 `allow_tts=true` 时可播报 |
-| `presentation.interaction` | 是 | `NONE` / `DISMISS` / `ACKNOWLEDGE` |
+| `presentation.interaction` | 是 | 无操作时为字符串 `NONE`；有操作时为 `{type, action_id}` |
 | `source.kind` | 是 | `AGENT_REPLY` / `MEMORY_SIGNAL` / `SYSTEM_POLICY` |
 | `source.reference_id` | 否 | 对话、信号或策略编号，用于审计，不直接显示 |
 | `correlation_id` | 是 | 串联 Agent 结果、设备消息和回执 |
@@ -113,20 +116,30 @@ Agent / 提醒决策
 480 × 640 画布
 图标中心：x=76，y=235
 图标尺寸：24 × 24
-左侧语义线：x=40，y=215–355
+左侧语义线：x=40，y=230–350
 标题起点：x=64，y=285，最多 3 行
-确认动作：右下角固定 20 × 20 圆形勾选图标，下方弱化显示“单击”
-取消动作：右下角固定 20 × 20 圆形叉号图标，下方弱化显示“单击”
+主动作：右下角紧凑描边按钮，只显示一个图标和明确动作文字
 颜色：#00FF00
-后台提醒：透明系统覆盖层，不绘制全屏底色
-Activity 降级页：#000000（单绿光显示中不发光）
+后台提醒：纯黑不透明独立显示层，遮住 Rokid 首页内容
+显示层底色：#000000（单绿光显示中不发光）
 ```
 
 佩戴告知是本地专用的居中组件：更大的感知圆环、向外扩散的单绿水纹、品牌文案和取消
 提示。它不占用云端消息的左对齐布局。
 
-`ACKNOWLEDGE` 只表示用户已经看见并关闭本次呈现，不代表任务已经完成，也不能修改
-`MemoryEvent`。`DISMISS` 只关闭界面。没有动作的消息使用 `NONE`，到时自动消失。
+普通回答使用 `NONE`，到时自动消失。需要用户明确表达时，交互对象只能使用固定动作：
+
+| `interaction.type` | 眼镜固定文字 | 允许意图 | 含义 |
+| --- | --- | --- | --- |
+| `ACKNOWLEDGE` | `✓ 知道了` | `REMINDER`、受信系统消息 | 用户明确确认提醒 |
+| `COMPLETE_TASK` | `✓ 完成` | `TASK` | 请求后端把对应任务标为完成 |
+| `ADD_TO_SHOPPING_LIST` | `＋ 加入采购清单` | `CONSUMABLE` | 请求加入清单，不触发购买 |
+| `DISMISS` | `× 关闭` | `PRIVACY`、`SYSTEM` | 只关闭本次呈现 |
+
+`action_id` 是后端生成的幂等动作编号，所有有操作的消息都必须提供。Agent 不能下发
+自由按钮文字，眼镜根据 `interaction.type` 映射固定中文和图标。超时关闭不执行动作。
+用户动作先作为可审计回执落库，再由受约束的后端服务更新任务或采购清单；它不能直接
+修改 `MemoryEvent`，也不能自动购买。
 
 ## 6. 回执
 
@@ -137,7 +150,7 @@ Activity 降级页：#000000（单绿光显示中不发光）
 | `RECEIVED` | 消息已落入眼镜本地队列并通过基础 Schema 校验 |
 | `PRESENTED` | 覆盖层窗口已经附着并完成首帧，或 Activity 已确认渲染该消息 |
 | `SPOKEN` | TTS 实际完成，不是仅调用 `speak()` |
-| `DISMISSED` | 用户单击关闭 |
+| `DISMISSED` | 超时关闭，或用户执行主动作后关闭 |
 | `EXPIRED` | 到达或排队期间过期，未呈现 |
 | `FAILED` | Schema、渲染、后台拉起或 TTS 失败 |
 
@@ -166,13 +179,13 @@ Agent 只产生候选内容；提醒决策层负责确认是否值得下发、�
 - `RECEIVED`、`PRESENTED`、`SPOKEN`、`DISMISSED`、`EXPIRED`、`FAILED` 回执。
 - `rme.glasses-presentation.v0` 的字段、来源组合、文字长度和自由样式拦截。
 
-当前眼镜 Debug APK 0.1.6 已实现：
+当前眼镜 Debug APK 0.1.7 已实现：
 
 - 后端设备自注册与 `device_id` 持久化。
 - 佩戴感知期间每 3 秒轮询 inbox。
 - 本地图标映射、固定布局、文本长度保护、队列和 `message_id` 去重。
-- 后台消息使用短时透明 `SYSTEM_ALERT_WINDOW` 覆盖层，不需要让采集 Activity 常驻前台。
-- 收到、覆盖层首帧、TTS 完成、单击或超时关闭的回执；视觉层未确认时回
+- 后台消息使用短时纯黑不透明 `SYSTEM_ALERT_WINDOW` 独立显示层，遮住 Rokid 首页。
+- 收到、显示层首帧、TTS 完成、用户动作或超时关闭的回执；视觉层未确认时回
   `FAILED/VISUAL_UI_NOT_CONFIRMED`，不伪报 `DISMISSED`。
 
 2026-07-25 RV101 真机已验证 HTTP 链路能够返回：
@@ -181,7 +194,7 @@ Agent 只产生候选内容；提醒决策层负责确认是否值得下发、�
 RECEIVED -> PRESENTED -> DISMISSED
 ```
 
-`dumpsys window` 同时确认 `RealGitPresentation` 为 `480×640`、透明格式、
+`dumpsys window` 同时确认 `RealGitPresentation` 为 `480×640`、
 `TYPE_APPLICATION_OVERLAY`、`HAS_DRAWN`。RV101 的 `adb screencap` 不会合成单绿光
 HUD 的实际发光层，因此黑色抓图不能单独作为“未显示”的判据。
 
@@ -191,7 +204,8 @@ HUD 的实际发光层，因此黑色抓图不能单独作为“未显示”的�
 - WebSocket 低延迟客户端；当前先用 HTTP inbox 跑通，现有 WebSocket API 保留。
 - 设备令牌和“设备只能读取自己的消息”鉴权。
 - 正式版覆盖层授权引导或 Rokid 系统白名单；Debug 安装脚本当前通过 ADB 开启权限。
+- 后端消费 `COMPLETE_TASK` 与 `ADD_TO_SHOPPING_LIST` 动作回执并更新对应业务对象。
 - 真机人工确认各语义图标、TTS 完成时点、物理单击广播和离线补投。
 
-因此这份文档已经对应可构建且完成一次消息闭环真机验证的 0.1.6 代码；后台轮询
+因此这份文档已经对应可构建且完成一次消息闭环真机验证的 0.1.7 代码；后台轮询
 稳定性、TTS 时点、物理单击和离线补投仍必须按测试计划继续验证。

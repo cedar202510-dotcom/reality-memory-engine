@@ -95,7 +95,7 @@ class GlassesUiView(
 
         drawCenteredText(canvas, "RealGit 已开启现实感知", 292f, 17f, Typeface.BOLD)
         drawCenteredText(canvas, "正在为您整理现实记忆", 325f, 12f, Typeface.NORMAL)
-        drawActionHint(canvas, "×")
+        drawActionHint(canvas, "×", "取消")
     }
 
     private fun drawReminder(canvas: Canvas, message: String) {
@@ -106,7 +106,6 @@ class GlassesUiView(
         lines.take(3).forEachIndexed { index, line ->
             drawText(canvas, line, MESSAGE_X, 285f + index * 27f, 17f, Typeface.BOLD)
         }
-        drawActionHint(canvas, "✓")
     }
 
     private fun drawPresentation(
@@ -143,8 +142,14 @@ class GlassesUiView(
         }
 
         when (presentation.interaction) {
-            PresentationInteraction.ACKNOWLEDGE -> drawActionHint(canvas, "✓")
-            PresentationInteraction.DISMISS -> drawActionHint(canvas, "×")
+            PresentationInteraction.ACKNOWLEDGE ->
+                drawPresentationActionButton(canvas, "✓", "知道了")
+            PresentationInteraction.COMPLETE_TASK ->
+                drawPresentationActionButton(canvas, "✓", "完成")
+            PresentationInteraction.ADD_TO_SHOPPING_LIST ->
+                drawPresentationActionButton(canvas, "+", "加入采购清单")
+            PresentationInteraction.DISMISS ->
+                drawPresentationActionButton(canvas, "×", "关闭")
             PresentationInteraction.NONE -> Unit
         }
     }
@@ -153,7 +158,7 @@ class GlassesUiView(
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2f
         paint.alpha = 255
-        canvas.drawLine(40f, 215f, 40f, 385f, paint)
+        canvas.drawLine(40f, 230f, 40f, 350f, paint)
     }
 
     private fun drawAlertIcon(canvas: Canvas) {
@@ -209,28 +214,26 @@ class GlassesUiView(
             }
             PresentationIntent.CONSUMABLE -> {
                 canvas.drawRoundRect(
-                    ICON_X - 14f,
-                    ICON_Y - 8f,
-                    ICON_X + 11f,
-                    ICON_Y + 8f,
+                    ICON_X - 12f,
+                    ICON_Y - 7f,
+                    ICON_X + 12f,
+                    ICON_Y + 14f,
                     2f,
                     2f,
                     paint,
                 )
-                canvas.drawLine(
-                    ICON_X + 14f,
-                    ICON_Y - 3f,
-                    ICON_X + 14f,
-                    ICON_Y + 3f,
+                canvas.drawArc(
+                    ICON_X - 7f,
+                    ICON_Y - 15f,
+                    ICON_X + 7f,
+                    ICON_Y - 1f,
+                    190f,
+                    160f,
+                    false,
                     paint,
                 )
-                canvas.drawLine(
-                    ICON_X - 9f,
-                    ICON_Y,
-                    ICON_X - 3f,
-                    ICON_Y,
-                    paint,
-                )
+                canvas.drawLine(ICON_X - 4f, ICON_Y + 4f, ICON_X + 4f, ICON_Y + 4f, paint)
+                canvas.drawLine(ICON_X, ICON_Y, ICON_X, ICON_Y + 8f, paint)
             }
             PresentationIntent.PRIVACY -> {
                 val shield = Path().apply {
@@ -268,7 +271,11 @@ class GlassesUiView(
         }
     }
 
-    private fun drawActionHint(canvas: Canvas, glyph: String) {
+    private fun drawActionHint(
+        canvas: Canvas,
+        glyph: String,
+        label: String,
+    ) {
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 1.5f
         paint.alpha = 205
@@ -276,7 +283,50 @@ class GlassesUiView(
         paint.style = Paint.Style.FILL
         drawCenteredGlyph(canvas, glyph, ACTION_X, ACTION_Y + 4f, 11f)
         paint.alpha = 175
-        drawCenteredTextAt(canvas, "单击", ACTION_X, ACTION_Y + 29f, 9f, Typeface.NORMAL)
+        drawCenteredTextAt(canvas, label, ACTION_X, ACTION_Y + 29f, 9f, Typeface.NORMAL)
+        paint.alpha = 255
+    }
+
+    private fun drawPresentationActionButton(
+        canvas: Canvas,
+        glyph: String,
+        label: String,
+    ) {
+        prepareText(10f, Typeface.BOLD, 230)
+        val width = (paint.measureText(label) + 46f).coerceIn(68f, 126f)
+        val left = ACTION_BUTTON_RIGHT - width
+        val top = ACTION_BUTTON_CENTER_Y - 15f
+        val bottom = ACTION_BUTTON_CENTER_Y + 15f
+
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1.5f
+        paint.alpha = 215
+        canvas.drawRoundRect(
+            left,
+            top,
+            ACTION_BUTTON_RIGHT,
+            bottom,
+            4f,
+            4f,
+            paint,
+        )
+
+        paint.style = Paint.Style.FILL
+        drawCenteredGlyph(
+            canvas,
+            glyph,
+            left + 17f,
+            ACTION_BUTTON_CENTER_Y + 4f,
+            11f,
+        )
+        drawText(
+            canvas,
+            label,
+            left + 31f,
+            ACTION_BUTTON_CENTER_Y + 4f,
+            10f,
+            Typeface.BOLD,
+        )
         paint.alpha = 255
     }
 
@@ -403,6 +453,8 @@ class GlassesUiView(
         private const val MESSAGE_TEXT_WIDTH = 300f
         private const val ACTION_X = 420f
         private const val ACTION_Y = 350f
+        private const val ACTION_BUTTON_RIGHT = 450f
+        private const val ACTION_BUTTON_CENTER_Y = 395f
         private const val SENSING_PERIOD_MS = 2_400L
         private const val BLINK_REFRESH_MS = 100L
         private val GLASS_GREEN = Color.rgb(0, 255, 0)
