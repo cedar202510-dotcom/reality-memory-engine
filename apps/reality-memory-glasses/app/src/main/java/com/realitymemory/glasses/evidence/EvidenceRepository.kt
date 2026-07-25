@@ -33,12 +33,66 @@ class EvidenceRepository(private val context: Context) {
     var activeSessionId: String? = null
         private set
 
+    var recoveredInterruptedSessionCount: Int = 0
+        private set
+
     init {
         outbox.mkdirs()
+        recoverInterruptedSessions()
     }
 
     fun setEvidenceReadyListener(listener: (() -> Unit)?) {
         evidenceReadyListener = listener
+    }
+
+    private fun recoverInterruptedSessions() {
+        outbox.listFiles()
+            ?.filter { it.isDirectory }
+            ?.forEach { directory ->
+                val sessionFile = File(directory, "capture-session.json")
+                if (!sessionFile.exists()) return@forEach
+                runCatching {
+                    val session = JSONObject(sessionFile.readText())
+                    val previousState = session.optString("state")
+                    if (
+                        previousState != SessionState.ACTIVE.name &&
+                        previousState != SessionState.DISCLOSURE.name
+                    ) {
+                        return@runCatching
+                    }
+                    val recoveredAt = Instant.now()
+                    val extensions =
+                        session.optJSONObject("extensions") ?: JSONObject()
+                    extensions
+                        .put("interrupted_state", previousState)
+                        .put("recovered_at", recoveredAt.toString())
+                    session
+                        .put("state", SessionState.ENDED.name)
+                        .put("ended_at", recoveredAt.toString())
+                        .put("ended_monotonic_ns", SystemClock.elapsedRealtimeNanos())
+                        .put("end_reason", INTERRUPTED_SESSION_RECOVERED)
+                        .put("extensions", extensions)
+                    writeObject(directory, "capture-session.json", session)
+                    recoveredInterruptedSessionCount += 1
+                    appendAudit(
+                        "STALE_SESSION_RECOVERED",
+                        JSONObject()
+                            .put(
+                                "capture_session_id",
+                                session.optString("capture_session_id", directory.name),
+                            )
+                            .put("previous_state", previousState)
+                            .put("end_reason", INTERRUPTED_SESSION_RECOVERED),
+                    )
+                }.onFailure { error ->
+                    appendAudit(
+                        "STALE_SESSION_RECOVERY_FAILED",
+                        JSONObject()
+                            .put("capture_session_id", directory.name)
+                            .put("error", error.message ?: error.javaClass.simpleName),
+                    )
+                }
+            }
     }
 
     @Synchronized
@@ -180,6 +234,7 @@ class EvidenceRepository(private val context: Context) {
         media: JSONObject,
         monotonicStartNs: Long = window.monotonicStartNs,
         monotonicEndNs: Long = SystemClock.elapsedRealtimeNanos(),
+        sensitivityLabels: List<String> = emptyList(),
     ): String {
         val evidenceId = id("evd")
         val sourceId = id("src")
@@ -228,7 +283,7 @@ class EvidenceRepository(private val context: Context) {
                     .put("debug_sample", false),
             )
             .put("media", media)
-            .put("sensitivity_labels", JSONArray())
+            .put("sensitivity_labels", JSONArray(sensitivityLabels))
             .put(
                 "extensions",
                 JSONObject()
@@ -299,6 +354,12 @@ class EvidenceRepository(private val context: Context) {
 
     fun newTemporaryFile(extension: String): File {
         val directory = File(context.cacheDir, "capture").apply { mkdirs() }
+        return File(directory, "${UUID.randomUUID()}.$extension")
+    }
+
+    fun newExternalTemporaryFile(extension: String): File {
+        val root = context.getExternalFilesDir("vendor-recording") ?: context.cacheDir
+        val directory = File(root, "capture").apply { mkdirs() }
         return File(directory, "${UUID.randomUUID()}.$extension")
     }
 
@@ -412,6 +473,7 @@ class EvidenceRepository(private val context: Context) {
 
     companion object {
         const val POLICY_ID = "pol_phase0_local_v1"
+        const val INTERRUPTED_SESSION_RECOVERED = "PROCESS_INTERRUPTED_RECOVERED"
         private const val WINDOW_DURATION_SECONDS = 12L
         private const val DEBUG_EXPORT_BUDGET_BYTES = 64L * 1024L * 1024L
     }

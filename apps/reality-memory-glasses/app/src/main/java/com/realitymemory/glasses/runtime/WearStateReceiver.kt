@@ -9,6 +9,8 @@ import com.realitymemory.glasses.MainActivity
 class WearStateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
+            Intent.ACTION_BOOT_COMPLETED -> startMonitor(context)
+
             ACTION_TAKE_STATUS_CHANGED -> {
                 val worn = intent.getStringExtra(EXTRA_TAKE_STATE) == "1"
                 startRuntime(context, worn, "TAKE_STATUS")
@@ -20,6 +22,14 @@ class WearStateReceiver : BroadcastReceiver() {
                 if (!unfolded) startRuntime(context, false, "LEGS_FOLDED")
             }
         }
+    }
+
+    private fun startMonitor(context: Context) {
+        ContextCompat.startForegroundService(
+            context,
+            Intent(context, RealityRuntimeService::class.java)
+                .setAction(RealityRuntimeService.ACTION_ARM_MONITOR),
+        )
     }
 
     private fun startRuntime(context: Context, worn: Boolean, source: String) {

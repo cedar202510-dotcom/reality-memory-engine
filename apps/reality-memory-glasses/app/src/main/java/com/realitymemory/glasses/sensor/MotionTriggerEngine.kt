@@ -118,6 +118,14 @@ class MotionTriggerEngine {
 
     fun currentStartThreshold(): Double = startThreshold()
 
+    fun debugState(): MotionTriggerDebugState = MotionTriggerDebugState(
+        phase = phase.name,
+        startThresholdRadS = startThreshold(),
+        baselineMeanRadS = baselineMean,
+        baselineStandardDeviationRadS = sqrt(baselineVariance.coerceAtLeast(0.0)),
+        baselineSampleCount = baselineSamples,
+    )
+
     private fun beginMovement(sample: MotionSample) {
         phase = Phase.MOVING
         movementStartedNs = sample.monotonicNs
@@ -184,3 +192,11 @@ class MotionTriggerEngine {
         private const val BASELINE_SIGMA_MULTIPLIER = 4.0
     }
 }
+
+data class MotionTriggerDebugState(
+    val phase: String,
+    val startThresholdRadS: Double,
+    val baselineMeanRadS: Double,
+    val baselineStandardDeviationRadS: Double,
+    val baselineSampleCount: Int,
+)

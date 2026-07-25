@@ -16,10 +16,10 @@ fi
 
 case "$command" in
   start)
-    action="com.realitymemory.glasses.START_HEART_RATE_BROADCAST_POC"
+    debug_command="heart_rate_start"
     ;;
   stop)
-    action="com.realitymemory.glasses.STOP_HEART_RATE_BROADCAST_POC"
+    debug_command="heart_rate_stop"
     ;;
   *)
     echo "用法：$0 [start|stop]" >&2
@@ -36,8 +36,8 @@ if [[ "$command" == "start" && "$api_level" -ge 31 ]]; then
     com.realitymemory.glasses android.permission.BLUETOOTH_CONNECT >/dev/null 2>&1 || true
 fi
 
-"$adb_bin" shell am start-foreground-service \
-  -n com.realitymemory.glasses/.runtime.RealityRuntimeService \
-  -a "$action" >/dev/null
+"$adb_bin" shell am start \
+  -n com.realitymemory.glasses/.MainActivity \
+  --es rme_debug_command "$debug_command" >/dev/null
 
 echo "已发送心率广播 POC 命令：$command"
