@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -25,6 +26,8 @@ import java.util.List;
 
 public class MainActivity extends ComponentActivity {
     private static final int REQUEST_CAPTURE_PERMISSIONS = 42;
+    /** RV101 单绿光机的 HUD 前景色；label() 与 button() 共用，避免两处各写一份。 */
+    private static final int HUD_GREEN = Color.rgb(0, 255, 102);
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView statusView;
@@ -156,15 +159,34 @@ public class MainActivity extends ComponentActivity {
     private TextView label(String text) {
         TextView view = new TextView(this);
         view.setText(text);
-        view.setTextColor(Color.rgb(0, 255, 102));
+        view.setTextColor(HUD_GREEN);
         view.setGravity(Gravity.START);
         return view;
     }
 
+    /**
+     * RV101 是绿色单色 MicroLED 光波导屏：面板只有绿色子像素，任何非黑的大面积填充
+     * 在光机上都呈现为「一整块绿」。Material 默认按钮是不透明灰底，8 个 MATCH_PARENT
+     * 按钮竖排会铺满整屏 —— 这正是绿屏现象的来源。
+     * 因此按钮必须与 label() 保持同一套单色风格：黑底 + 绿字 + 细绿描边，只让「线条和
+     * 文字」发光，不做大面积填充。
+     */
     private Button button(String text) {
         Button button = new Button(this);
         button.setText(text);
         button.setAllCaps(false);
+        button.setTextColor(HUD_GREEN);
+
+        GradientDrawable outline = new GradientDrawable();
+        outline.setShape(GradientDrawable.RECTANGLE);
+        outline.setColor(Color.BLACK);
+        outline.setStroke(2, HUD_GREEN);
+        outline.setCornerRadius(6f);
+        button.setBackground(outline);
+
+        // 默认按钮自带 inset + 阴影，会在单色屏上糊成一片；去掉以保持描边清晰
+        button.setStateListAnimator(null);
+        button.setPadding(12, 8, 12, 8);
         return button;
     }
 
