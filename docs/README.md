@@ -13,6 +13,7 @@
 | 开发云端记忆沉淀 | [云端记忆平台架构](architecture/02-Memory-Platform-Architecture.md) | 方案参考，沉淀规则待 review |
 | 开发 Agent 查询与提醒判断 | [Agent 调用架构](architecture/03-Agent-Access-Architecture.md) | 方案参考，业务策略待 review |
 | 开发眼镜与云端通信 | [设备与云端通信](architecture/05-Device-Cloud-Communication.md) | 上行可实施，下行业务内容待 review |
+| 开发灵感 / 问题 / 任务捕捉 | [灵感旁路架构](architecture/06-Idea-Capture-Sidecar-Architecture.md) | 方案参考，待 review |
 | 对接数据对象和 JSON Schema | [多模态数据契约 v1.0](engineering/Reality-Memory-Multimodal-Data-Contract-v1.0.md) | 当前正式契约 |
 
 机器可校验的 JSON Schema 位于
@@ -24,6 +25,7 @@
 - `architecture/` 顶层只放当前系统边界和分层方案。
 - `engineering/` 顶层只放仍用于开发的工程参考和数据契约。
 - `product/concepts/` 放尚未冻结的体验与视觉探索。
+- `architecture/concepts/` 放尚未冻结的架构探索与可行性判断，不得作为实现依据。
 - 每个主题自己的 `archive/` 保存旧版本和历史 review，不作为当前实现依据。
 - `visuals/` 保存辅助理解的 HTML 图，不替代 Markdown 权威文档。
 
