@@ -84,38 +84,31 @@ const FALLBACK_ANSWER = "最后一次确认在客厅工作桌下方。今天 10:
 function AgentHome() {
   const { messages, setMessages, isTyping, setIsTyping, setShowClues } = useOutletContext();
   const [listening, setListening] = useState(false);
+  const [agentText, setAgentText] = useState("我在。你可以直接问现实里的事。");
+  const [userText, setUserText] = useState("");
 
   const handleSend = async (text) => {
     const textToSend = text || "我的充电器在哪里？";
-    const newMsg = { id: Date.now(), text: textToSend, sender: "user" };
-    setMessages(prev => {
-      const lastAgent = prev.slice().reverse().find(m => m.sender === 'agent');
-      return lastAgent ? [lastAgent, newMsg] : [newMsg];
-    });
-
+    setUserText(textToSend);
     setIsTyping(true);
     setListening(false);
-    setMessages(prev => [...prev, { id: Date.now()+1, text: "", sender: "agent", type: "thinking" }]);
 
     // 真实后端优先；memory-platform 未启动时回退演示答案，保持原型可独立展示
     let reply = FALLBACK_ANSWER;
-    let demo = true;
     try {
       const res = await whereIs(extractObjectName(textToSend), true);
       if (res?.answer_text) {
         reply = res.answer_text;
-        demo = false;
       }
     } catch {
       /* 后端不可达 → 保持 demo 答案 */
     }
 
-    // 保留用户问句而不是上一条 agent 消息：看不到问的是什么，答案就没有意义
-    setMessages([
-      newMsg,
-      { id: Date.now()+2, text: reply, sender: "agent", demo },
-    ]);
-    setIsTyping(false);
+    setTimeout(() => {
+      setAgentText(reply);
+      setUserText(""); // 用户气泡化为轻烟消失
+      setIsTyping(false);
+    }, 1500); // 模拟网络延迟和动画过度时间
   };
 
   const handleVoice = () => {
@@ -128,7 +121,7 @@ function AgentHome() {
   return (
     <div className="page-view agent-page">
       <div style={{ position: "absolute", top: "40%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 0 }}>
-        <PresenceOrb state={listening ? "listening" : (isTyping || messages.some(m => m.type === "thinking")) ? "thinking" : "idle"} />
+        <PresenceOrb state={listening ? "listening" : isTyping ? "thinking" : "idle"} />
       </div>
 
       <header className="top" style={{ zIndex: 10 }}>
@@ -138,28 +131,61 @@ function AgentHome() {
         </div>
         <i className="enabled" aria-label="已开启"></i>
       </header>
-
-      <div className="dialogue" aria-live="polite" style={{ zIndex: 10 }}>
-        <AnimatePresence initial={false}>
-          {messages.map(msg => (
-            <motion.div 
-              key={msg.id} 
-              initial={{ opacity: 0, y: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: 0.3, type: "spring", bounce: 0.4 }}
-              className={`bubble ${msg.sender} ${msg.type === "thinking" ? "thinking" : ""}`}
-            >
-              {msg.type === "thinking" ? <><i/><i/><i/></> : msg.text}
-              {/* 演示答案必须标出来：分不清真假的 demo 会毁掉可信度 */}
-              {msg.demo && <span className="bubble-demo">演示答案 · 后端未连接</span>}
-            </motion.div>
-          ))}
-        </AnimatePresence>
+      
+      {/* 顶部线索提醒（灵动岛风格） */}
+      <div style={{ position: "absolute", top: 80, width: "100%", display: "flex", justifyContent: "center", zIndex: 20 }}>
+        <motion.button 
+          className="hint-pill" 
+          onClick={() => setShowClues(true)}
+          initial={{ y: -50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(10px)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "20px", padding: "6px 16px", display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "var(--ink)" }}
+        >
+          <span className="status-dot"></span> 2 条记忆线索待确认
+        </motion.button>
       </div>
 
-      <button className="hint-pill" onClick={() => setShowClues(true)} style={{ opacity: isTyping ? 0 : 1 }}>
-        <span className="status-dot"></span> 2 条记忆线索待确认
-      </button>
+      <div className="dialogue" aria-live="polite" style={{ zIndex: 10, display: "flex", flexDirection: "column", height: "100%", justifyContent: "center", paddingBottom: "100px" }}>
+        
+        <AnimatePresence mode="wait">
+          <motion.div 
+            key={agentText}
+            initial={{ opacity: 0, scale: 0.8, filter: "blur(10px)" }}
+            animate={{ opacity: isTyping || listening ? 0 : 1, scale: isTyping || listening ? 1.05 : 1, filter: isTyping || listening ? "blur(10px)" : "blur(0px)" }}
+            transition={{ duration: 0.6, type: "spring", bounce: 0.4 }}
+            style={{ 
+              margin: "0 auto",
+              textAlign: "center", 
+              fontSize: "15px", 
+              color: "var(--ink)", 
+              padding: "16px 24px", 
+              lineHeight: "1.5",
+              background: "rgba(86, 235, 142, 0.08)",
+              border: "1px solid rgba(86, 235, 142, 0.2)",
+              backdropFilter: "blur(20px)",
+              borderRadius: "24px",
+              maxWidth: "85%",
+              boxShadow: "0 12px 40px rgba(0,0,0,0.3), inset 0 0 20px rgba(86, 235, 142, 0.05)"
+            }}
+          >
+            {agentText}
+          </motion.div>
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {userText && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20, filter: "blur(5px)" }}
+              className="bubble user"
+              style={{ position: "absolute", bottom: "160px", right: "24px" }}
+            >
+              {userText}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       <div className="composer" role="group" aria-label="语音输入">
         <button className={`voice ${listening ? 'listening' : ''}`} onClick={handleVoice}>

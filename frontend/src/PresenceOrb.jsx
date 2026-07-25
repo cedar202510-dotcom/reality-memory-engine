@@ -6,73 +6,89 @@ export default function PresenceOrb({ state }) {
 
   // Base colors for different states
   const colors = {
-    idle: ["#56eb8e", "#4eb2cc"], // Green to Aqua
-    listening: ["#4eb2cc", "#6e56cf"], // Aqua to Purple
-    thinking: ["#da924b", "#e05b5b"] // Warm Orange to Red
+    idle: "rgba(86, 235, 142, 0.6)",       // Green
+    listening: "rgba(78, 178, 204, 0.6)",  // Aqua
+    thinking: "rgba(218, 146, 75, 0.6)"    // Warm Orange
   };
 
-  const currentColors = colors[state] || colors.idle;
+  const coreColors = {
+    idle: "#56eb8e",
+    listening: "#4eb2cc",
+    thinking: "#da924b"
+  };
+
+  const color = colors[state] || colors.idle;
+  const coreColor = coreColors[state] || coreColors.idle;
+
+  // Determine animation scales and speeds based on state
+  const isListening = state === "listening";
+  const isThinking = state === "thinking";
 
   return (
-    <div style={{ position: "relative", width: 120, height: 120, display: "flex", justifyContent: "center", alignItems: "center" }}>
-      {/* Outer Glow / Pulse */}
-      <motion.div
-        animate={{
-          scale: state === "listening" ? [1, 1.5, 1] : state === "thinking" ? [1, 1.2, 1] : 1,
-          opacity: state === "listening" ? [0.3, 0.6, 0.3] : state === "thinking" ? [0.2, 0.4, 0.2] : 0.1,
-        }}
-        transition={{
-          duration: state === "listening" ? 1.5 : 2,
-          repeat: Infinity,
-          ease: "easeInOut"
-        }}
-        style={{
-          position: "absolute",
-          width: "100%",
-          height: "100%",
-          borderRadius: "50%",
-          background: `radial-gradient(circle, ${currentColors[0]} 0%, transparent 70%)`,
-          filter: "blur(20px)"
-        }}
-      />
+    <div style={{ position: "relative", width: 200, height: 200, display: "flex", justifyContent: "center", alignItems: "center" }}>
       
-      {/* Middle Ring */}
+      {/* Ripple 1 */}
       <motion.div
         animate={{
-          rotate: state === "thinking" ? 360 : 0,
-          scale: state === "listening" ? [1, 1.1, 1] : 1,
+          scale: isListening ? [1, 8] : [1, 6],
+          opacity: isListening ? [0.8, 0] : [0.6, 0]
         }}
         transition={{
-          rotate: { duration: 3, repeat: Infinity, ease: "linear" },
-          scale: { duration: 1.5, repeat: Infinity, ease: "easeInOut" }
+          duration: isListening ? 3 : 5,
+          repeat: Infinity,
+          ease: "easeOut"
         }}
         style={{
           position: "absolute",
-          width: "70%",
-          height: "70%",
+          width: 50,
+          height: 50,
           borderRadius: "50%",
-          border: `2px solid ${currentColors[1]}`,
-          opacity: 0.5,
-          borderStyle: "dashed"
+          background: `radial-gradient(circle, ${color} 0%, transparent 70%)`,
+          zIndex: 1
         }}
       />
 
-      {/* Core Orb */}
+      {/* Ripple 2 */}
       <motion.div
         animate={{
-          scale: state === "listening" ? [0.9, 1.1, 0.9] : 1,
-          boxShadow: `0 0 20px ${currentColors[0]}, inset 0 0 20px ${currentColors[1]}`
+          scale: isListening ? [1, 8] : [1, 6],
+          opacity: isListening ? [0.8, 0] : [0.6, 0]
         }}
         transition={{
-          duration: state === "listening" ? 1 : 2,
+          duration: isListening ? 3 : 5,
+          repeat: Infinity,
+          ease: "easeOut",
+          delay: isListening ? 1.5 : 2.5
+        }}
+        style={{
+          position: "absolute",
+          width: 50,
+          height: 50,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${color} 0%, transparent 70%)`,
+          zIndex: 1
+        }}
+      />
+
+      {/* Hybrid Core */}
+      <motion.div
+        animate={{
+          scale: isThinking ? [1, 1.2, 1] : isListening ? [1, 1.4, 1] : [1, 1.3, 1],
+          opacity: isListening ? 1 : 0.8,
+          boxShadow: isThinking 
+            ? `0 0 40px ${coreColor}, inset 0 0 20px #fff`
+            : `0 0 20px ${color}`
+        }}
+        transition={{
+          duration: isListening ? 1.5 : 3,
           repeat: Infinity,
           ease: "easeInOut"
         }}
         style={{
-          width: "40%",
-          height: "40%",
+          width: 50,
+          height: 50,
           borderRadius: "50%",
-          background: `linear-gradient(135deg, ${currentColors[0]}, ${currentColors[1]})`,
+          background: `radial-gradient(circle, ${coreColor} 20%, transparent 100%)`,
           zIndex: 10
         }}
       />
