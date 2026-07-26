@@ -23,6 +23,7 @@ import PreferencePanel from "./PreferencePanel";
 import PresenceOrb from "./PresenceOrb";
 import MyPage from "./MyPage";
 import LifeHome from "./LifeHome";
+import MemoryOverview from "./MemoryOverview";
 import PicoMode from "./PicoMode";
 import XRRoomPreview from "./XRRoomPreview";
 import { LightboxProvider, PreviewImage } from "./ImageLightbox";
@@ -1392,7 +1393,7 @@ function TimelineView() {
   );
 }
 
-function GalaxyView() {
+function RelationGraphView() {
   const { setSelectedEntity } = useOutletContext();
   return (
     <div className="page-view galaxy-page">
@@ -1693,6 +1694,7 @@ function AppShell() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const activeTab = location.pathname.split("/")[1] || "agent";
+  const shellMode = location.pathname.startsWith("/galaxy/relations") ? "relations" : activeTab;
   const [messages, setMessages] = useState([
     { id: "hello", text: "我在。你可以直接问现实里的事。", sender: "agent" },
   ]);
@@ -1729,7 +1731,7 @@ function AppShell() {
   const setShowClues = (open) => setParam("clues", open ? "1" : null);
   const iconWeight = (tab) => (activeTab === tab ? "duotone" : "regular");
   return (
-    <div className={`app-shell premium-dark mode-${activeTab}`}>
+    <div className={`app-shell premium-dark mode-${shellMode}`}>
       <div className="status-bar">
         <span>RealGit</span><span>{clock}</span>
       </div>
@@ -1803,7 +1805,8 @@ function App() {
           <Route path="/life" element={<LifeHome />} />
           <Route path="/agent" element={<AgentHome />} />
           <Route path="/timeline" element={<TimelineView />} />
-          <Route path="/galaxy" element={<GalaxyView />} />
+          <Route path="/galaxy" element={<MemoryOverview />} />
+          <Route path="/galaxy/relations" element={<RelationGraphView />} />
           <Route path="/my" element={<MyPage />} />
         </Route>
         {/* 根路径和任何认不出的 URL 都落回生活页，刷新不会白屏。 */}

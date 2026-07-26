@@ -1,0 +1,1966 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Real Kit 全览组合块原型 v0.4</title>
+  <style>
+    :root {
+      --paper: #eef1ee;
+      --ink: #101612;
+      --phone: #06100b;
+      --panel: #0d1812;
+      --line: #27352d;
+      --text: #f2f8f4;
+      --muted: #8d9a91;
+      --green: #58e791;
+      --phone-w: 390px;
+      --phone-h: 844px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { background: var(--paper); }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(rgba(16, 22, 18, .035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(16, 22, 18, .035) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button, input { font: inherit; letter-spacing: 0; }
+    button { color: inherit; }
+
+    .intro {
+      width: min(980px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 36px 0 24px;
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 40px;
+      border-bottom: 1px solid #ccd3cd;
+    }
+
+    .intro small {
+      display: block;
+      margin-bottom: 10px;
+      color: #23784a;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .intro h1 {
+      margin: 0;
+      max-width: 610px;
+      font-size: 34px;
+      line-height: 1.1;
+    }
+
+    .intro p {
+      max-width: 330px;
+      margin: 0;
+      color: #5c685f;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .stage {
+      width: min(980px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 30px 0 60px;
+      display: grid;
+      grid-template-columns: var(--phone-w) minmax(0, 1fr);
+      gap: 54px;
+      align-items: start;
+    }
+
+    .phone {
+      position: relative;
+      width: var(--phone-w);
+      height: var(--phone-h);
+      overflow: hidden;
+      color: var(--text);
+      background: var(--phone);
+      border: 8px solid #15211b;
+      border-radius: 38px;
+      box-shadow: 0 26px 60px rgba(24, 37, 29, .2);
+    }
+
+    .screen {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      padding: 0 16px 84px;
+    }
+
+    .statusbar {
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: #c9d4cd;
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .statusbar b { color: #eef7f1; }
+
+    .page-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 14px;
+      margin: 7px 0 15px;
+    }
+
+    .page-head h2 {
+      margin: 0;
+      font-size: 32px;
+      line-height: 1;
+    }
+
+    .page-head p {
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .updated {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #9baaa0;
+      font-size: 9px;
+    }
+
+    .head-actions {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .updated i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 9px rgba(88, 231, 145, .75);
+    }
+
+    .graph-entry {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border: 1px solid #34443a;
+      border-radius: 6px;
+      color: #c6d1c9;
+      background: #0b1510;
+      cursor: pointer;
+    }
+
+    .graph-entry svg { width: 14px; height: 14px; color: var(--green); }
+
+    .search {
+      height: 42px;
+      display: grid;
+      grid-template-columns: 22px 1fr 28px;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 12px;
+      padding: 0 9px 0 12px;
+      border: 1px solid #2b3a31;
+      border-radius: 7px;
+      background: #0b1510;
+    }
+
+    .search svg { width: 16px; height: 16px; color: #829087; }
+
+    .search input {
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      color: #e4ece7;
+      background: transparent;
+      font-size: 11px;
+    }
+
+    .search input::placeholder { color: #748178; }
+
+    .search button {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      color: #07100b;
+      background: var(--green);
+    }
+
+    .search button svg { width: 14px; height: 14px; color: #07100b; }
+
+    .map-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 0 1px 8px;
+      color: #77857b;
+      font-size: 9px;
+    }
+
+    .map-meta b {
+      color: #aebbb2;
+      font-weight: 650;
+    }
+
+    .memory-map {
+      position: relative;
+      height: 532px;
+      margin: 0 -3px;
+    }
+
+    .domain {
+      position: absolute;
+      padding: 3px;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      transition:
+        left 420ms cubic-bezier(.2,.8,.2,1),
+        top 420ms cubic-bezier(.2,.8,.2,1),
+        width 420ms cubic-bezier(.2,.8,.2,1),
+        height 420ms cubic-bezier(.2,.8,.2,1),
+        transform 160ms ease;
+    }
+
+    .domain:active { transform: scale(.985); }
+
+    .domain-body {
+      display: block;
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-width: 0;
+      overflow: hidden;
+      padding: 12px;
+      text-align: left;
+      border: 1px solid rgba(225, 235, 228, .24);
+      border-radius: 7px;
+      background:
+        linear-gradient(145deg, color-mix(in srgb, var(--tone) 12%, #102018), #09120e 78%);
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, .018),
+        0 4px 13px rgba(0, 0, 0, .12);
+      transition:
+        border-color 180ms ease,
+        background 180ms ease,
+        box-shadow 180ms ease;
+    }
+
+    .domain-body::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+      background-size: 18px 18px;
+      opacity: .45;
+    }
+
+    .domain:hover .domain-body,
+    .domain:focus-visible .domain-body {
+      border-color: rgba(235, 243, 237, .48);
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, .035),
+        0 7px 18px rgba(0, 0, 0, .2);
+    }
+
+    .domain-copy {
+      display: block;
+      position: relative;
+      z-index: 2;
+      min-width: 0;
+    }
+
+    .domain-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .domain-title b {
+      overflow: hidden;
+      color: #f2f7f4;
+      font-size: 16px;
+      line-height: 1.1;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .domain-title span {
+      flex: 0 0 auto;
+      color: color-mix(in srgb, var(--tone) 83%, white);
+      font-size: 9px;
+      font-weight: 760;
+    }
+
+    .domain p {
+      position: relative;
+      z-index: 2;
+      margin: 8px 0 0;
+      color: #a8b5ac;
+      font-size: 9px;
+      line-height: 1.45;
+    }
+
+    .domain-tags {
+      position: absolute;
+      z-index: 2;
+      left: 12px;
+      right: 10px;
+      bottom: 11px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      max-width: calc(100% - 102px);
+    }
+
+    .domain-tags span {
+      padding: 3px 5px;
+      border-radius: 3px;
+      color: #c1cdc5;
+      background: rgba(5, 12, 8, .5);
+      font-size: 7px;
+    }
+
+    .domain img {
+      position: absolute;
+      z-index: 1;
+      right: 7px;
+      bottom: 8px;
+      width: 58px;
+      height: 58px;
+      object-fit: contain;
+      opacity: .9;
+      transform: rotate(5deg);
+      filter:
+        drop-shadow(2px 0 0 rgba(255,255,255,.94))
+        drop-shadow(-2px 0 0 rgba(255,255,255,.94))
+        drop-shadow(0 2px 0 rgba(255,255,255,.94))
+        drop-shadow(0 -2px 0 rgba(255,255,255,.94))
+        drop-shadow(0 9px 10px rgba(0,0,0,.42));
+    }
+
+    .domain img:nth-of-type(2) {
+      right: 47px;
+      bottom: 15px;
+      width: 45px;
+      height: 45px;
+      transform: rotate(-9deg);
+    }
+
+    .domain img:nth-of-type(3) {
+      right: 82px;
+      bottom: 8px;
+      width: 38px;
+      height: 38px;
+      transform: rotate(8deg);
+    }
+
+    .domain.small .domain-body { padding: 10px; }
+    .domain.small .domain-title b { font-size: 13px; }
+    .domain.small p { margin-top: 6px; font-size: 8px; }
+    .domain.small .domain-tags,
+    .domain[data-domain="work"] .domain-tags { display: none; }
+    .domain.small img {
+      right: 7px;
+      bottom: 8px;
+      width: 43px;
+      height: 43px;
+      opacity: .88;
+    }
+
+    .domain.small img:nth-of-type(2) {
+      right: 38px;
+      bottom: 12px;
+      width: 34px;
+      height: 34px;
+    }
+
+    .domain.tiny .domain-body { padding: 9px; }
+    .domain.tiny .domain-title { display: block; }
+    .domain.tiny .domain-title b { font-size: 12px; }
+    .domain.tiny .domain-title span { display: block; margin-top: 4px; }
+    .domain.tiny p, .domain.tiny .domain-tags { display: none; }
+    .domain.tiny img {
+      display: block;
+      right: 5px;
+      bottom: 5px;
+      width: 34px;
+      height: 34px;
+      opacity: .8;
+    }
+    .domain.tiny img:nth-of-type(2) {
+      right: 26px;
+      bottom: 7px;
+      width: 28px;
+      height: 28px;
+    }
+
+    .distribution-note {
+      margin-top: 7px;
+      color: #68756d;
+      font-size: 8px;
+      line-height: 1.4;
+      text-align: center;
+    }
+
+    .bottom-nav {
+      position: absolute;
+      z-index: 20;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 76px;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      align-items: end;
+      padding: 10px 8px 9px;
+      border-top: 1px solid #27352d;
+      background: rgba(5, 11, 8, .97);
+      backdrop-filter: blur(18px);
+    }
+
+    .bottom-nav button {
+      display: grid;
+      justify-items: center;
+      gap: 4px;
+      padding: 0;
+      border: 0;
+      color: #87948b;
+      background: transparent;
+      font-size: 8px;
+    }
+
+    .bottom-nav svg { width: 18px; height: 18px; }
+    .bottom-nav .active { color: var(--green); }
+
+    .bottom-nav .agent {
+      align-self: center;
+      margin-top: -24px;
+    }
+
+    .bottom-nav .agent i {
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      border: 5px solid #111b15;
+      border-radius: 50%;
+      color: #173526;
+      background: #f0f5f1;
+      box-shadow: 0 0 0 1px #39473f;
+    }
+
+    .domain-layer {
+      position: absolute;
+      z-index: 25;
+      inset: 0;
+      overflow-y: auto;
+      padding: 0 18px 100px;
+      color: var(--text);
+      background: #07100c;
+      transform: translateX(104%);
+      transition: transform 300ms cubic-bezier(.2,.8,.2,1);
+      scrollbar-width: none;
+    }
+
+    .domain-layer.open { transform: translateX(0); }
+    .domain-layer::-webkit-scrollbar { display: none; }
+
+    .layer-top {
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .layer-top button {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: 1px solid #33423a;
+      border-radius: 50%;
+      color: #d5dfd8;
+      background: transparent;
+    }
+
+    .layer-top svg { width: 16px; height: 16px; }
+
+    .layer-top span { color: #89968d; font-size: 9px; }
+
+    .layer-head {
+      padding: 8px 0 17px;
+      border-bottom: 1px solid #2b3931;
+    }
+
+    .layer-head small {
+      color: var(--layer-tone);
+      font-size: 9px;
+      font-weight: 760;
+    }
+
+    .layer-head h2 {
+      margin: 6px 0 7px;
+      font-size: 32px;
+    }
+
+    .layer-head p {
+      margin: 0;
+      color: #96a39a;
+      font-size: 11px;
+      line-height: 1.55;
+    }
+
+    .subdomains {
+      display: flex;
+      gap: 6px;
+      margin: 14px -18px 0;
+      padding: 0 18px 14px;
+      overflow-x: auto;
+      border-bottom: 1px solid #26342c;
+      scrollbar-width: none;
+    }
+
+    .subdomains::-webkit-scrollbar { display: none; }
+
+    .subdomains span {
+      flex: 0 0 auto;
+      padding: 6px 8px;
+      border: 1px solid #334139;
+      border-radius: 4px;
+      color: #a6b2aa;
+      font-size: 9px;
+    }
+
+    .subdomains span:first-child {
+      color: #07100b;
+      border-color: var(--layer-tone);
+      background: var(--layer-tone);
+      font-weight: 760;
+    }
+
+    .memory-mix {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      margin: 16px 0 20px;
+      background: #25332b;
+      border: 1px solid #25332b;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .mix-cell {
+      min-width: 0;
+      padding: 10px 7px;
+      background: #0c1711;
+    }
+
+    .mix-cell b {
+      display: block;
+      color: #edf5ef;
+      font-size: 14px;
+    }
+
+    .mix-cell span {
+      display: block;
+      margin-top: 4px;
+      overflow: hidden;
+      color: #748178;
+      font-size: 7px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .domain-content-tabs {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 1fr;
+      gap: 5px;
+      margin: 0 0 16px;
+    }
+
+    .domain-content-tabs button {
+      min-width: 0;
+      height: 35px;
+      padding: 0 6px;
+      overflow: hidden;
+      border: 1px solid #334139;
+      border-radius: 5px;
+      color: #89968d;
+      background: transparent;
+      font-size: 9px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .domain-content-tabs button.active {
+      color: #07100b;
+      border-color: var(--layer-tone);
+      background: var(--layer-tone);
+      font-weight: 760;
+    }
+
+    .library-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 4px 0 9px;
+    }
+
+    .library-head h3 {
+      margin: 0;
+      color: #dce6df;
+      font-size: 12px;
+    }
+
+    .library-head span {
+      color: #728077;
+      font-size: 8px;
+    }
+
+    .library-filter {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 0;
+      border: 0;
+      color: #87948b;
+      background: transparent;
+      font-size: 8px;
+    }
+
+    .library-filter svg { width: 12px; height: 12px; }
+
+    .object-library {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+    }
+
+    .object-card {
+      min-width: 0;
+      padding: 0;
+      overflow: hidden;
+      text-align: left;
+      border: 1px solid #2f3d35;
+      border-radius: 7px;
+      background: #0b1510;
+    }
+
+    .object-image {
+      position: relative;
+      display: grid;
+      place-items: center;
+      height: 120px;
+      overflow: hidden;
+      background:
+        linear-gradient(145deg, color-mix(in srgb, var(--layer-tone) 10%, #132019), #0b130f);
+    }
+
+    .object-image::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+      background-size: 18px 18px;
+    }
+
+    .object-image img {
+      position: relative;
+      z-index: 1;
+      width: 88px;
+      height: 96px;
+      object-fit: contain;
+      filter:
+        drop-shadow(2px 0 0 rgba(255,255,255,.92))
+        drop-shadow(-2px 0 0 rgba(255,255,255,.92))
+        drop-shadow(0 2px 0 rgba(255,255,255,.92))
+        drop-shadow(0 -2px 0 rgba(255,255,255,.92))
+        drop-shadow(0 10px 12px rgba(0,0,0,.38));
+    }
+
+    .object-image em {
+      position: absolute;
+      z-index: 2;
+      right: 7px;
+      top: 7px;
+      padding: 3px 5px;
+      border-radius: 3px;
+      color: #bfcac3;
+      background: rgba(4,10,6,.64);
+      font-size: 7px;
+      font-style: normal;
+    }
+
+    .object-copy {
+      display: block;
+      padding: 9px;
+    }
+
+    .object-copy b {
+      display: block;
+      overflow: hidden;
+      color: #edf5ef;
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .object-copy span {
+      display: block;
+      margin-top: 4px;
+      overflow: hidden;
+      color: #78857c;
+      font-size: 8px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .ai-library-note {
+      margin: 12px 0 0;
+      padding: 10px 0;
+      border-top: 1px solid #26342c;
+      color: #7e8b82;
+      font-size: 8px;
+      line-height: 1.55;
+    }
+
+    .ai-library-note b { color: var(--layer-tone); }
+
+    .detail-section { margin-top: 20px; }
+
+    .detail-section h3 {
+      margin: 0 0 5px;
+      color: #aebbb2;
+      font-size: 10px;
+      font-weight: 720;
+    }
+
+    .detail-row {
+      display: grid;
+      grid-template-columns: 27px minmax(0, 1fr) auto;
+      gap: 9px;
+      align-items: start;
+      width: 100%;
+      padding: 12px 0;
+      text-align: left;
+      border: 0;
+      border-bottom: 1px solid #202d26;
+      background: transparent;
+    }
+
+    .detail-row .icon {
+      display: grid;
+      place-items: center;
+      width: 27px;
+      height: 27px;
+      border-radius: 6px;
+      color: var(--layer-tone);
+      background: color-mix(in srgb, var(--layer-tone) 13%, transparent);
+    }
+
+    .detail-row svg { width: 14px; height: 14px; }
+
+    .detail-row b {
+      display: block;
+      color: #ecf4ee;
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .detail-row p {
+      margin: 4px 0 0;
+      color: #78857c;
+      font-size: 8px;
+      line-height: 1.45;
+    }
+
+    .detail-row em {
+      color: #6f7c73;
+      font-size: 8px;
+      font-style: normal;
+    }
+
+    .plan-progress {
+      height: 3px;
+      margin-top: 7px;
+      overflow: hidden;
+      border-radius: 2px;
+      background: #26342c;
+    }
+
+    .plan-progress i {
+      display: block;
+      width: var(--progress, 55%);
+      height: 100%;
+      background: var(--layer-tone);
+    }
+
+    .graph-layer {
+      position: absolute;
+      z-index: 27;
+      inset: 0;
+      overflow-y: auto;
+      padding: 0 18px 100px;
+      color: var(--text);
+      background: #060d09;
+      transform: translateX(104%);
+      transition: transform 300ms cubic-bezier(.2,.8,.2,1);
+      scrollbar-width: none;
+    }
+
+    .graph-layer.open { transform: translateX(0); }
+    .graph-layer::-webkit-scrollbar { display: none; }
+
+    .graph-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 8px 0 14px;
+    }
+
+    .graph-head h2 {
+      margin: 0;
+      font-size: 29px;
+    }
+
+    .graph-head p {
+      margin: 6px 0 0;
+      color: #8c9990;
+      font-size: 10px;
+    }
+
+    .graph-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      padding: 3px;
+      border: 1px solid #334139;
+      border-radius: 7px;
+      background: #0b1510;
+    }
+
+    .graph-tabs button {
+      height: 34px;
+      border: 0;
+      border-radius: 5px;
+      color: #87948b;
+      background: transparent;
+      font-size: 10px;
+    }
+
+    .graph-tabs button.active {
+      color: #07100b;
+      background: var(--green);
+      font-weight: 760;
+    }
+
+    .graph-caption {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 13px 1px 8px;
+      color: #7d8a81;
+      font-size: 8px;
+    }
+
+    .graph-mode {
+      display: none;
+      position: relative;
+      height: 510px;
+      overflow: hidden;
+      border-top: 1px solid #27352d;
+      border-bottom: 1px solid #27352d;
+      background:
+        linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+      background-size: 28px 28px;
+    }
+
+    .graph-mode.active { display: block; }
+
+    .graph-mode::after {
+      content: "";
+      position: absolute;
+      inset: 12%;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .graph-line {
+      position: absolute;
+      z-index: 1;
+      left: var(--x);
+      top: var(--y);
+      width: var(--w);
+      height: 1px;
+      background: linear-gradient(90deg, rgba(98,226,151,.65), rgba(255,255,255,.12));
+      transform: rotate(var(--r));
+      transform-origin: 0 0;
+    }
+
+    .graph-node {
+      position: absolute;
+      z-index: 3;
+      left: var(--x);
+      top: var(--y);
+      width: var(--size, 58px);
+      min-height: var(--size, 58px);
+      padding: 7px;
+      border: 1px solid rgba(226,236,229,.28);
+      border-radius: 50%;
+      color: #eef6f0;
+      background: rgba(12, 25, 18, .92);
+      box-shadow: 0 8px 18px rgba(0,0,0,.22);
+      transform: translate(-50%, -50%);
+    }
+
+    .graph-node img {
+      width: 100%;
+      height: 38px;
+      object-fit: contain;
+      filter:
+        drop-shadow(1px 0 0 rgba(255,255,255,.9))
+        drop-shadow(-1px 0 0 rgba(255,255,255,.9))
+        drop-shadow(0 1px 0 rgba(255,255,255,.9))
+        drop-shadow(0 -1px 0 rgba(255,255,255,.9));
+    }
+
+    .graph-node b,
+    .graph-node span {
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 5px);
+      width: 90px;
+      color: #cbd6cf;
+      font-size: 8px;
+      text-align: center;
+      transform: translateX(-50%);
+    }
+
+    .graph-node.core {
+      display: grid;
+      place-items: center;
+      border-color: rgba(88,231,145,.68);
+      background: #153425;
+      box-shadow: 0 0 25px rgba(88,231,145,.22);
+    }
+
+    .graph-node.core strong {
+      color: #f0f8f2;
+      font-size: 17px;
+    }
+
+    .graph-node.abstract {
+      display: grid;
+      place-items: center;
+      width: auto;
+      min-width: 68px;
+      min-height: 42px;
+      padding: 8px 11px;
+      border-radius: 7px;
+      text-align: center;
+    }
+
+    .graph-node.abstract span {
+      position: static;
+      width: auto;
+      color: inherit;
+      font-size: inherit;
+      transform: none;
+    }
+
+    .graph-node.abstract small {
+      display: block;
+      color: var(--node-tone, var(--green));
+      font-size: 7px;
+      font-weight: 760;
+    }
+
+    .graph-node.abstract strong {
+      display: block;
+      margin-top: 3px;
+      color: #e9f2ec;
+      font-size: 9px;
+      line-height: 1.35;
+    }
+
+    .graph-summary {
+      margin-top: 12px;
+      padding: 12px 0;
+      border-top: 1px solid #26342c;
+      color: #8c9990;
+      font-size: 9px;
+      line-height: 1.6;
+    }
+
+    .graph-summary b {
+      display: block;
+      margin-bottom: 4px;
+      color: #dce6df;
+      font-size: 11px;
+    }
+
+    .object-layer {
+      position: absolute;
+      z-index: 31;
+      inset: 0;
+      overflow-y: auto;
+      padding: 0 18px 100px;
+      color: var(--text);
+      background: #07100c;
+      transform: translateX(104%);
+      transition: transform 300ms cubic-bezier(.2,.8,.2,1);
+      scrollbar-width: none;
+    }
+
+    .object-layer.open { transform: translateX(0); }
+    .object-layer::-webkit-scrollbar { display: none; }
+
+    .object-hero {
+      position: relative;
+      display: grid;
+      place-items: center;
+      height: 262px;
+      margin: 0 -18px;
+      overflow: hidden;
+      border-top: 1px solid #25332b;
+      border-bottom: 1px solid #25332b;
+      background:
+        linear-gradient(145deg, color-mix(in srgb, var(--object-tone, var(--green)) 12%, #14231b), #09110d);
+    }
+
+    .object-hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+
+    .object-hero img {
+      position: relative;
+      z-index: 1;
+      width: 170px;
+      height: 205px;
+      object-fit: contain;
+      filter:
+        drop-shadow(3px 0 0 rgba(255,255,255,.94))
+        drop-shadow(-3px 0 0 rgba(255,255,255,.94))
+        drop-shadow(0 3px 0 rgba(255,255,255,.94))
+        drop-shadow(0 -3px 0 rgba(255,255,255,.94))
+        drop-shadow(0 16px 18px rgba(0,0,0,.42));
+    }
+
+    .object-detail-head {
+      padding: 18px 0 15px;
+      border-bottom: 1px solid #28362e;
+    }
+
+    .object-detail-head small {
+      color: var(--object-tone, var(--green));
+      font-size: 8px;
+      font-weight: 760;
+    }
+
+    .object-detail-head h2 {
+      margin: 5px 0 6px;
+      font-size: 27px;
+    }
+
+    .object-detail-head p {
+      margin: 0;
+      color: #8b988f;
+      font-size: 10px;
+      line-height: 1.55;
+    }
+
+    .object-status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      margin: 14px 0 21px;
+      overflow: hidden;
+      border: 1px solid #28362e;
+      border-radius: 6px;
+      background: #28362e;
+    }
+
+    .object-status {
+      min-height: 66px;
+      padding: 10px;
+      background: #0c1711;
+    }
+
+    .object-status span {
+      display: block;
+      color: #718077;
+      font-size: 7px;
+    }
+
+    .object-status b {
+      display: block;
+      margin-top: 6px;
+      color: #e9f2ec;
+      font-size: 10px;
+      line-height: 1.4;
+    }
+
+    .item-timeline {
+      margin-top: 8px;
+      border-top: 1px solid #26342c;
+    }
+
+    .item-event {
+      position: relative;
+      display: grid;
+      grid-template-columns: 48px minmax(0, 1fr);
+      gap: 10px;
+      padding: 13px 0;
+      border-bottom: 1px solid #202d26;
+    }
+
+    .item-event time {
+      color: #718077;
+      font-size: 8px;
+    }
+
+    .item-event b {
+      display: block;
+      color: #dce6df;
+      font-size: 10px;
+    }
+
+    .item-event p {
+      margin: 4px 0 0;
+      color: #758279;
+      font-size: 8px;
+      line-height: 1.45;
+    }
+
+    .notes {
+      padding-top: 20px;
+    }
+
+    .notes h2 {
+      margin: 0 0 9px;
+      font-size: 24px;
+    }
+
+    .notes > p {
+      margin: 0 0 22px;
+      color: #626d65;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .rule {
+      padding: 14px 0;
+      border-top: 1px solid #ccd3cd;
+    }
+
+    .rule b {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 14px;
+    }
+
+    .rule p {
+      margin: 0;
+      color: #657068;
+      font-size: 12px;
+      line-height: 1.65;
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .legend span {
+      padding: 10px;
+      border: 1px solid #cbd2cc;
+      border-radius: 6px;
+      color: #4f5c53;
+      background: rgba(255,255,255,.35);
+      font-size: 11px;
+    }
+
+    @media (max-width: 820px) {
+      .intro {
+        display: block;
+        padding-top: 28px;
+      }
+      .intro p { margin-top: 16px; }
+      .stage {
+        display: block;
+        width: 100%;
+        padding: 24px 16px 50px;
+      }
+      .phone {
+        width: min(var(--phone-w), calc(100vw - 32px));
+        margin: 0 auto;
+      }
+      .notes {
+        width: min(var(--phone-w), calc(100vw - 32px));
+        margin: 28px auto 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="intro">
+    <div>
+      <small>REAL KIT · 全览组合块原型 v0.4</small>
+      <h1>用面积表达记忆分布，用领域承载不同性质的记忆。</h1>
+    </div>
+    <p>点击任意组合块进入领域内部。当前示例中饮食记忆最多，因此面积最大；每个领域都可以同时拥有物品、偏好、习惯和计划。</p>
+  </header>
+
+  <main class="stage">
+    <div class="phone">
+      <div class="screen">
+        <div class="statusbar"><b>Real Kit</b><span>9:41</span></div>
+        <div class="page-head">
+          <div><h2>全览</h2><p>记忆在生活中的分布</p></div>
+          <div class="head-actions">
+            <span class="updated"><i></i>刚刚更新</span>
+            <button class="graph-entry" type="button" aria-label="查看关系洞察" title="关系洞察"><i data-lucide="network"></i></button>
+          </div>
+        </div>
+
+        <label class="search">
+          <i data-lucide="search"></i>
+          <input aria-label="搜索现实记忆" placeholder="搜索物品、人物或一件事">
+          <button aria-label="语音搜索"><i data-lucide="mic"></i></button>
+        </label>
+
+        <div class="map-meta">
+          <span><b>130 条有效记忆</b> · 9 个生活领域</span>
+          <span>近 90 天</span>
+        </div>
+
+        <section class="memory-map" aria-label="按记忆量显示的生活领域">
+          <button class="domain" data-domain="food" style="--tone:#5bd993;left:0;top:0;width:54%;height:34%">
+            <span class="domain-body">
+              <span class="domain-copy">
+                <span class="domain-title"><b>饮食</b><span>28 条</span></span>
+                <p>口味、餐食、饮品与厨房余量</p>
+              </span>
+              <span class="domain-tags"><span>偏好 7</span><span>物品状态 8</span><span>计划 4</span></span>
+              <img src="../../../frontend/public/assets/pico/inventory/items/water-bottle.png" alt="">
+            </span>
+          </button>
+
+          <button class="domain" data-domain="work" style="--tone:#71aef4;left:54%;top:0;width:46%;height:34%">
+            <span class="domain-body">
+              <span class="domain-copy">
+                <span class="domain-title"><b>工作与学习</b><span>23 条</span></span>
+                <p>任务、知识、设备与阅读进度</p>
+              </span>
+              <span class="domain-tags"><span>任务 8</span><span>进度 5</span></span>
+              <img src="../../../frontend/public/assets/pico/inventory/items/laptop.png" alt="">
+              <img src="../../../frontend/public/assets/pico/inventory/items/headphones.png" alt="">
+            </span>
+          </button>
+
+          <button class="domain small" data-domain="home" style="--tone:#f0c85e;left:0;top:34%;width:32%;height:34%">
+            <span class="domain-body">
+              <span class="domain-copy">
+                <span class="domain-title"><b>居住</b><span>18 条</span></span>
+                <p>空间、家居物品与设备状态</p>
+              </span>
+              <span class="domain-tags"><span>位置 9</span><span>余量 3</span></span>
+              <img src="../../../frontend/public/assets/pico/inventory/items/keys.png" alt="">
+              <img src="../../../frontend/public/assets/pico/inventory/items/phone.png" alt="">
+            </span>
+          </button>
+
+          <button class="domain small" data-domain="care" style="--tone:#ef91c7;left:32%;top:34%;width:37%;height:34%">
+            <span class="domain-body">
+              <span class="domain-copy">
+                <span class="domain-title"><b>个护与美妆</b><span>14 条</span></span>
+                <p>护肤、彩妆、香氛与个人日化</p>
+              </span>
+              <span class="domain-tags"><span>余量 5</span><span>偏好 4</span></span>
+              <img src="../../../frontend/public/assets/pico/inventory/items/serum.png" alt="">
+              <img src="../../../frontend/public/assets/pico/inventory/items/face-cream.png" alt="">
+            </span>
+          </button>
+
+          <button class="domain tiny" data-domain="style" style="--tone:#a998ed;left:69%;top:34%;width:31%;height:34%">
+            <span class="domain-body">
+              <span class="domain-copy">
+                <span class="domain-title"><b>穿搭</b><span>11 条</span></span>
+                <p>衣物、风格与搭配</p>
+              </span>
+              <img src="../../../frontend/public/assets/pico/wardrobe/items/blue-hoodie.png" alt="">
+              <img src="../../../frontend/public/assets/pico/wardrobe/items/camel-skirt.png" alt="">
+            </span>
+          </button>
+
+          <button class="domain tiny" data-domain="relations" style="--tone:#f38e84;left:0;top:68%;width:30%;height:32%">
+            <span class="domain-body">
+              <span class="domain-copy">
+                <span class="domain-title"><b>人际关系</b><span>16 条</span></span>
+                <p>人物、关系与共同经历</p>
+              </span>
+              <img src="../../../frontend/public/assets/pico/inventory/items/phone.png" alt="">
+              <img src="../../../frontend/public/assets/pico/inventory/items/perfume.png" alt="">
+            </span>
+          </button>
+
+          <button class="domain tiny" data-domain="health" style="--tone:#ef7c8a;left:30%;top:68%;width:22%;height:32%">
+            <span class="domain-body">
+              <span class="domain-copy">
+                <span class="domain-title"><b>健康与身体</b><span>9 条</span></span>
+                <p>身体状态与目标</p>
+              </span>
+              <img src="../../../frontend/public/assets/pico/inventory/items/smartwatch.png" alt="">
+              <img src="../../../frontend/public/assets/pico/inventory/items/water-bottle.png" alt="">
+            </span>
+          </button>
+
+          <button class="domain tiny" data-domain="travel" style="--tone:#69d7dc;left:52%;top:68%;width:20%;height:32%">
+            <span class="domain-body">
+              <span class="domain-copy">
+                <span class="domain-title"><b>出行</b><span>6 条</span></span>
+                <p>行程与随身物品</p>
+              </span>
+              <img src="../../../frontend/public/assets/pico/inventory/items/passport.png" alt="">
+              <img src="../../../frontend/public/assets/pico/inventory/items/umbrella.png" alt="">
+            </span>
+          </button>
+
+          <button class="domain tiny" data-domain="leisure" style="--tone:#e8a86c;left:72%;top:68%;width:28%;height:32%">
+            <span class="domain-body">
+              <span class="domain-copy">
+                <span class="domain-title"><b>兴趣与休闲</b><span>5 条</span></span>
+                <p>音乐、娱乐与个人项目</p>
+              </span>
+              <img src="../../../frontend/public/assets/pico/inventory/items/headphones.png" alt="">
+              <img src="../../../frontend/public/assets/pico/inventory/items/phone.png" alt="">
+            </span>
+          </button>
+        </section>
+
+        <p class="distribution-note">面积代表已形成的有效记忆量，不代表领域的重要程度。</p>
+      </div>
+
+      <nav class="bottom-nav"></nav>
+
+      <section class="domain-layer" aria-label="生活领域详情">
+        <div class="layer-top">
+          <button class="close-layer" aria-label="返回全览"><i data-lucide="arrow-left"></i></button>
+          <span>领域记忆</span>
+        </div>
+        <header class="layer-head">
+          <small class="layer-count">28 条有效记忆</small>
+          <h2 class="layer-title">饮食</h2>
+          <p class="layer-summary">口味、餐食、饮品和厨房状态会在这里连接，而不是被拆成互不相关的列表。</p>
+        </header>
+        <div class="domain-content-tabs"></div>
+        <div class="detail-content"></div>
+      </section>
+
+      <section class="graph-layer" aria-label="关系洞察">
+        <div class="layer-top">
+          <button class="close-graph" aria-label="返回全览"><i data-lucide="arrow-left"></i></button>
+          <span>关系探索</span>
+        </div>
+        <header class="graph-head">
+          <div><h2>关系洞察</h2><p>物品、人物和你的长期理解如何彼此连接</p></div>
+        </header>
+        <div class="graph-caption"><span>拖动探索 · 点击查看详情</span><span>当前展示稳定关系</span></div>
+
+        <div class="graph-mode active">
+          <i class="graph-line" style="--x:50%;--y:47%;--w:124px;--r:-137deg"></i>
+          <i class="graph-line" style="--x:50%;--y:47%;--w:116px;--r:-42deg"></i>
+          <i class="graph-line" style="--x:50%;--y:47%;--w:122px;--r:34deg"></i>
+          <i class="graph-line" style="--x:50%;--y:47%;--w:116px;--r:144deg"></i>
+          <i class="graph-line" style="--x:23%;--y:22%;--w:178px;--r:4deg"></i>
+          <i class="graph-line" style="--x:24%;--y:72%;--w:182px;--r:-3deg"></i>
+          <i class="graph-line" style="--x:76%;--y:22%;--w:167px;--r:88deg"></i>
+
+          <button class="graph-node core" style="--x:50%;--y:47%;--size:66px"><strong>我</strong></button>
+          <button class="graph-node" style="--x:22%;--y:21%;--size:58px">
+            <img src="../../../frontend/public/assets/pico/inventory/items/keys.png" alt=""><b>钥匙</b>
+          </button>
+          <button class="graph-node" style="--x:77%;--y:20%;--size:55px">
+            <img src="../../../frontend/public/assets/pico/inventory/items/umbrella.png" alt=""><b>雨伞</b>
+          </button>
+          <button class="graph-node" style="--x:79%;--y:72%;--size:58px">
+            <img src="../../../frontend/public/assets/pico/inventory/items/passport.png" alt=""><b>护照</b>
+          </button>
+          <button class="graph-node abstract" style="--x:23%;--y:73%;--node-tone:#f38e84">
+            <span><small>人物</small><strong>妈妈偏爱茉莉花茶</strong></span>
+          </button>
+          <button class="graph-node abstract" style="--x:75%;--y:45%;--node-tone:#5bd993">
+            <span><small>饮食偏好</small><strong>更常选择少糖</strong></span>
+          </button>
+          <button class="graph-node abstract" style="--x:52%;--y:87%;--node-tone:#71aef4">
+            <span><small>任务</small><strong>确认签证材料</strong></span>
+          </button>
+          <button class="graph-node abstract" style="--x:24%;--y:46%;--node-tone:#f0c85e">
+            <span><small>阅读习惯</small><strong>晚上更易持续</strong></span>
+          </button>
+        </div>
+
+        <div class="graph-summary">
+          <b>这是系统发现的关系，不是另一套分类</b>
+          物品、人物、偏好、习惯和计划会出现在同一个网络里；生活领域仍由全览组合块负责。
+        </div>
+      </section>
+
+      <section class="object-layer" aria-label="物品详情">
+        <div class="layer-top">
+          <button class="close-object" aria-label="返回物品库"><i data-lucide="arrow-left"></i></button>
+          <span>物品记忆</span>
+        </div>
+        <div class="object-hero">
+          <img class="object-hero-image" src="" alt="">
+        </div>
+        <header class="object-detail-head">
+          <small>AI 主动形成的物品记忆</small>
+          <h2 class="object-detail-title"></h2>
+          <p class="object-detail-summary"></p>
+        </header>
+        <div class="object-status-grid">
+          <div class="object-status"><span>最后位置</span><b class="object-location"></b></div>
+          <div class="object-status"><span>最近状态</span><b class="object-state"></b></div>
+          <div class="object-status"><span>最后确认</span><b class="object-seen"></b></div>
+          <div class="object-status"><span>可信状态</span><b class="object-confidence"></b></div>
+        </div>
+        <section class="detail-section">
+          <h3>状态变更轨迹</h3>
+          <div class="item-timeline"></div>
+        </section>
+      </section>
+    </div>
+
+    <aside class="notes">
+      <h2>这版的分类规则</h2>
+      <p>领域回答“这段记忆属于生活的哪一部分”；物品、偏好和任务回答“在这个领域里记住了什么”。两者不再混为同一级分类。</p>
+
+      <div class="rule">
+        <b>购物不单独成为领域</b>
+        <p>买衣服进入穿搭，买食品进入饮食，买家居用品进入居住。采购只是一次行为，不是记忆最终归属。</p>
+      </div>
+      <div class="rule">
+        <b>任务、目标和进度统一为“计划”</b>
+        <p>任务是要做什么，目标是希望达到什么，进度是当前走到了哪里。它们共享同一条计划主线。</p>
+      </div>
+      <div class="rule">
+        <b>偏好和习惯附着在领域内</b>
+        <p>少糖是饮食偏好，喜欢宽松剪裁是穿搭偏好，晚上阅读是工作学习习惯，不再建立一个脱离生活的偏好仓库。</p>
+      </div>
+
+      <div class="legend">
+        <span>饮食：餐食、饮品、食材</span>
+        <span>穿搭：衣物、配饰、风格</span>
+        <span>个护美妆：护肤、彩妆、香氛</span>
+        <span>居住：空间、家居、耗材</span>
+        <span>工作学习：知识、设备、进度</span>
+        <span>健康：身体、睡眠、运动</span>
+        <span>出行：行程、路线、随身物</span>
+        <span>人际：人物、关系、约定</span>
+        <span>兴趣：娱乐、爱好、项目</span>
+      </div>
+    </aside>
+  </main>
+
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+  <script>
+    const domainData = {
+      food: {
+        title: "饮食",
+        tone: "#5bd993",
+        count: 28,
+        summary: "口味、餐食、饮品和厨房状态会在这里连接，而不是被拆成互不相关的列表。",
+        subs: ["全部", "口味", "餐食与外卖", "饮品", "食材与耗材"],
+        mix: [["8", "物品与状态"], ["7", "偏好"], ["9", "习惯"], ["4", "计划"]],
+        sections: [
+          ["当前状态", [
+            ["package-minus", "纸巾余量偏低", "最近 9 天持续下降，预计还能使用 4 到 7 天", "状态"],
+            ["cup-soda", "常喝的水杯在书房工作桌", "今天 10:04 最后一次看到，可信度 91%", "位置"]
+          ]],
+          ["偏好与习惯", [
+            ["heart-off", "不喜欢这家胡辣汤", "今天午餐时明确表达，来自主动语音", "偏好"],
+            ["sparkles", "饮品通常选择少糖", "近 7 次订单中有 6 次选择少糖", "习惯"]
+          ]],
+          ["目标与进度", [
+            ["target", "本周少喝含糖饮料", "已完成 3 天，共计划 5 天", "60%"]
+          ]]
+        ]
+      },
+      work: {
+        title: "工作与学习", tone: "#71aef4", count: 23,
+        summary: "工作任务、会议知识、设备状态、学习目标和阅读进度都沿着同一条工作学习主线组织。",
+        subs: ["全部", "工作", "会议", "学习", "阅读"],
+        mix: [["6", "物品与状态"], ["2", "偏好"], ["7", "知识与习惯"], ["8", "计划"]],
+        sections: [
+          ["当前状态", [["laptop", "笔记本电脑在书房工作桌", "今天 09:10 最后一次确认", "位置"], ["book-open", "《设计中的设计》约 124 页", "昨晚两次观察形成当前进度", "进度"]]],
+          ["偏好与习惯", [["moon", "晚上更容易持续阅读", "近 3 周主要发生在 21 点之后", "习惯"]]],
+          ["目标与进度", [["list-checks", "整理会议结论", "已完成 2 项，共 5 项", "40%"]]]
+        ]
+      },
+      home: {
+        title: "居住", tone: "#f0c85e", count: 18,
+        summary: "空间、家居物品、耗材和智能设备状态共同构成居住记忆。",
+        subs: ["全部", "玄关", "客厅", "书房", "厨房"],
+        mix: [["11", "物品与状态"], ["1", "偏好"], ["3", "习惯"], ["3", "计划"]],
+        sections: [
+          ["当前状态", [["key-round", "钥匙位于玄关托盘", "今天 08:12 最后一次看到", "位置"], ["lightbulb", "客厅灯通常在回家后开启", "来自智能家居事件，只作为生活模式", "习惯"]]],
+          ["偏好与习惯", [["sofa", "更常在书房工作", "近 14 天的专注片段主要来自书房", "习惯"]]],
+          ["目标与进度", [["hammer", "重新整理玄关收纳", "尚未开始", "0%"]]]
+        ]
+      },
+      care: {
+        title: "个护与美妆", tone: "#ef91c7", count: 14,
+        summary: "护肤、彩妆、香氛、洗护和个人日化用品按使用与消耗状态形成个人护理记忆。",
+        subs: ["全部", "护肤", "彩妆", "香氛", "洗护"],
+        mix: [["7", "物品与状态"], ["4", "偏好"], ["1", "习惯"], ["2", "计划"]],
+        sections: [
+          ["当前状态", [
+            ["droplets", "精华液余量约三成", "最近两周持续下降", "余量"],
+            ["package-check", "面霜已开封", "预计还能使用 12 到 18 天", "状态"]
+          ]],
+          ["偏好与习惯", [
+            ["sparkles", "更偏好清爽质地", "来自三次明确表达", "偏好"]
+          ]],
+          ["目标与进度", [
+            ["shopping-bag", "补充防晒霜", "尚未加入采购清单", "0%"]
+          ]]
+        ]
+      },
+      relations: {
+        title: "人际关系", tone: "#f38e84", count: 16,
+        summary: "这里记录人物关系、共同经历、对方偏好和仍需兑现的约定，不强行放入物品。",
+        subs: ["全部", "家人", "朋友", "同事", "共同约定"],
+        mix: [["7", "人物关系"], ["4", "对方偏好"], ["2", "共同习惯"], ["3", "约定"]],
+        sections: [
+          ["人物与关系", [["users", "妈妈是家庭成员", "最近一次共同活动发生在周日午餐", "关系"], ["message-circle", "同事林然负责设计对接", "来自两次会议中的明确提及", "关系"]]],
+          ["对方偏好", [["coffee", "妈妈偏爱茉莉花茶", "两次家庭对话均有明确表达", "偏好"]]],
+          ["约定与进度", [["calendar-check", "周末给妈妈带茶叶", "尚未完成", "0%"]]]
+        ]
+      },
+      style: {
+        title: "穿搭", tone: "#a998ed", count: 11,
+        summary: "衣物与配饰是实体，风格偏好、搭配习惯和购买计划附着在穿搭领域里。",
+        subs: ["全部", "上装", "下装", "配饰", "搭配"],
+        mix: [["6", "衣物状态"], ["3", "偏好"], ["1", "习惯"], ["1", "计划"]],
+        sections: [
+          ["衣物状态", [["shirt", "蓝色连帽衫在衣柜上层", "上周最后一次看到", "位置"], ["glasses", "太阳镜在玄关抽屉", "可信度 88%", "位置"]]],
+          ["偏好与习惯", [["sparkles", "更喜欢宽松剪裁", "来自三次明确选择", "偏好"]]],
+          ["目标与进度", [["shopping-bag", "补一件轻薄外套", "还未加入采购清单", "0%"]]]
+        ]
+      },
+      health: {
+        title: "健康与身体", tone: "#ef7c8a", count: 9,
+        summary: "身体数据、睡眠、运动和健康目标在同一个领域内形成趋势，而不是逐条堆传感器读数。",
+        subs: ["全部", "心率", "睡眠", "运动", "身体目标"],
+        mix: [["3", "身体状态"], ["1", "偏好"], ["2", "习惯"], ["3", "计划"]],
+        sections: [
+          ["当前状态", [["heart-pulse", "最近静息心率保持稳定", "过去 7 天平均 68 次/分钟", "趋势"], ["moon", "昨晚睡眠 7 小时 12 分", "来自可穿戴设备", "状态"]]],
+          ["偏好与习惯", [["footprints", "更常在晚饭后散步", "近两周出现 6 次", "习惯"]]],
+          ["目标与进度", [["target", "本周完成 3 次运动", "已完成 2 次", "67%"]]]
+        ]
+      },
+      travel: {
+        title: "出行", tone: "#69d7dc", count: 6,
+        summary: "行程、路线、随身物品和出门任务形成出行上下文。",
+        subs: ["全部", "通勤", "旅行", "随身物品"],
+        mix: [["2", "物品状态"], ["0", "偏好"], ["1", "习惯"], ["3", "计划"]],
+        sections: [
+          ["当前状态", [["badge-check", "护照在书房抽屉", "上周最后一次确认", "位置"], ["umbrella", "雨伞在玄关门侧", "今天 08:12 最后一次看到", "位置"]]],
+          ["出行习惯", [["route", "工作日通常乘地铁通勤", "近 10 次出行中出现 8 次", "习惯"]]],
+          ["目标与进度", [["plane", "周五前确认签证材料", "两项材料仍待确认", "50%"]]]
+        ]
+      },
+      leisure: {
+        title: "兴趣与休闲", tone: "#e8a86c", count: 5,
+        summary: "音乐、娱乐、爱好物品和个人项目保留在一个可继续生长的休闲领域。",
+        subs: ["全部", "音乐", "影视", "爱好", "个人项目"],
+        mix: [["2", "物品状态"], ["1", "偏好"], ["1", "习惯"], ["1", "计划"]],
+        sections: [
+          ["当前状态", [["headphones", "耳机位于书房桌面", "昨天 22:40 最后一次看到", "位置"], ["gamepad-2", "拼图项目仍在客厅茶几", "三天没有更新", "状态"]]],
+          ["偏好与习惯", [["music", "工作时更常听纯音乐", "近 5 次专注片段中出现 4 次", "偏好"]]],
+          ["目标与进度", [["puzzle", "完成当前拼图", "大约完成 35%", "35%"]]]
+        ]
+      }
+    };
+
+    const domainObjects = {
+      style: [
+        {
+          name: "蓝色连帽衫",
+          image: "../../../frontend/public/assets/pico/wardrobe/items/blue-hoodie.png",
+          location: "衣柜上层左侧",
+          state: "已收纳",
+          seen: "昨天 21:42",
+          confidence: "较可信 · 92%",
+          summary: "系统从多次穿着与收纳片段中形成了这件衣物的稳定主线。",
+          timeline: [
+            ["昨天", "回到衣柜上层", "晚间收纳片段中再次确认位置。"],
+            ["7 月 23 日", "穿着外出", "和黑色长裤一起出现，形成一次搭配记录。"],
+            ["7 月 18 日", "首次形成实体", "来自衣柜整理时的连续观察。"]
+          ]
+        },
+        {
+          name: "白色衬衫",
+          image: "../../../frontend/public/assets/pico/wardrobe/items/white-shirt.png",
+          location: "衣柜中层",
+          state: "最近穿过",
+          seen: "7 月 24 日",
+          confidence: "可信 · 95%",
+          summary: "最近一次在工作日穿着，系统已记录常见搭配和收纳位置。",
+          timeline: [["7 月 24 日", "工作日穿着", "与黑色长裤共同出现。"], ["7 月 20 日", "收回衣柜中层", "位置得到再次确认。"]]
+        },
+        {
+          name: "黑色针织衫",
+          image: "../../../frontend/public/assets/pico/wardrobe/items/black-knit.png",
+          location: "衣柜上层右侧",
+          state: "已收纳",
+          seen: "7 月 22 日",
+          confidence: "较可信 · 89%",
+          summary: "系统已识别两次穿着记录，当前收纳位置较稳定。",
+          timeline: [["7 月 22 日", "收纳位置更新", "从床边移动回衣柜。"], ["7 月 12 日", "首次穿着确认", "形成衣物实体主线。"]]
+        },
+        {
+          name: "驼色半裙",
+          image: "../../../frontend/public/assets/pico/wardrobe/items/camel-skirt.png",
+          location: "衣柜下层",
+          state: "两周未穿",
+          seen: "7 月 10 日",
+          confidence: "一般 · 82%",
+          summary: "这件衣物的当前位置可能已经陈旧，需要下一次观察更新。",
+          timeline: [["7 月 10 日", "收纳于衣柜下层", "最后一次可靠位置观察。"], ["6 月 29 日", "与米色开衫搭配", "形成一条搭配记录。"]]
+        },
+        {
+          name: "靛蓝牛仔裤",
+          image: "../../../frontend/public/assets/pico/wardrobe/items/indigo-jeans.png",
+          location: "衣柜下层右侧",
+          state: "高频穿着",
+          seen: "今天 08:06",
+          confidence: "可信 · 96%",
+          summary: "近两周出现频率较高，系统将它识别为常用下装。",
+          timeline: [["今天", "穿着出门", "与蓝色连帽衫共同出现。"], ["7 月 21 日", "清洗后重新收纳", "状态从待清洗更新为已收纳。"]]
+        },
+        {
+          name: "米色开衫",
+          image: "../../../frontend/public/assets/pico/wardrobe/items/beige-cardigan.png",
+          location: "衣柜中层左侧",
+          state: "已收纳",
+          seen: "7 月 20 日",
+          confidence: "较可信 · 90%",
+          summary: "系统记录了三次搭配，当前常与白色衬衫共同出现。",
+          timeline: [["7 月 20 日", "位置得到确认", "回到衣柜中层左侧。"], ["7 月 15 日", "与白色衬衫搭配", "形成新的搭配关系。"]]
+        },
+        {
+          name: "黑色长裤",
+          image: "../../../frontend/public/assets/pico/wardrobe/items/black-trousers.png",
+          location: "衣柜下层左侧",
+          state: "最近穿过",
+          seen: "7 月 24 日",
+          confidence: "可信 · 94%",
+          summary: "工作日穿着频率较高，当前状态为已收纳。",
+          timeline: [["7 月 24 日", "工作日穿着", "与白色衬衫共同出现。"], ["7 月 23 日", "收纳位置确认", "位于衣柜下层左侧。"]]
+        },
+        {
+          name: "象牙白长裤",
+          image: "../../../frontend/public/assets/pico/wardrobe/items/ivory-trousers.png",
+          location: "衣柜下层中部",
+          state: "已收纳",
+          seen: "7 月 16 日",
+          confidence: "一般 · 84%",
+          summary: "系统目前只形成了一次可靠穿着记录。",
+          timeline: [["7 月 16 日", "首次形成实体", "整理衣柜时识别并归入穿搭领域。"]]
+        }
+      ],
+      food: [
+        {
+          name: "常用水杯",
+          image: "../../../frontend/public/assets/pico/inventory/items/water-bottle.png",
+          location: "书房工作桌",
+          state: "正在使用",
+          seen: "今天 10:04",
+          confidence: "较可信 · 91%",
+          summary: "这是饮食领域中高频出现的饮水物品。",
+          timeline: [["今天", "移动到书房工作桌", "从厨房移动至电脑右侧。"], ["昨天", "清洗后回到厨房", "形成一次状态变化。"]]
+        }
+      ],
+      work: [
+        {
+          name: "笔记本电脑",
+          image: "../../../frontend/public/assets/pico/inventory/items/laptop.png",
+          location: "书房工作桌",
+          state: "高频使用",
+          seen: "今天 09:10",
+          confidence: "可信 · 96%",
+          summary: "这是工作学习领域的核心设备，连接会议、任务和多个专注片段。",
+          timeline: [["今天", "开始工作片段", "位于书房工作桌。"], ["昨天", "结束阅读片段", "和耳机共同出现。"]]
+        }
+      ],
+      home: [
+        {
+          name: "家门钥匙",
+          image: "../../../frontend/public/assets/pico/inventory/items/keys.png",
+          location: "玄关托盘",
+          state: "已放回",
+          seen: "今天 08:12",
+          confidence: "可信 · 94%",
+          summary: "钥匙的当前位置和移动轨迹已经形成稳定记忆。",
+          timeline: [["今天", "放回玄关托盘", "结束出门活动后再次确认。"], ["昨天", "随身离开家", "位置状态更新为随身。"]]
+        }
+      ],
+      care: [
+        {
+          name: "舒缓精华液",
+          image: "../../../frontend/public/assets/pico/inventory/items/serum.png",
+          location: "卧室梳妆台",
+          state: "余量约三成",
+          seen: "今天 07:46",
+          confidence: "较可信 · 91%",
+          summary: "系统根据瓶身状态和近两周使用频率估算当前余量。",
+          timeline: [["今天", "晨间使用", "余量状态继续下降。"], ["7 月 18 日", "余量约一半", "来自梳妆台前的连续观察。"]]
+        },
+        {
+          name: "保湿面霜",
+          image: "../../../frontend/public/assets/pico/inventory/items/face-cream.png",
+          location: "卧室梳妆台",
+          state: "已开封",
+          seen: "昨天 22:31",
+          confidence: "可信 · 94%",
+          summary: "面霜处于稳定使用中，预计还能使用 12 到 18 天。",
+          timeline: [["昨天", "晚间使用", "再次确认已开封状态。"], ["7 月 9 日", "首次开封", "开始建立使用进度。"]]
+        },
+        {
+          name: "日常防晒霜",
+          image: "../../../frontend/public/assets/pico/inventory/items/sunscreen.png",
+          location: "玄关随身包",
+          state: "接近用完",
+          seen: "今天 08:04",
+          confidence: "较可信 · 89%",
+          summary: "防晒霜余量偏低，但尚未加入采购清单。",
+          timeline: [["今天", "随身带出", "位于玄关随身包。"], ["7 月 21 日", "余量偏低", "形成补充候选。"]]
+        },
+        {
+          name: "木质调香水",
+          image: "../../../frontend/public/assets/pico/inventory/items/perfume.png",
+          location: "衣柜内侧",
+          state: "低频使用",
+          seen: "上周四",
+          confidence: "一般 · 84%",
+          summary: "近期使用频率较低，系统已形成偏好但不会自动补货。",
+          timeline: [["上周四", "出门前使用", "与正式穿搭共同出现。"], ["6 月 30 日", "位置确认", "收纳在衣柜内侧。"]]
+        }
+      ],
+      travel: [
+        {
+          name: "护照",
+          image: "../../../frontend/public/assets/pico/inventory/items/passport.png",
+          location: "书房抽屉",
+          state: "已收纳",
+          seen: "上周五",
+          confidence: "较可信 · 88%",
+          summary: "护照与签证材料任务处于同一个出行上下文。",
+          timeline: [["上周五", "位置得到确认", "位于书房抽屉内。"], ["7 月 3 日", "被取出使用", "和签证材料共同出现。"]]
+        }
+      ]
+    };
+
+    const navItems = [
+      ["house", "生活"],
+      ["route", "轨迹"],
+      ["bot", "顾问"],
+      ["layout-grid", "全览"],
+      ["circle-user-round", "我的"]
+    ];
+
+    const nav = document.querySelector(".bottom-nav");
+    nav.innerHTML = navItems.map(([icon, label], index) => `
+      <button class="${index === 2 ? "agent" : ""} ${index === 3 ? "active" : ""}">
+        ${index === 2 ? `<i><span data-lucide="${icon}"></span></i>` : `<span data-lucide="${icon}"></span>`}
+        <span>${label}</span>
+      </button>
+    `).join("");
+
+    const layer = document.querySelector(".domain-layer");
+    const objectLayer = document.querySelector(".object-layer");
+    let activeDomainKey = "style";
+
+    function renderRows(rows) {
+      return rows.map(([icon, name, detail, type]) => `
+        <button class="detail-row">
+          <span class="icon"><i data-lucide="${icon}"></i></span>
+          <span>
+            <b>${name}</b>
+            <p>${detail}</p>
+            ${type.includes("%") ? `<span class="plan-progress" style="--progress:${type}"><i></i></span>` : ""}
+          </span>
+          <em>${type.includes("%") ? "进度" : type}</em>
+        </button>
+      `).join("");
+    }
+
+    function renderDomainView(key, view) {
+      const data = domainData[key];
+      const objects = domainObjects[key] || [];
+      const content = layer.querySelector(".detail-content");
+
+      layer.querySelectorAll(".domain-content-tabs button").forEach((button) => {
+        button.classList.toggle("active", button.dataset.domainView === view);
+      });
+
+      if (view === "objects") {
+        if (objects.length === 0) {
+          content.innerHTML = `
+            <div class="ai-library-note">
+              <b>${data.title}</b> 当前没有形成稳定的实物主线。这个领域会优先展示人物、偏好与计划。
+            </div>
+          `;
+        } else {
+          content.innerHTML = `
+            <div class="library-head">
+              <h3>AI 已记住的物品</h3>
+              <button class="library-filter" type="button"><i data-lucide="sliders-horizontal"></i>筛选</button>
+            </div>
+            <div class="object-library">
+              ${objects.map((item, index) => `
+                <button class="object-card" data-object-index="${index}">
+                  <span class="object-image">
+                    <img src="${item.image}" alt="${item.name}">
+                    <em>${item.state}</em>
+                  </span>
+                  <span class="object-copy">
+                    <b>${item.name}</b>
+                    <span>${item.location} · ${item.seen}</span>
+                  </span>
+                </button>
+              `).join("")}
+            </div>
+            <p class="ai-library-note">
+              <b>由 AI 主动维护：</b>新的观察会更新位置和状态；相似物品会先进入待确认，不会直接合并。
+            </p>
+          `;
+          content.querySelectorAll(".object-card").forEach((card) => {
+            card.addEventListener("click", () => openObject(objects[Number(card.dataset.objectIndex)], data.tone));
+          });
+        }
+      } else {
+        const sectionIndex = view === "about" ? 1 : 2;
+        const section = data.sections[sectionIndex] || data.sections[0];
+        content.innerHTML = `
+          <section class="detail-section">
+            <h3>${section[0]}</h3>
+            ${renderRows(section[1])}
+          </section>
+        `;
+      }
+
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function renderLayer(key) {
+      const data = domainData[key];
+      const objects = domainObjects[key] || [];
+      activeDomainKey = key;
+      layer.style.setProperty("--layer-tone", data.tone);
+      layer.querySelector(".layer-count").textContent = `${data.count} 条有效记忆`;
+      layer.querySelector(".layer-title").textContent = data.title;
+      layer.querySelector(".layer-summary").textContent = data.summary;
+      const objectCount = objects.length >= 4 ? objects.length : data.mix[0][0];
+      const aboutCount = Number(data.mix[1][0]) + Number(data.mix[2][0]);
+      const planCount = data.mix[3][0];
+      layer.querySelector(".domain-content-tabs").innerHTML = `
+        <button data-domain-view="objects">物品库 ${objectCount}</button>
+        <button data-domain-view="about">偏好习惯 ${aboutCount}</button>
+        <button data-domain-view="plans">计划进度 ${planCount}</button>
+      `;
+      layer.querySelectorAll(".domain-content-tabs button").forEach((button) => {
+        button.addEventListener("click", () => renderDomainView(key, button.dataset.domainView));
+      });
+      renderDomainView(key, objects.length > 0 ? "objects" : "about");
+      layer.classList.add("open");
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function openObject(item, tone) {
+      objectLayer.style.setProperty("--object-tone", tone);
+      objectLayer.querySelector(".object-hero-image").src = item.image;
+      objectLayer.querySelector(".object-hero-image").alt = item.name;
+      objectLayer.querySelector(".object-detail-title").textContent = item.name;
+      objectLayer.querySelector(".object-detail-summary").textContent = item.summary;
+      objectLayer.querySelector(".object-location").textContent = item.location;
+      objectLayer.querySelector(".object-state").textContent = item.state;
+      objectLayer.querySelector(".object-seen").textContent = item.seen;
+      objectLayer.querySelector(".object-confidence").textContent = item.confidence;
+      objectLayer.querySelector(".item-timeline").innerHTML = item.timeline.map(([time, title, copy]) => `
+        <article class="item-event">
+          <time>${time}</time>
+          <div><b>${title}</b><p>${copy}</p></div>
+        </article>
+      `).join("");
+      objectLayer.classList.add("open");
+    }
+
+    document.querySelectorAll(".domain").forEach((button) => {
+      button.addEventListener("click", () => renderLayer(button.dataset.domain));
+    });
+
+    document.querySelector(".close-layer").addEventListener("click", () => {
+      layer.classList.remove("open");
+    });
+
+    document.querySelector(".close-object").addEventListener("click", () => {
+      objectLayer.classList.remove("open");
+    });
+
+    const graphLayer = document.querySelector(".graph-layer");
+
+    document.querySelector(".graph-entry").addEventListener("click", () => {
+      window.open("http://127.0.0.1:8791/galaxy", "_blank");
+    });
+
+    document.querySelector(".close-graph").addEventListener("click", () => {
+      graphLayer.classList.remove("open");
+    });
+
+    if (window.lucide) window.lucide.createIcons();
+  </script>
+</body>
+</html>

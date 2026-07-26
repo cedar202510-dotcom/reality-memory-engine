@@ -1398,6 +1398,10 @@ button {
 }
 
 .app-shell.mode-galaxy {
+  background: #06100b;
+}
+
+.app-shell.mode-relations {
   background: radial-gradient(circle at 50% 30%, rgba(110, 86, 207, 0.25), transparent 50%), linear-gradient(180deg, #0d0a1a 0%, #06040d 100%);
 }
 
